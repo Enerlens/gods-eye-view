@@ -223,6 +223,50 @@ export function nextStop(trip, { stopSequence = null, nowMs = Date.now() } = {})
 }
 
 /**
+ * The stops a run still has ahead of it, in order, capped.
+ *
+ * {@link nextStop} answers "which stop is it heading for"; this answers "and
+ * then where", which is what turns a stale position into a drawn one: with the
+ * coordinates of the next few stops and the times the operator predicts for
+ * them, `transitProjection.js` can carry a vehicle along its own run instead of
+ * leaving it where it last reported. The two share one selection rule on
+ * purpose — a card naming one stop while the glyph is drawn towards another
+ * would be two answers to one question.
+ *
+ * The cap is not a detail: this list goes on the wire once per vehicle per
+ * viewport, and four stops is what the replay measured to be enough (from four
+ * to twelve the drawn error does not move a metre, because a projection rarely
+ * advances further than three stops).
+ *
+ * @param {Object} trip Normalized trip update.
+ * @param {Object} [options]
+ * @param {?number} [options.stopSequence] The vehicle's own position on the run.
+ * @param {number} [options.nowMs] Fallback when no sequence was published.
+ * @param {number} [options.limit] How many stops at most.
+ * @returns {Array<Object>} `stopTimeFromUpdate` records; empty when the run
+ *   has nothing left to say.
+ */
+export function stopsAhead(trip, { stopSequence = null, nowMs = Date.now(), limit = 8 } = {}) {
+  const stops = Array.isArray(trip?.stops) ? trip.stops : [];
+  if (!stops.length || !(limit > 0)) return [];
+
+  let start = -1;
+  if (Number.isFinite(stopSequence)) {
+    start = stops.findIndex(
+      (stop) => Number.isFinite(stop.sequence) && stop.sequence >= stopSequence,
+    );
+  }
+  if (start < 0) {
+    start = stops.findIndex((stop) => {
+      const when = stop.arrivalMs ?? stop.departureMs;
+      return Number.isFinite(when) && when >= nowMs;
+    });
+  }
+  if (start < 0) return [];
+  return stops.slice(start, start + limit);
+}
+
+/**
  * Stops the operator says this run will NOT serve.
  *
  * `ahead` is the honest qualifier, not a detail: a skipped stop only matters
@@ -310,7 +354,11 @@ export function scheduleForVehicle(vehicle, tripIndex, { nowMs = Date.now() } = 
   const delay = tripDelay(trip, { stopSequence, nowMs });
   const skipped = skippedStops(trip, stopSequence);
 
-  const summary = { matchedBy };
+  // The matched update itself, for the one caller that needs more than a
+  // summary of it: the viewport pass reads its remaining stops with
+  // {@link stopsAhead}, and matching twice would walk the index twice. Never
+  // serialized — `panWireVehicle` copies fields out by name.
+  const summary = { matchedBy, trip };
   if (delay && awaitingDeparture(vehicle, trip, delay.delaySec)) {
     // Not punctuality — a layover. What IS true and useful is when the
     // operator expects it out: the predicted time at this stop, less the

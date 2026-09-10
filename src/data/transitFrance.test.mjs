@@ -21,7 +21,9 @@ import transitFranceLayer, {
   transitModeColor,
   transitVehicleGlyphUri,
   transitModeLabel,
+  transitProjectionReadout,
   transitVehicleColor,
+  transitVehicleReadout,
   nextRetryDelayMs,
   _clearTransitSelectionForTest,
   _selectTransitVehicleForTest,
@@ -489,4 +491,54 @@ test('a failed load asks again soon, then backs off to the poll cadence', () => 
   assert.equal(nextRetryDelayMs(undefined), 3_000);
   assert.equal(nextRetryDelayMs(Number.NaN), 3_000);
   assert.equal(nextRetryDelayMs(-1), 3_000);
+});
+
+// --- Saying that a glyph is drawn rather than reported ----------------------
+// The projection moves a contact away from the position its operator
+// published. Everything below pins the one obligation that comes with that:
+// the layer never lets the moved glyph pass for a sighting.
+
+test('a vehicle carried along its run says so, in stops and in metres', () => {
+  const record = { ...makeRecord(), projected: true, advanceM: 642, advanceStops: 2 };
+  const line = transitProjectionReadout(record);
+  assert.match(line, /642 m/);
+  assert.match(line, /2 stops on/);
+  assert.match(line, /projected along its run, not reported/);
+  // One stop is one stop, not "1 stops".
+  assert.match(transitProjectionReadout({ ...record, advanceStops: 1 }), /1 stop on/);
+  // A kilometre reads as a kilometre.
+  assert.match(transitProjectionReadout({ ...record, advanceM: 1480 }), /1\.5 km/);
+});
+
+test('a vehicle drawn where it reported says nothing at all', () => {
+  assert.equal(transitProjectionReadout({ ...makeRecord(), projected: false, advanceM: 900 }), null);
+  // Under ten metres there is nothing a viewer could see, and a line about it
+  // would be noise on every card of every fast-reporting network.
+  assert.equal(transitProjectionReadout({ ...makeRecord(), projected: true, advanceM: 4 }), null);
+  assert.equal(transitProjectionReadout(null), null);
+});
+
+test('the card keeps the real fix age next to the projected position', () => {
+  const nowMs = 1787765215000 + 240_000;
+  const record = { ...makeRecord(), projected: true, advanceM: 642, advanceStops: 2 };
+  const card = buildTransitSelectionLabel(record, nowMs);
+  // Both, in that order: what the operator last said, then what is drawn.
+  assert.match(card, /⏱ fix 4m ago/);
+  assert.match(card, /➟ drawn 642 m, 2 stops on/);
+  assert.ok(card.indexOf('⏱ fix') < card.indexOf('➟ drawn'));
+});
+
+test('the spoken record carries the drawn position AND the reported one', () => {
+  const record = { ...makeRecord(), projected: true, advanceM: 642, advanceStops: 2 };
+  const readout = transitVehicleReadout(record, 1787765215000);
+  assert.equal(readout.positionProjected, true);
+  assert.equal(readout.projectedM, 642);
+  // The reported position travels alongside, so an answer can give either and
+  // never has to guess which one `lat`/`lon` was.
+  assert.equal(readout.reportedLat, 44.8755);
+  assert.equal(readout.reportedLon, -0.5691);
+
+  const plain = transitVehicleReadout(makeRecord(), 1787765215000);
+  assert.equal(plain.positionProjected, false);
+  assert.equal(plain.projectedM, null);
 });

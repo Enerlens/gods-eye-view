@@ -24,6 +24,7 @@ import {
   punctuality,
   scheduleForVehicle,
   skippedStops,
+  stopsAhead,
   summarizeSchedule,
   tripDelay,
   vehicleLocalId,
@@ -222,7 +223,11 @@ test('one vehicle, everything its operator said about the run it is on', () => {
     ],
   });
   const state = scheduleForVehicle(vehicle(), indexTripUpdates([run]), { nowMs: NOW });
-  assert.deepEqual(state, {
+  // The matched update rides along for the viewport pass, which reads its
+  // remaining stops; it is a reference to the same object, not a copy of it.
+  const { trip: matched, ...said } = state;
+  assert.equal(matched, run);
+  assert.deepEqual(said, {
     matchedBy: 'trip',
     delaySec: 245,
     delayFrom: 'current-stop',
@@ -358,4 +363,64 @@ test('the summary names what nobody published instead of counting it as on time'
   assert.deepEqual(summarizeSchedule(null), {
     late: 0, early: 0, onTime: 0, unknown: 0, waiting: 0, canceled: 0, skipped: 0, alerted: 0,
   });
+});
+
+// --- The stops a run still has ahead of it ----------------------------------
+// What the viewport pass puts on the wire so a vehicle can be drawn where its
+// own operator says it now is, rather than where it last reported. The rule has
+// to be the SAME one `nextStop` uses, or the card and the drawn position would
+// disagree about which stop the bus is heading for.
+
+test('the stops ahead start at the stop the vehicle is heading for', () => {
+  const run = trip({
+    stops: [
+      stop(4, { at: NOW - 300_000 }),
+      stop(5, { at: NOW - 120_000 }),
+      stop(6, { at: NOW + 40_000 }),
+      stop(7, { at: NOW + 160_000 }),
+      stop(8, { at: NOW + 300_000 }),
+    ],
+  });
+  const ahead = stopsAhead(run, { stopSequence: 6, nowMs: NOW });
+  assert.deepEqual(ahead.map((s) => s.sequence), [6, 7, 8]);
+});
+
+test('with no stop sequence published, the clock decides where the run is', () => {
+  const run = trip({
+    stops: [
+      stop(4, { at: NOW - 300_000 }),
+      stop(5, { at: NOW - 120_000 }),
+      stop(6, { at: NOW + 40_000 }),
+      stop(7, { at: NOW + 160_000 }),
+    ],
+  });
+  assert.deepEqual(stopsAhead(run, { stopSequence: null, nowMs: NOW }).map((s) => s.sequence), [6, 7]);
+  // 58% of the national fleet publishes no `current_stop_sequence`; the fallback
+  // is the same one `nextStop` already uses, so both answers name one stop.
+  assert.equal(nextStop(run, { stopSequence: null, nowMs: NOW }).sequence, 6);
+});
+
+test('the list is capped, because the wire pays for every stop on it', () => {
+  const run = trip({ stops: Array.from({ length: 30 }, (_u, i) => stop(i, { at: NOW + i * 60_000 })) });
+  assert.equal(stopsAhead(run, { stopSequence: 0, nowMs: NOW, limit: 4 }).length, 4);
+  assert.equal(stopsAhead(run, { stopSequence: 0, nowMs: NOW, limit: 0 }).length, 0);
+});
+
+test('a run with nothing ahead of it yields nothing, never a guess', () => {
+  assert.deepEqual(stopsAhead(null, { nowMs: NOW }), []);
+  assert.deepEqual(stopsAhead(trip({ stops: [] }), { nowMs: NOW }), []);
+  // Every prediction in the past: the run is over, and there is nowhere to
+  // carry the vehicle to.
+  const done = trip({ stops: [stop(1, { at: NOW - 600_000 }), stop(2, { at: NOW - 300_000 })] });
+  assert.deepEqual(stopsAhead(done, { stopSequence: null, nowMs: NOW }), []);
+  // But a sequence the operator published still anchors it, even when its
+  // predicted time has passed — that is the case the projection exists for.
+  assert.deepEqual(stopsAhead(done, { stopSequence: 2, nowMs: NOW }).map((s) => s.sequence), [2]);
+});
+
+test('the matched trip comes back with the summary, for the caller that needs its stops', () => {
+  const run = trip({ stops: [stop(6, { at: NOW + 40_000, delay: 90 }), stop(7, { at: NOW + 160_000 })] });
+  const state = scheduleForVehicle(vehicle(), indexTripUpdates([run]), { nowMs: NOW });
+  assert.equal(state.trip, run);
+  assert.equal(state.nextStopId, 'stop-6');
 });
