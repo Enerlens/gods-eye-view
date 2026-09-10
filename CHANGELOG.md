@@ -6,6 +6,106 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-10
 
 ### Added
+- **Deux puces coupent la couche Véhicules partagés en deux : les vélos, et
+  tout le reste.** Une vue de ville tient des vélos, des VAE, des trottinettes,
+  des scooters et des voitures partagées dans les mêmes rues, dessinés par la
+  même couche. La silhouette disait déjà lequel est lequel ; il n'y avait rien
+  pour AGIR dessus, et le lecteur venu pour l'un lisait les quatre autres comme
+  du bruit.
+
+  **C'est une PARTITION, pas deux ensembles qui se recouvrent.** Les six formes
+  que GBFS nomme — `bike`, `ebike`, `scooter`, `moped`, `car`, `other` —
+  tombent chacune d'un seul côté, et un test le vérifie forme par forme.
+  Appuyer sur l'une puis sur l'autre montre donc toute la flotte, sans rien
+  qui reste invisible sous les deux. C'est la propriété qui rend la paire
+  fiable, et c'est pour ça qu'`other` — une forme que la spec refuse de nommer
+  — est rangée avec le reste plutôt que nulle part.
+
+  **Un VAE est un vélo.** `vehicleKindFromType()` sépare `bicycle` par
+  propulsion : `bike` et `ebike` sont la même silhouette sur deux sources
+  d'énergie. Une puce appelée « Vélos » qui aurait caché tous les Vélib'
+  électriques aurait menti sur son propre nom ; l'infobulle dit que les deux
+  sont dedans.
+
+  **Une station est classée par ce qu'elle tient, et l'inventaire illisible est
+  déclaré.** Un flux GBFS 2.x publie une répartition mécanique/électrique que
+  le lecteur normalise, donc il répond directement. Un flux 3.0 publie
+  `vehicle_types_available`, dont les clés sont les identifiants de types
+  PROPRES au système — des chaînes opaques que cette couche ne sait pas
+  résoudre. Ces stations-là, comme celles qui ne publient aucune répartition,
+  retombent sur le défaut de la spec elle-même : un système sans types de
+  véhicules « est réputé exploiter des vélos non motorisés ». 117 des 135
+  systèmes français distincts dessinent des stations (index du 2026-08-27),
+  donc la règle porte, et l'infobulle des vélos l'annonce plutôt que de la
+  laisser deviner.
+
+  **Pas de troisième puce pour dire « tout ».** La puce allumée EST le retour,
+  et elle le publie comme une valeur (`kinds: 'all'`) et non comme « appuyez
+  deux fois » : un paramètre qui s'inverserait à chaque application se serait
+  éteint tout seul le jour où quelque chose le rejoue — le tampon du stub
+  paresseux, une intention de paramètres réappliquée à l'allumage — et rien de
+  tout ça n'aurait ressemblé à un bug vu de l'extérieur. La bande est
+  d'ailleurs partagée avec les puces de fusion « Longue traîne FR » et
+  « Semaine type » : une quatrième aurait dépensé un quart d'un ruban de
+  commandes à dire non.
+
+  **Le filtre passe AVANT le plafond de 6 000 objets, et il compte ce qu'il
+  cache.** Dépenser le budget de rendu sur des véhicules qu'on vient de
+  demander à cacher aurait fait dire à la puce « dessine moins de vélos » au
+  lieu de « ne dessine que les vélos ». Chaque infobulle porte les deux
+  moitiés — mesuré en direct au-dessus de Paris le 2026-09-10, sur une réponse
+  plafonnée à 6 000 objets : **5 091 d'un côté, 909 de l'autre**, et la ligne
+  de la couche passe de `6 operators · capped` à `6 operators · bikes only ·
+  capped`. La réponse du proxy est gardée entière, donc changer de filtre ne
+  coûte aucune requête, et une puce dont la moitié est vide est refusée au lieu
+  de vider le globe. Enfin, quand un filtre cache tout ce qui est en vue, la
+  ligne le dit (`no bikes in this view — the rest is filtered out`) : « no
+  vehicles reporting here » aurait accusé le flux de ce que le lecteur venait
+  de faire.
+
+### Fixed
+- **Les véhicules partagés restent collés au sol quand on déplace la carte.**
+  Même panne que les feux actifs la veille, sur une couche où elle se voyait
+  bien plus souvent. Un objet était posé à la hauteur 0 — sur l'ellipsoïde
+  WGS84, pas sur le sol — tant que sa cellule de MNT n'avait pas répondu sur le
+  réseau. Mesuré dans l'application au-dessus de **Paris**, sur les flux réels,
+  6 000 objets dessinés et 221 sondés : **tous à 2,500 m d'altitude
+  ellipsoïdale**, c'est-à-dire le seul décalage de 2,5 m que la couche ajoute
+  au-dessus d'un sol qu'elle croyait à zéro — donc **73 à 116 m sous la rue**.
+  Après correctif, la même vue rend **75,1 à 118,6 m, et zéro objet sur
+  l'ellipsoïde**, dès la première image où ils existent.
+
+  Un point enterré n'est pas « un peu décalé » : le test de profondeur est
+  désactivé pour qu'une trottinette ne soit pas avalée par le trottoir sur
+  lequel elle est posée, donc il est peint quand même — et sa position à
+  l'écran devient une fonction de la POSE DE LA CAMÉRA. On tire la carte à la
+  souris et toute la flotte glisse sur les toits avant de se replacer. Sur une
+  couche qui recharge à chaque mouvement de caméra, ça recommençait sur
+  pratiquement chaque vue.
+
+  **Et ici, ça ne se replaçait jamais.** Le préchauffage du MNT partait sans
+  personne pour l'attendre, et une position est écrite une fois dans la
+  primitive : rien ne repositionnait ce que le réseau finissait par résoudre.
+  Mesuré : les 6 000 points de Paris sont restés à 2,500 m pendant les **vingt
+  secondes** de la sonde, caméra à l'arrêt. Le harnais l'a reproduit à Nantes,
+  sur son jeu figé : 32 objets, vingt-cinq relevés, pas un centimètre — et il
+  garde maintenant le contrôle qui refuse ça (49,8 à 84,1 m après). La couche
+  relit maintenant la surface qu'elle DESSINE avant de poser quoi que ce soit,
+  puis **repasse** replacer ce qui a gagné un meilleur sol : cinq réveils qui
+  doublent (~37 s en tout), rechargés dès que la caméra bouge, et jamais une
+  requête de plus.
+
+  **Le store provisoire n'est plus dans la couche des feux.** Une cellule de
+  ~111 m de sol est le même sol quelle que soit la couche qui demande, donc les
+  sondes payées par les feux sont lues gratuitement par les scooters garés dans
+  la même rue : `fireAnchors.js` et `sharedMobilityFrance.js` partagent
+  désormais `provisionalFloor.js`, avec la même politique de réveils. Ce qui
+  reste propre à chaque appelant est un rayon : les feux empruntent un sol à
+  25 km — un complexe tient sur un versant — les véhicules à 10 km, parce que
+  la vue qui en contient un est une ville et qu'un sol emprunté doit rester
+  dans la même cuvette.
+
+### Added
 - **La couche Sites militaires a enfin une clé : cinq couleurs qui ne disaient
   rien.** Le module peignait ses pastilles sur cinq teintes — base aérienne,
   base navale, champ de tir, terrain militaire, candidat Google Places — et
