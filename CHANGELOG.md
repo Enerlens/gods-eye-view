@@ -64,6 +64,37 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   de faire.
 
 ### Fixed
+- **L'URL de recette ne peut plus être en retard sur `main`.** Le 2026-09-10 à
+  15 h 25, `gev.enerlens.com` servait une branche coupée à la #152 : la #153
+  (bus de Normandie projetés sur leur ligne) et la #154 (silhouettes des sites
+  militaires) étaient fusionnées depuis 31 et 16 minutes et **invisibles**,
+  pendant que la machine annonçait un conteneur sain, reconstruit trois minutes
+  plus tôt. Rien n'était cassé : l'agent avait déployé exactement ce qu'on lui
+  demandait — « la PR ouverte la plus récente », une consigne qui ne dit rien du
+  travail fusionné.
+
+  **La règle est maintenant une inclusion, pas une préférence.** Ce qui est
+  servi CONTIENT `main` : un aperçu, c'est `main` plus une PR, jamais `main`
+  moins une fusion. `auto` mesure donc la candidate avant de la montrer — il
+  demande à GitHub combien de commits de `main` lui manquent
+  (`/compare/<main>...<tête>`, `behind_by`) et, si la réponse n'est pas zéro,
+  montre `main`. **Pour mettre une branche sur l'URL, il faut la rebaser** ;
+  c'est la seule obligation nouvelle, et la CI la réclame déjà.
+
+  **Ne pas savoir, c'est montrer `main`.** Quota épuisé, panne d'API, PR ouverte
+  depuis un fork dont la branche n'existe pas ici : dans les trois cas la
+  réponse est `main`, parce que c'est la seule référence à laquelle il ne peut
+  manquer aucun travail fusionné. Une épingle explicite (`echo ma-branche >
+  /opt/gev/target`) reste souveraine — c'est une décision, pas un accident —
+  mais une épingle périmée le DIT désormais, dans le journal et dans
+  `state/selection`, au lieu de se découvrir des heures plus tard.
+
+  **Et ça ne coûte pas un appel de plus toutes les trois minutes.** Le verdict
+  est mis en cache sur le couple de shas exact qui l'a produit : une poussée =
+  un appel, contre vingt par heure sur le quota anonyme de 60/h que cette IP
+  partage avec ses voisins. Une seule ligne répond à « pourquoi est-ce que je
+  regarde ça ? » : `cat /opt/gev/state/selection`. Neuf tests exécutent le vrai
+  script contre un GitHub factice et tiennent chaque branche de la décision.
 - **Les véhicules partagés restent collés au sol quand on déplace la carte.**
   Même panne que les feux actifs la veille, sur une couche où elle se voyait
   bien plus souvent. Un objet était posé à la hauteur 0 — sur l'ellipsoïde
