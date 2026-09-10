@@ -1150,14 +1150,21 @@ export function regionLabelText(record) {
 }
 
 /**
- * Label text for a border arc. "vers"/"depuis" states the direction in words,
- * because an arrow head is the first thing lost at a shallow camera angle.
+ * Label text for a border arc. The verb and "vers"/"depuis" state the
+ * direction in words, because an arrow head is the first thing lost at a
+ * shallow camera angle — and "vers" alone left the reader to infer which side
+ * of the frontier the megawatts came from.
  * @param {object} arc
  * @returns {string}
  */
 export function borderLabelText(arc) {
-  const direction = arc?.importing ? 'depuis' : 'vers';
-  return `${formatMegawatts(arc?.mw)} ${direction} ${arc?.label}`;
+  const importing = Boolean(arc?.importing);
+  const direction = importing ? 'depuis' : 'vers';
+  // The deadband admits a 1 MW flow, so the participle has to agree.
+  const mw = Number(arc?.mw);
+  const plural = !Number.isFinite(mw) || Math.round(Math.abs(mw)) >= 2 ? 's' : '';
+  const verb = `${importing ? 'importé' : 'exporté'}${plural}`;
+  return `${formatMegawatts(arc?.mw)} ${verb} ${direction} ${arc?.label}`;
 }
 
 /**
