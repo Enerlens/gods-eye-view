@@ -18,7 +18,9 @@ import {
   ENERGY_PRISM_DOMAIN_MAX_MW,
   ENERGY_PRISM_SCALE,
   REGION_DEPARTEMENTS,
+  REGION_NAMES,
   UNCOVERED_REGIONS,
+  arrowOrientation,
   balanceStyle,
   borderLabelText,
   PRISM_FOOTPRINT_SCALE,
@@ -40,9 +42,23 @@ import {
   regionLabelText,
   selectEnergyOverlayCohort,
   summarizeNational,
+  unmeasuredRegions,
 } from './franceEnergy.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
 import { ringArea } from './polygonDissolve.js';
+import { greatCircleDistanceM } from './greatCircleArc.js';
+
+/** Ray casting, so a test can say "this point is inside that country". */
+function pointInRing([lon, lat], ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if ((yi > lat) !== (yj > lat)
+      && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
 import {
   PRISM_BODY_ALPHA,
   PRISM_MAX_HEIGHT_M,
@@ -284,20 +300,70 @@ test('the région label anchor lands inside its own région', () => {
 
 // ── The arcs ────────────────────────────────────────────────────────────────
 
-test('an import arc ends on France and an export arc starts there', () => {
-  // The arrow head is at the END of the polyline, so this IS the direction the
-  // user reads off the globe.
+test('the CONE lands where the power arrives, whichever way it flows', () => {
+  // The head is the mark that carries the sense, so this is the assertion that
+  // stands for "the reader can see which way it goes".
   const [imported] = buildBorderArcs([{ key: 'espagne', label: 'Espagne', mw: 500 }]);
   assert.equal(imported.importing, true);
   assert.equal(imported.style.key, 'importer');
-  assert.ok(Math.abs(imported.positions[0] - BORDER_ANCHORS.espagne[0]) < 1e-6);
-  assert.ok(Math.abs(imported.positions.at(-3) - BORDER_ANCHORS.france[0]) < 1e-6);
+  assert.ok(Math.abs(imported.head.tip[0] - BORDER_ANCHORS.france[0]) < 1e-6);
+  assert.ok(Math.abs(imported.head.tip[1] - BORDER_ANCHORS.france[1]) < 1e-6);
+  // …and it starts out over Spain, on the bearing of the Spanish reference
+  // point rather than on the point itself: the glyph has a fixed length.
+  assert.ok(imported.positions[1] < BORDER_ANCHORS.france[1], 'the flow comes from the south');
 
   const [exported] = buildBorderArcs([{ key: 'italie', label: 'Italie', mw: -2537 }]);
   assert.equal(exported.importing, false);
   assert.equal(exported.style.key, 'exporter');
   assert.ok(Math.abs(exported.positions[0] - BORDER_ANCHORS.france[0]) < 1e-6);
-  assert.ok(Math.abs(exported.positions.at(-3) - BORDER_ANCHORS.italie[0]) < 1e-6);
+  assert.ok(exported.head.tip[0] > BORDER_ANCHORS.france[0], 'the flow heads east');
+
+  // The cone sits at the END of the shaft, never inside it: `base` is the last
+  // sample of the tube and the tip is one head-length beyond.
+  for (const arc of [imported, exported]) {
+    assert.deepEqual(arc.head.base, [
+      arc.positions.at(-3), arc.positions.at(-2), arc.positions.at(-1),
+    ]);
+    assert.ok(greatCircleDistanceM(arc.head.base, arc.head.tip) > arc.headLengthM * 0.5);
+  }
+});
+
+test('the glyph is a VOLUME, and its length is not a variable', () => {
+  const arcs = buildBorderArcs(PAYLOAD.national.exchanges, frontierAnchors(BUNDLED));
+  // Thickness is the only thing that moves. Left free, length was geography:
+  // 94 km to Switzerland against 411 km to Italy, so the Italian flow read
+  // four times the Swiss one before a megawatt was consulted.
+  const lengths = arcs.map((arc) => arc.lengthM);
+  assert.ok(Math.max(...lengths) / Math.min(...lengths) <= 2.1, lengths.join(','));
+  for (const arc of arcs) {
+    assert.ok(arc.lengthM >= 170_000 && arc.lengthM <= 340_000, `${arc.key} ${arc.lengthM}`);
+    // A world radius, not a screen width: the rest of the layer measures in
+    // metres and a hairline that never grows is what made this unreadable.
+    assert.ok(arc.radiusM >= 9_000 && arc.radiusM <= 22_000, `${arc.key} ${arc.radiusM}`);
+    assert.ok(arc.headRadiusM > arc.radiusM * 1.5, 'a head barely wider than its shaft is a taper');
+    // Lifted clear of the ground at BOTH ends, or the lower half of a 22 km
+    // tube is buried exactly where the reader looks.
+    assert.ok(arc.positions[2] > arc.radiusM, `${arc.key} starts at ${arc.positions[2]} m`);
+    assert.ok(arc.head.tip[2] > arc.radiusM, `${arc.key} ends at ${arc.head.tip[2]} m`);
+  }
+});
+
+test('every flow glyph ends INSIDE the market it names', () => {
+  // The clamp is only legitimate if it never points past its own country. The
+  // far end is a bearing, so a glyph that overshoots Switzerland lands in Italy
+  // and says the opposite of what its label says.
+  const frontier = frontierAnchors(BUNDLED);
+  const arcs = buildBorderArcs(PAYLOAD.national.exchanges, frontier);
+  const outlines = new Map(buildMarketOutlines(MARKET_AREAS).map((m) => [m.key, m.rings]));
+  for (const arc of arcs) {
+    const abroad = arc.importing
+      ? [arc.positions[0], arc.positions[1]]
+      : [arc.head.tip[0], arc.head.tip[1]];
+    assert.ok(
+      outlines.get(arc.key).some((ring) => pointInRing(abroad, ring)),
+      `${arc.key} ends at ${abroad.map((v) => v.toFixed(2)).join('/')}, outside its own market`,
+    );
+  }
 });
 
 test('the arcs leave the FRONTIER, not the middle of the country', () => {
@@ -314,8 +380,10 @@ test('the arcs leave the FRONTIER, not the middle of the country', () => {
   const arcs = buildBorderArcs(PAYLOAD.national.exchanges, frontier);
   for (const arc of arcs) {
     assert.equal(arc.fromFrontier, true);
+    // The French end: the cone's TIP on an import, the shaft's first sample on
+    // an export. Either way it is the frontier point, not Berry.
     const home = arc.importing
-      ? [arc.positions.at(-3), arc.positions.at(-2)]
+      ? [arc.head.tip[0], arc.head.tip[1]]
       : [arc.positions[0], arc.positions[1]];
     const anchor = frontier.get(arc.key);
     assert.ok(Math.abs(home[0] - anchor[0]) < 1e-6, `${arc.key} lon ${home[0]}`);
@@ -334,18 +402,17 @@ test('a missing frontier costs the arc its start, never its existence', () => {
   const arcs = buildBorderArcs(PAYLOAD.national.exchanges, new Map());
   assert.equal(arcs.length, 5);
   assert.ok(arcs.every((arc) => arc.fromFrontier === false));
-  // Suisse is an IMPORT on this snapshot, so the French end is the LAST
-  // sample: the arrow head lands on France.
+  // Suisse is an IMPORT on this snapshot, so the French end is the cone's tip.
   const swiss = arcs.find((arc) => arc.key === 'suisse');
   assert.ok(swiss.importing);
   assert.ok(
-    Math.abs(swiss.positions.at(-3) - BORDER_ANCHORS.france[0]) < 1e-9,
-    String(swiss.positions.at(-3)),
+    Math.abs(swiss.head.tip[0] - BORDER_ANCHORS.france[0]) < 1e-9,
+    String(swiss.head.tip[0]),
   );
   assert.deepEqual(frontierAnchors({ features: [] }), new Map());
 });
 
-test('a shorter chord gets a shorter bow, or the arc is a croquet hoop', () => {
+test('a shorter glyph gets a shorter bow, or the arc is a croquet hoop', () => {
   const frontier = frontierAnchors(BUNDLED);
   const apexOf = (arcs, key) => {
     const arc = arcs.find((entry) => entry.key === key);
@@ -353,10 +420,16 @@ test('a shorter chord gets a shorter bow, or the arc is a croquet hoop', () => {
   };
   const near = buildBorderArcs(PAYLOAD.national.exchanges, frontier);
   const far = buildBorderArcs(PAYLOAD.national.exchanges);
-  // Suisse is the shortest of the five: 94 km from the frontier, against ~590
-  // from Berry. Its bow has to come down with it.
+  // From Berry the Swiss glyph spans ~590 km and the shared 60 km apex floor is
+  // proportionate; from the frontier it is clamped to 170 km, where 60 km of
+  // bow is an archway. The apex has to come down with the span.
   assert.ok(apexOf(near, 'suisse') < apexOf(far, 'suisse'));
-  assert.ok(apexOf(near, 'suisse') <= 25_000, `${apexOf(near, 'suisse')} m`);
+  // The clearance lift is on top of the bow, so the floor is the apex plus it.
+  const swiss = near.find((arc) => arc.key === 'suisse');
+  assert.ok(
+    apexOf(near, 'suisse') <= 45_000 + swiss.radiusM,
+    `${apexOf(near, 'suisse')} m`,
+  );
 });
 
 test('a zero border is no arc at all, and an unknown border is dropped', () => {
@@ -366,12 +439,15 @@ test('a zero border is no arc at all, and an unknown border is dropped', () => {
   assert.deepEqual(buildBorderArcs(null), []);
 });
 
-test('arc width ramps with the flow and saturates', () => {
+test('arc thickness ramps with the flow and saturates', () => {
   const [thin] = buildBorderArcs([{ key: 'suisse', label: 'Suisse', mw: 50 }]);
   const [thick] = buildBorderArcs([{ key: 'suisse', label: 'Suisse', mw: 2900 }]);
   const [clamped] = buildBorderArcs([{ key: 'suisse', label: 'Suisse', mw: 25_000 }]);
-  assert.ok(thick.width > thin.width);
-  assert.ok(clamped.width >= thick.width && clamped.width <= 15);
+  assert.ok(thick.radiusM > thin.radiusM);
+  assert.ok(clamped.radiusM >= thick.radiusM && clamped.radiusM <= 22_000);
+  // And the head follows the shaft, so a weak border is not given a huge head.
+  assert.ok(thin.headRadiusM < thick.headRadiusM);
+  assert.ok(thin.headLengthM < thick.headLengthM);
 });
 
 test('the five real borders all resolve, Allemagne+Belgique as one arc', () => {
@@ -433,6 +509,91 @@ test('an outline takes its arc class, and slate when nothing crosses', () => {
   assert.equal(marketOutlineStyles([]).get('suisse'), BALANCE_STYLES.balanced);
   assert.equal(marketOutlineStyles(null).size, 5);
   assert.ok(!marketOutlineStyles([]).has('france'));
+});
+
+test('a région the feed DROPS is counted and named, not silently lost', () => {
+  // The bug the first reader found by eye: éCO2mix dropped Normandie from the
+  // 15:04Z poll, the map drew twelve prisms and two striped shapes, and the
+  // legend said « non publié 1 ». 11 + 1 is not 13.
+  const dropped = {
+    ...PAYLOAD,
+    regions: PAYLOAD.regions.filter((region) => region.code !== '28'),
+  };
+  const records = buildRegionRecords(dropped, parseDepartements(BUNDLED));
+  assert.equal(records.length, 11);
+
+  const missing = unmeasuredRegions(records);
+  assert.deepEqual(missing.map((region) => region.code), ['28', '94']);
+  assert.deepEqual(missing.map((region) => region.name), ['Normandie', 'Corse']);
+  // The arithmetic a reader can do on the legend now closes.
+  const legend = energyPrismLegend(records);
+  const row = legend.find((entry) => /non publié/.test(entry.label));
+  assert.equal(row.count, 2);
+  const classes = legend
+    .filter((entry) => Object.values(BALANCE_STYLES).some((s) => s.color === entry.color))
+    .reduce((sum, entry) => sum + entry.count, 0);
+  assert.equal(classes + row.count, Object.keys(REGION_DEPARTEMENTS).length);
+  // And it NAMES them, because a striped shape with no label is what sent the
+  // reader hunting along the coastline.
+  assert.match(row.blurb, /Normandie/);
+  assert.match(row.blurb, /Corse/);
+});
+
+test('a published NULL and a dropped région are the same absence', () => {
+  // Three causes — never published (Corse), published null, dropped from the
+  // payload — and one mark, so one count. Telling them apart in the arithmetic
+  // would promise a distinction the map does not draw.
+  const nulled = {
+    ...PAYLOAD,
+    regions: PAYLOAD.regions.map((region) => (
+      region.code === '53' ? { ...region, netPhysical: null } : region
+    )).filter((region) => region.code !== '28'),
+  };
+  const records = buildRegionRecords(nulled, parseDepartements(BUNDLED));
+  assert.deepEqual(unmeasuredRegions(records).map((r) => r.code), ['28', '53', '94']);
+  assert.equal(unmeasuredRegions([]).length, Object.keys(REGION_DEPARTEMENTS).length);
+  assert.equal(unmeasuredRegions(null).length, Object.keys(REGION_DEPARTEMENTS).length);
+});
+
+test('the name table covers the grouping exactly, or a région goes anonymous', () => {
+  assert.deepEqual(
+    Object.keys(REGION_NAMES).sort(),
+    Object.keys(REGION_DEPARTEMENTS).sort(),
+  );
+  // The names have to match what éCO2mix itself publishes, or a région renames
+  // itself the moment the feed drops it.
+  for (const region of PAYLOAD.regions) {
+    if (!REGION_NAMES[region.code]) continue;
+    assert.equal(REGION_NAMES[region.code], region.name, `région ${region.code}`);
+  }
+});
+
+test('the cone is aimed down the flow, and never at a pole', () => {
+  const aim = (x, y, z) => {
+    const direction = Cesium.Cartesian3.normalize(
+      new Cesium.Cartesian3(x, y, z), new Cesium.Cartesian3(),
+    );
+    const rotation = Cesium.Matrix3.fromQuaternion(arrowOrientation(direction));
+    // The cone is built along its own +Z, so the third column of the basis has
+    // to come back as the direction it was given.
+    return { direction, z: Cesium.Matrix3.getColumn(rotation, 2, new Cesium.Cartesian3()) };
+  };
+  for (const axis of [[1, 0, 0], [0, 1, 0], [0.3, -0.5, 0.8], [1, 1, 1]]) {
+    const { direction, z } = aim(...axis);
+    assert.ok(Cesium.Cartesian3.distance(direction, z) < 1e-9, axis.join(','));
+  }
+  // Straight up the ECEF Z: crossing with UNIT_Z gives a zero vector, and
+  // normalising that is NaN and an arrowhead that vanishes. The seed swaps.
+  const { direction, z } = aim(0, 0, 1);
+  assert.ok(Cesium.Cartesian3.distance(direction, z) < 1e-9);
+  const rotation = Cesium.Matrix3.fromQuaternion(arrowOrientation(direction));
+  for (let i = 0; i < 9; i += 1) assert.ok(Number.isFinite(rotation[i]), `element ${i}`);
+  // And the basis stays orthonormal, or the cone is sheared.
+  const x = Cesium.Matrix3.getColumn(rotation, 0, new Cesium.Cartesian3());
+  const y = Cesium.Matrix3.getColumn(rotation, 1, new Cesium.Cartesian3());
+  assert.ok(Math.abs(Cesium.Cartesian3.magnitude(x) - 1) < 1e-9);
+  assert.ok(Math.abs(Cesium.Cartesian3.dot(x, y)) < 1e-9);
+  assert.ok(Math.abs(Cesium.Cartesian3.dot(x, z)) < 1e-9);
 });
 
 test('labels carry the verb and the megawatts, never colour alone', () => {
@@ -542,12 +703,25 @@ test('the legend publishes the height ruler AND the colour key (D1)', () => {
   // It is CONDITIONAL — the market file may fail without taking the layer
   // down, and a legend cannot promise a mark nobody drew.
   assert.ok(!legend.some((entry) => /^Contour — /.test(entry.label)));
-  const outline = energyPrismLegend(records, 5).at(-1);
+  const full = energyPrismLegend(records, { markets: 5, borders: 5 });
+  const outline = full.at(-1);
   assert.match(outline.label, /^Contour — /);
   assert.equal(outline.color, null, 'the outline row keys no colour of its own');
   assert.equal(outline.count, 5);
   assert.match(outline.blurb, /jamais un aplat/);
   assert.match(outline.blurb, /le plus proche/);
+
+  // The flow had no legend row at all while it was a hairline. It is now the
+  // loudest mark on the map, so D1 applies to it: what the thickness means,
+  // what the length does NOT mean, and where the sense is read.
+  const flow = full.find((entry) => /^Flux — /.test(entry.label));
+  assert.ok(flow, 'the loudest mark on the map needs a key');
+  assert.equal(flow.color, null);
+  assert.ok(!('count' in flow), 'a row that names a CHANNEL carries no count');
+  assert.match(flow.blurb, /ÉPAISSEUR/);
+  assert.match(flow.blurb, /LONGUEUR ne dit\s+rien|LONGUEUR ne dit rien/);
+  assert.match(flow.blurb, /ARRIVÉE/);
+  assert.ok(!energyPrismLegend(records, { markets: 5 }).some((e) => /^Flux — /.test(e.label)));
 
   // Every entry is the repo's shape, and no ratio is asserted anywhere: this
   // legend must never claim the colour is « un rapport ».
@@ -1007,7 +1181,10 @@ test('the three marks A1 asks for are three different marks', async () => {
     // And the legend counts the zero rather than swallowing it.
     const legend = h.layer.getRowControls().legend;
     assert.ok(legend.some((entry) => entry.label === 'mesuré à zéro' && entry.count === 1));
-    assert.equal(h.layer.getStats().unpublishedRegions, 0);
+    // Corse, and Corse alone: counted from the KNOWN 13 régions rather than
+    // from the rows the payload carried, which is what used to lose a région
+    // the feed had dropped.
+    assert.equal(h.layer.getStats().unpublishedRegions, 1);
   } finally {
     h.restore();
   }
@@ -1035,7 +1212,7 @@ test('a région the upstream drops becomes striped, not stale', async () => {
   }
 });
 
-test('the five border arcs are drawn as raised polylines', async () => {
+test('the five border flows are drawn as translucent volumes with a solid head', async () => {
   const h = createHarness([PAYLOAD]);
   try {
     h.layer.init(h.viewer);
@@ -1043,15 +1220,40 @@ test('the five border arcs are drawn as raised polylines', async () => {
     await h.layer.update(h.viewer);
 
     const arcs = h.entities().filter((entity) => String(entity.id).startsWith('energy-fr:arc:'));
+    const heads = h.entities().filter((entity) => String(entity.id).startsWith('energy-fr:arc-head:'));
     assert.equal(arcs.length, 5);
+    assert.equal(heads.length, 5, 'a flow without a head has no sense');
     for (const arc of arcs) {
       assert.ok(arc.show);
-      assert.equal(arc.polyline.arcType.getValue(), Cesium.ArcType.NONE);
-      assert.ok(arc.polyline.material instanceof Cesium.PolylineArrowMaterialProperty);
-      assert.ok(arc.polyline.positions.getValue().length > 2);
-      // NOT clamped, unlike every other polyline this layer draws: an arc is a
-      // flow over the globe and rides 20 to 85 km above it.
-      assert.equal(arc.polyline.clampToGround, undefined);
+      // A VOLUME, not a stroke: the reader called the old pixel line « quasi
+      // illisible », and a screen width also refuses to grow when the prisms
+      // beside it do.
+      assert.ok(arc.polylineVolume, 'the shaft is a polyline volume');
+      assert.equal(arc.polyline, undefined);
+      assert.ok(arc.polylineVolume.positions.getValue().length > 2);
+      const shape = arc.polylineVolume.shape.getValue();
+      assert.ok(shape.length >= 6, 'a regular section, as thick from every angle');
+      const radius = Math.hypot(shape[0].x, shape[0].y);
+      assert.ok(radius >= 9_000 && radius <= 22_000, `${radius} m`);
+      // The prism's own grammar: translucent body, near-opaque edge.
+      const body = arc.polylineVolume.material.color.getValue();
+      assert.ok(body.alpha < 0.5, `body alpha ${body.alpha}`);
+      assert.equal(arc.polylineVolume.outline.getValue(), true);
+      assert.ok(arc.polylineVolume.outlineColor.getValue().alpha > body.alpha);
+    }
+
+    for (const head of heads) {
+      assert.ok(head.show);
+      // A CONE — `topRadius: 0` — and a fat one, because a head barely wider
+      // than its shaft is a taper and not an arrow.
+      assert.equal(head.cylinder.topRadius.getValue(), 0);
+      const shaft = arcs.find((entity) => String(entity.id).endsWith(String(head.id).split(':').at(-1)));
+      const radius = Math.hypot(...['x', 'y'].map((k) => shaft.polylineVolume.shape.getValue()[0][k]));
+      assert.ok(head.cylinder.bottomRadius.getValue() > radius * 1.5);
+      // And it is the BRIGHTEST end of the mark: that is where the sense is.
+      assert.ok(head.cylinder.material.color.getValue().alpha > 0.8);
+      assert.ok(head.position, 'the cone is placed on the flow');
+      assert.ok(head.orientation, 'and aimed down it');
     }
   } finally {
     h.restore();
@@ -1114,18 +1316,26 @@ test('the overlay publishes one entry per painted région plus one per arc', asy
     assert.equal(options.cohortLimit, ENERGY_OVERLAY_COHORT_LIMIT);
     assert.equal(options.collisionCapacity, ENERGY_OVERLAY_COLLISION_CAPACITY);
     assert.equal(options.moving, false);
-    // 12 régions (all have an anchor from the real bundled shapes? no — the
-    // harness only bundles four départements, so only the régions whose
-    // départements are present get an anchor) + 5 borders.
+    // The harness only bundles four départements, so only the régions whose
+    // départements are present get an anchor: IDF and AURA measured, plus
+    // Corse — which is UNMEASURED and labelled anyway. That last one is the
+    // fix: a striped shape with no name is what sent the first reader hunting
+    // for the missing région along the coastline.
     const borders = entries.filter((entry) => entry.id.startsWith('energy-fr:border:'));
     const regions = entries.filter((entry) => entry.id.startsWith('energy-fr:region:'));
     assert.equal(borders.length, 5);
-    assert.equal(regions.length, 2, 'only IDF and AURA have shapes in the harness');
+    assert.equal(regions.length, 3, 'IDF, AURA, and an unmeasured Corse');
     for (const entry of entries) assert.equal(entry.interactive, false);
 
-    // Every région label is lifted to the top of its own prism, so the number
-    // and the length it encodes are read in the same glance.
-    for (const entry of regions) {
+    const corse = regions.find((entry) => entry.id === 'energy-fr:region:94');
+    assert.match(corse.title, /^Corse · SOLDE NON PUBLIÉ$/);
+    assert.equal(corse.accent, PRISM_NO_RATIO_COLOR);
+    // On the ground: it has no prism, so there is no top to ride.
+    assert.equal(Math.round(Cesium.Cartographic.fromCartesian(corse.position).height), 0);
+
+    // Every MEASURED région label is lifted to the top of its own prism, so the
+    // number and the length it encodes are read in the same glance.
+    for (const entry of regions.filter((row) => row.id !== 'energy-fr:region:94')) {
       const height = Cesium.Cartographic.fromCartesian(entry.position).height;
       assert.ok(height > 50_000, `${entry.id} sits at ${height} m, near its base`);
     }
@@ -1174,7 +1384,7 @@ test('getStats restates the national balance as an EXPORT figure', async () => {
     assert.equal(stats.count, 12);
     // A5 in the HUD as well as in the legend, and both zero on this snapshot.
     assert.equal(stats.clippedRegions, 0);
-    assert.equal(stats.unpublishedRegions, 0);
+    assert.equal(stats.unpublishedRegions, 1, 'Corse is never published');
     assert.equal(stats.netExportMw, -PAYLOAD.national.netPhysical);
     assert.ok(stats.netExportMw > 0, 'France was exporting on the captured snapshot');
     // Physical and commercial are reported under distinct names because they
