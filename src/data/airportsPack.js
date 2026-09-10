@@ -30,12 +30,7 @@
  */
 
 import { geometryAreaM2 } from './datacentersPack.js';
-import {
-  sizeBarGlyph,
-  sizeDiscGlyph,
-  sizeFootprintGlyph,
-  sizeRingGlyph,
-} from './sizeLegendGlyphs.js';
+import { sizeBarGlyph, sizeFootprintGlyph } from './sizeLegendGlyphs.js';
 
 /**
  * ISO 3166-1 codes OurAirports uses for France and the French overseas
@@ -1095,7 +1090,7 @@ export function airportTier(props) {
  * There were four. TOUS and LIGNES asked about service, AÉROPORTS and GRANDS
  * asked about size — two axes on one strip of chips. GRANDS is the one that
  * went: it kept 1 173 fields, and the size channel answers the same question
- * without a filter, at a threshold the legend already prints. LIGNES is now
+ * without a filter — the 3 000 m disc is simply the biggest one drawn. LIGNES is now
  * true, which it was not: it used to keep 22 fields that sell no seat.
  */
 export const AIRPORT_DISPLAY_FLOORS = Object.freeze([
@@ -1185,12 +1180,14 @@ export function airportTierLegend(tally) {
  * The same reason `damsPack.js` gives: a disc's AREA is what a reader decodes,
  * so an honest continuous scale would need √, and over a 1:640 domain that
  * leaves the bottom half of the pack inside two pixels of each other. Four
- * declared classes with their bounds printed beat a continuous scale nobody
- * can read back. What is proportional is the ORDER.
+ * declared classes beat a continuous scale nobody can read back. What the
+ * diameter delivers is the ORDER — and only the order: the five rows that used
+ * to print these bounds on the map are gone, and the metres are on the card
+ * instead (see {@link airportMarkLegend} for the whole argument).
  *
- * The bounds are FROZEN DOMAIN values (C1) — never quantiles of what is on
- * screen — and they are operational rather than statistical, so a reader can
- * hold them:
+ * The bounds are still FROZEN DOMAIN values (C1) — never quantiles of what is
+ * on screen — and they are operational rather than statistical, which is what
+ * keeps the ranking they produce the same one from one session to the next:
  *
  *     ≥ 3 000 m       1 280   17.2 %   long-courrier / gros-porteur
  *     1 800 – 2 999 m 2 577   34.5 %   moyen-courrier (l'A320 demande ~1 800 m)
@@ -1213,10 +1210,19 @@ export function airportTierLegend(tally) {
  *
  * 8 px for the unmeasured ring sits between the 6 and the 9 on purpose: a ring
  * smaller than the smallest disc would still be read as "short", and "not
- * published" is not a short runway.
+ * published" is not a short runway. The ring is also the one part of this
+ * channel that still speaks WITHOUT a key — hollow is not a size — which is
+ * why it survived the legend rows going away.
  */
 
-/** The four length classes, longest first, with the pixel diameter each draws. */
+/**
+ * The four length classes, longest first, with the pixel diameter each draws.
+ *
+ * `label` is no longer painted anywhere — the legend stopped printing this
+ * ladder. It stays because it NAMES the class wherever the pack is read (this
+ * file, the README, the test that holds those names out of the legend), and a
+ * class known only as `len1800` is a class nobody can discuss.
+ */
 export const AIRPORT_LENGTH_CLASSES = Object.freeze([
   Object.freeze({ key: 'len3000', minM: 3000, label: '3 000 m et plus', pixelSize: 18, count: 1280 }),
   Object.freeze({ key: 'len1800', minM: 1800, label: '1 800 – 2 999 m', pixelSize: 13, count: 2577 }),
@@ -1236,9 +1242,9 @@ export const AIRPORT_LENGTH_UNKNOWN = Object.freeze({
  * Suffix marking a feature whose runway is also DRAWN, not only sized.
  *
  * It rides on the render-spec key because the renderer tallies exactly one key
- * per feature, and the legend needs two different counts out of that one tally:
- * how many fields are in each length class, and how many of them upstream
- * georeferenced. Stripped by {@link airportLengthClassOf} before any lookup.
+ * per feature, and both the size the feature draws at and the marks it carries
+ * have to come back out of that one tally. Stripped by
+ * {@link airportLengthClassOf} before any lookup.
  */
 export const AIRPORT_DRAWN_RUNWAY_SUFFIX = '+rw';
 
@@ -1397,20 +1403,33 @@ export function airportRenderSpec(props) {
 }
 
 /**
- * Graphite for every size row. ONE colour, because in these rows the datum is
- * the swatch's diameter; a hue that moved with it would encode the same fact
- * twice (A3). The tier rows above are where colour means something.
+ * Graphite for both mark rows. ONE colour, because in these rows the datum is
+ * the swatch's SHAPE — a bar, an outline; a hue that moved with it would encode
+ * the same fact twice (A3). The tier rows above are where colour means something.
  */
 export const AIRPORT_SIZE_SWATCH_COLOR = '#c3ccd8';
 
 /**
- * Build the size legend from a live tally keyed by {@link airportRenderSpec}.
+ * Build the mark legend from a live tally keyed by {@link airportRenderSpec}.
  *
- * This is the scale the size channel cannot do without (D1): four classes with
- * their metre bounds printed, the hollow ring that says a sixth of the layer
- * was never published, and one row for the runway mark itself — because a line
- * drawn at a true length and a true bearing is a measurement on the map, and
- * D1 applies to it exactly as it applies to a colour.
+ * Two rows, and neither of them is a scale: they say what the two DRAWN shapes
+ * are. D1 covers them exactly as it covers a colour — a line at a true length
+ * and a true bearing is a measurement on the map, and nothing on screen can
+ * otherwise tell a reader that only 4 790 of the 7 464 fields carry one.
+ *
+ * ── THE FIVE LENGTH ROWS THAT USED TO OPEN THIS BLOCK ───────────────────────
+ *
+ * Four class rows and a hollow ring, carrying one 40-word blurb repeated four
+ * times: half of the right-hand block, spent restating metre bounds nobody
+ * reads back off a 13 px disc. The measurement is not lost — it is on the
+ * card, in metres and with its surface, one click away on the field the reader
+ * actually pointed at, which is where a QUANTITY is legible at all.
+ *
+ * What the diameter keeps carrying is the ORDER, and an order is decoded off
+ * the marks themselves: Roissy towers over the grass strip beside it whether or
+ * not a key prints "3 000 m et plus". D1 asks for a key wherever a mark makes a
+ * claim a reader would otherwise have to guess at — the drawn runway does, the
+ * IGN outline does, and a ranking of dot sizes does not.
  *
  * Counts are what is DRAWN, so a display chip that hides four fifths of the
  * pack empties these rows rather than lying about them.
@@ -1418,52 +1437,21 @@ export const AIRPORT_SIZE_SWATCH_COLOR = '#c3ccd8';
  * @param {Map<string,{total:number, visible:number}>|object} tally
  * @returns {Array<{label:string,color:string,glyph:string,blurb:string,count:number}>}
  */
-export function airportLengthLegend(tally) {
+export function airportMarkLegend(tally) {
   const entries = tally instanceof Map ? [...tally] : Object.entries(tally || {});
-  const byClass = new Map();
   let drawnRunways = 0;
   let drawnFootprints = 0;
   for (const [key, bucket] of entries) {
     if (!bucket?.total) continue;
     const raw = String(key);
+    // The suffixes ride on the render-spec key, so one tally bucket per feature
+    // still answers both questions — see AIRPORT_DRAWN_RUNWAY_SUFFIX.
     const visible = bucket.visible ?? bucket.total;
     if (raw.includes(AIRPORT_DRAWN_RUNWAY_SUFFIX)) drawnRunways += visible;
     if (raw.includes(AIRPORT_DRAWN_FOOTPRINT_SUFFIX)) drawnFootprints += visible;
-    const classKey = airportLengthClassOf(raw);
-    const seen = byClass.get(classKey) || { total: 0, visible: 0 };
-    seen.total += bucket.total;
-    seen.visible += visible;
-    byClass.set(classKey, seen);
   }
 
   const legend = [];
-  const blurb = 'Plus longue piste OUVERTE publiée par OurAirports. Seuils de '
-    + 'domaine gelés (1 000, 1 800, 3 000 m), jamais recalculés sur ce qui est '
-    + 'à l’écran. Le diamètre est aussi la longueur minimale du tracé de piste.';
-  for (const entry of AIRPORT_LENGTH_CLASSES) {
-    const bucket = byClass.get(entry.key);
-    if (!bucket?.total) continue;
-    legend.push({
-      label: entry.label,
-      color: AIRPORT_SIZE_SWATCH_COLOR,
-      glyph: sizeDiscGlyph(entry.pixelSize),
-      blurb,
-      count: bucket.visible,
-    });
-  }
-
-  const unknown = byClass.get(AIRPORT_LENGTH_UNKNOWN.key);
-  if (unknown?.total) {
-    legend.push({
-      label: AIRPORT_LENGTH_UNKNOWN.label,
-      color: AIRPORT_SIZE_SWATCH_COLOR,
-      glyph: sizeRingGlyph(),
-      blurb: 'Anneau creux, jamais un petit disque : OurAirports ne publie ici '
-        + 'aucune longueur de piste ouverte. 1 314 terrains sur 7 464.',
-      count: unknown.visible,
-    });
-  }
-
   if (drawnRunways > 0) {
     legend.push({
       label: 'Piste tracée',

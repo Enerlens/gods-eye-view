@@ -464,6 +464,26 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   s'animera en boucle ne pourra plus empêcher la scène de s'arrêter de dessiner.
 
 ### Changed
+- **La légende des aéroports ne récite plus les longueurs de piste.** Le bloc de
+  droite portait dix lignes pour une seule couche : les trois tiers, puis quatre
+  classes de longueur, l'anneau « longueur non publiée », la piste tracée et
+  l'emprise IGN. Quatre de ces lignes répétaient **la même** explication de
+  40 mots, pour rappeler des seuils (1 000, 1 800, 3 000 m) que personne ne
+  relit sur un disque de 13 px. Il en reste **cinq**, et le diamètre garde ce
+  qu'il sait vraiment dire : l'**ordre** — Roissy écrase la piste en herbe d'à
+  côté sans qu'une clé ait à l'annoncer.
+
+  **La mesure n'est pas perdue, elle est là où elle se lit.** La fiche qui
+  s'ouvre au clic dit toujours `Grand aéroport · piste 4 215 m revêtue`, avec le
+  revêtement, sur le terrain que le lecteur vient de désigner — le seul endroit
+  où une quantité de ce genre est lisible. Les seuils restent gelés et
+  documentés dans le paquet ; ils ne sont simplement plus imprimés à l'écran.
+
+  Les deux lignes que la légende garde nomment des **formes dessinées** :
+  « Piste tracée » (4 790 terrains) et « Emprise au sol » (418). Un trait au cap
+  et à la longueur vrais, un contour levé par l'IGN — rien d'autre à l'écran ne
+  peut dire au lecteur que les deux tiers seulement du paquet en portent un.
+
 - **Une centrale, une marque : les 69 stations que deux registres se partagent
   ne sont plus dessinées deux fois.** Trois couches dessinent la production
   électrique française et elles se recouvrent lourdement : `edf-power-plants`

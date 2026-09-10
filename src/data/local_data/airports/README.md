@@ -94,7 +94,7 @@ Three marks, three questions, and each channel answers exactly one of them.
 | Channel | Carries | Where it is decided |
 |---|---|---|
 | **Colour** of the pastille | the importance tier | `AIRPORT_TIERS` |
-| **Diameter** of the pastille | the published runway length, in four classes | `AIRPORT_LENGTH_CLASSES` |
+| **Diameter** of the pastille | the published runway length, in four classes — as a *ranking*, not a printed scale | `AIRPORT_LENGTH_CLASSES` |
 | **Hollow ring** instead of a disc | no runway length published at all — 1 314 fields | `airportRenderSpec` |
 | **The drawn line** | the runway itself: its two thresholds, so its true length, bearing and width | `runwayGeometry` + `localGeojson.js` |
 | **The drawn ground** | the aerodrome boundary the IGN surveyed — 418 French fields, one colour, clamped to the terrain | `attachAirportFootprints` + `localGeojson.js` |
@@ -193,6 +193,18 @@ never recomputed from what is on screen:
 The ring is 8 px, between the 6 and the 9, and hollow: a ring smaller than the
 smallest disc would still read as "short", and "not published" is not a short
 runway. No measured class can reach it.
+
+**These five rows are no longer printed in the map legend** (2026-09-10). They
+were: four class rows and the ring, carrying one 40-word blurb repeated four
+times — half of the right-hand block, spent restating metre bounds nobody reads
+back off a 13 px disc. What went is the *scale*, not the measurement: the metres
+are on the **card**, with the surface, one click away on the field the reader
+actually pointed at, which is the only place a quantity of this kind is legible.
+The diameter keeps carrying the **order**, and an order is decoded off the marks
+themselves — Roissy towers over the grass strip beside it whether or not a key
+says "3 000 m et plus". The bounds stay frozen and stay documented here; the two
+rows the legend does keep, `Piste tracée` and `Emprise au sol`, name *drawn
+shapes* a reader would otherwise have to guess at. See `airportMarkLegend`.
 
 ### The runway itself
 
@@ -358,7 +370,7 @@ layer's `floorKw`.
 There were four. `TOUS` and `LIGNES` asked about service, `AÉROPORTS` and
 `GRANDS` asked about size — two axes on one strip of chips. `GRANDS` is the one
 that went: it kept 1 173 fields, and the size channel answers the same question
-without a filter, at a threshold the legend already prints. `LIGNES` is now
+without a filter — the 3 000 m disc is simply the biggest one drawn. `LIGNES` is now
 true, which it was not: it used to keep 22 fields that sell no seat.
 
 The legend counts what is **drawn**, not what is loaded: under `AÉROPORTS` the
