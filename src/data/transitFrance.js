@@ -127,6 +127,18 @@ const POLL_INTERVAL_MS = 15_000;
 /** Request timeout (ms) for one viewport query. */
 const REQUEST_TIMEOUT_MS = 20_000;
 /**
+ * How soon a FAILED viewport load asks again, and how far that backs off.
+ *
+ * A failure used to wait for the next {@link POLL_INTERVAL_MS} tick — fifteen
+ * seconds of an `UNAVAILABLE` chip over a city whose buses were one retry
+ * away, with nothing on the row saying another attempt was coming. That is the
+ * window an operator fills by switching the layer off and on again, which is
+ * the report this backoff answers: three seconds, then six, then twelve, then
+ * the poll's own cadence, which is where a persistent outage belongs.
+ */
+const RETRY_MIN_MS = 3_000;
+const RETRY_MAX_MS = POLL_INTERVAL_MS;
+/**
  * Bounds on the glide window (ms) between two reported fixes. The floor keeps a
  * burst of fast refreshes from making the fleet stutter; the ceiling matches
  * the proxy's serve-stale window, past which a feed is not reporting at all.
@@ -288,6 +300,18 @@ let _renderTruncated = false;
 let _lastBox = null;
 /** The last requested viewport itself, for the coverage explanation. */
 let _lastBoxBounds = null;
+/**
+ * The viewport the CURRENT verdict was computed for — `''` when it was
+ * computed for no viewport at all (above the altitude gate, or a view too wide
+ * to ask about). Read by {@link onCameraSettled} to tell a camera that has
+ * come to rest somewhere already answered from one that has landed somewhere
+ * new, so an ordinary pan costs nothing and an arrival always re-reads.
+ */
+let _verdictBox = '';
+let _moveEndRemover = null;
+let _retryTimer = null;
+let _retryDelayMs = 0;
+let _retryDueAt = 0;
 
 /** Colour for a service mode, falling back to the urban tint. */
 export function transitModeColor(mode) {
@@ -360,6 +384,29 @@ export function cameraTransitBox(viewer) {
   if (west >= east || south >= north) return null;
   if (north - south > PAN_MAX_BOX_DEG || east - west > PAN_MAX_BOX_DEG) return null;
   return { south, west, north, east };
+}
+
+/**
+ * Stable identity of a request box, at the precision the proxy snaps to.
+ * Shared by the load short-circuit and the camera-settle check so the two
+ * cannot drift into disagreeing about whether a viewport has changed.
+ * @param {?{south:number, west:number, north:number, east:number}} box
+ * @returns {string} Key, or `''` for no box.
+ */
+function viewportKey(box) {
+  if (!box) return '';
+  return [box.south, box.west, box.north, box.east].map((value) => value.toFixed(3)).join(',');
+}
+
+/**
+ * The delay before the next attempt after a failed load.
+ * Exported for `transitFrance.test.mjs`, which pins the schedule.
+ * @param {number} previousMs Delay used by the previous attempt, 0 when none.
+ * @returns {number} Delay in ms.
+ */
+export function nextRetryDelayMs(previousMs) {
+  const previous = Number.isFinite(previousMs) && previousMs > 0 ? previousMs : 0;
+  return previous === 0 ? RETRY_MIN_MS : Math.min(RETRY_MAX_MS, previous * 2);
 }
 
 /**
@@ -1098,6 +1145,10 @@ async function loadViewport({ force = false } = {}) {
     _status = 'zoom-in';
     _error = null;
     _loading = false;
+    // A verdict that belongs to no viewport: whatever the camera settles on
+    // next has to be read afresh, including the box it is above right now.
+    _verdictBox = '';
+    cancelRetry();
     if (_records.size) clearFleet();
     return;
   }
@@ -1107,11 +1158,13 @@ async function loadViewport({ force = false } = {}) {
     _status = 'zoom-in';
     _error = null;
     _loading = false;
+    _verdictBox = '';
+    cancelRetry();
     if (_records.size) clearFleet();
     return;
   }
 
-  const boxKey = [box.south, box.west, box.north, box.east].map((v) => v.toFixed(3)).join(',');
+  const boxKey = viewportKey(box);
   if (!force && boxKey === _lastBox && _inFlight) return;
   _lastBox = boxKey;
   _lastBoxBounds = box;
@@ -1154,12 +1207,21 @@ async function loadViewport({ force = false } = {}) {
     _lastUpdate = Date.now();
     _error = null;
     _status = _count > 0 ? 'ready' : 'empty';
+    _verdictBox = boxKey;
+    cancelRetry();
   } catch (error) {
+    // An ABORT leaves the verdict — and `_verdictBox` with it — untouched on
+    // purpose. Either a newer request owns the answer, or the request timed
+    // out; in both cases the last thing this layer said still describes the
+    // PREVIOUS viewport, and `onCameraSettled` must be free to notice that and
+    // ask again rather than let a Paris explanation stand over Rouen.
     if (error?.name === 'AbortError') return;
     if (generation !== _requestGeneration) return;
     console.warn('[Data:TransitFR] viewport load failed:', error?.message || error);
     _error = error?.message || 'transit feed unavailable';
     _status = 'error';
+    _verdictBox = boxKey;
+    scheduleRetry();
   } finally {
     clearTimeout(timer);
     if (generation === _requestGeneration) {
@@ -1173,6 +1235,58 @@ function onCameraChanged() {
   if (!_enabled) return;
   clearTimeout(_cameraDebounceTimer);
   _cameraDebounceTimer = setTimeout(() => { void loadViewport(); }, CAMERA_DEBOUNCE_MS);
+}
+
+/** Drop any pending retry and reset the backoff to its first step. */
+function cancelRetry() {
+  clearTimeout(_retryTimer);
+  _retryTimer = null;
+  _retryDelayMs = 0;
+  _retryDueAt = 0;
+}
+
+/** Ask for the same viewport again shortly, backing off on repeated failure. */
+function scheduleRetry() {
+  clearTimeout(_retryTimer);
+  _retryDelayMs = nextRetryDelayMs(_retryDelayMs);
+  _retryDueAt = Date.now() + _retryDelayMs;
+  _retryTimer = setTimeout(() => {
+    _retryTimer = null;
+    if (!_enabled) return;
+    void loadViewport({ force: true });
+  }, _retryDelayMs);
+}
+
+/**
+ * The camera has come to rest — read the viewport it actually stopped on.
+ *
+ * WHY THIS EXISTS NEXT TO THE `camera.changed` DEBOUNCE. `changed` fires while
+ * the camera MOVES, and stops as soon as the motion left falls under
+ * `percentageChanged` — which on an eased fly-to is most of a second before the
+ * flight ends. Measured on a voice navigation from Paris to Rouen: the last
+ * `changed` at t=2.5 s, `moveEnd` at t=3.3 s. So the only load a flight
+ * triggered was issued for a camera that was STILL MOVING, and nothing ever
+ * re-read the box the camera finally settled on. Whatever that mid-flight load
+ * concluded then stood until the next fifteen-second poll: a view still too
+ * wide to ask about left the row saying "zoom in to load live transit" over a
+ * city at 23 km, and a request that failed or timed out left the row saying
+ * `UNAVAILABLE` — which is precisely the "I arrived in Rouen and had to switch
+ * the layer off and on again" report this handler answers.
+ *
+ * It does NOT replace the debounce. `moveEnd` is not guaranteed to arrive — a
+ * cancelled flight, a viewer torn down mid-move, a scene that stops painting
+ * under `requestRenderMode` (see the stall guard in `globeDetailGovernor.js`)
+ * all lose it — so the two cover each other.
+ *
+ * It costs nothing on an ordinary pan: a rest on the viewport the current
+ * verdict was already computed for asks nothing of the proxy.
+ */
+function onCameraSettled() {
+  if (!_enabled || !_viewer) return;
+  if (viewportKey(cameraTransitBox(_viewer)) === _verdictBox) return;
+  clearTimeout(_cameraDebounceTimer);
+  _cameraDebounceTimer = null;
+  void loadViewport({ force: true });
 }
 
 /**
@@ -1308,6 +1422,8 @@ const transitFranceLayer = {
     _renderTruncated = false;
     _lastBox = null;
     _lastBoxBounds = null;
+    _verdictBox = '';
+    cancelRetry();
     _altitudeGateOpen = false;
 
     _overlayHost.setVisible(TRANSIT_FR_OVERLAY_SOURCE_ID, false);
@@ -1338,6 +1454,10 @@ const transitFranceLayer = {
       claimCameraSensitivity(viewer, TRANSIT_FR_LAYER_ID);
       _cameraChangedAttached = true;
     }
+    // Arrival, as opposed to motion — see `onCameraSettled`.
+    if (!_moveEndRemover) {
+      _moveEndRemover = viewer.camera.moveEnd.addEventListener(onCameraSettled);
+    }
     if (!_preRenderRemover) {
       _preRenderRemover = viewer.scene.preRender.addEventListener(onPreRender);
     }
@@ -1353,6 +1473,7 @@ const transitFranceLayer = {
     _altitudeGateOpen = false;
     clearTimeout(_cameraDebounceTimer);
     _cameraDebounceTimer = null;
+    cancelRetry();
     _inFlight?.abort?.();
     _inFlight = null;
 
@@ -1371,6 +1492,10 @@ const transitFranceLayer = {
       releaseCameraSensitivity(viewer, TRANSIT_FR_LAYER_ID);
       _cameraChangedAttached = false;
     }
+    if (_moveEndRemover) {
+      _moveEndRemover();
+      _moveEndRemover = null;
+    }
     if (_preRenderRemover) {
       _preRenderRemover();
       _preRenderRemover = null;
@@ -1384,6 +1509,7 @@ const transitFranceLayer = {
     _schedule = null;
     _lastBox = null;
     _lastBoxBounds = null;
+    _verdictBox = '';
     releaseContinuousRender('transit-fr');
   },
 
@@ -1432,6 +1558,12 @@ const transitFranceLayer = {
     if (label) stats.loadingLabel = label;
     if (_feedSummaries.some((feed) => feed.stale)) stats.stale = true;
     if (_error) stats.error = _error;
+    // The manager prints this next to the fault ("nouvelle tentative dans 3 s"),
+    // which is the difference between a row that has given up and a row that is
+    // about to try again.
+    if (_retryTimer) {
+      stats.retryInSec = Math.max(1, Math.round((_retryDueAt - Date.now()) / 1000));
+    }
     return stats;
   },
 
