@@ -152,6 +152,14 @@ const SPOKEN_ALIASES = Object.freeze({
   'rocket-launches': ['missions spatiales', 'lancements', 'lancement', 'fusées', 'fusees', 'décollages', 'decollages'],
   earthquakes: ['séismes', 'seismes', 'séisme', 'seisme', 'tremblements de terre', 'magnitude'],
   'local-firms': ['feux', 'feu', 'feux actifs', 'incendies', 'incendie', 'firms'],
+  // Deliberately NOT 'feux' or 'incendie': those belong to the live row above,
+  // and a bare "montre les feux" must keep meaning "what is burning now". Every
+  // phrase here names the EVENT — a place, a month, or the word mégafeu.
+  'gironde-megafire-2026': ['mégafeu', 'megafeu', 'mégafeu de gironde', 'megafeu de gironde',
+    'incendie de gironde', 'incendie de la gironde', 'feu de gironde', 'gironde 2026',
+    'incendie du bassin d’arcachon', 'incendie du bassin d arcachon', 'incendie d’arcachon',
+    'incendie d arcachon', 'feu d’arcachon', 'feu d arcachon', 'saumos', 'le porge',
+    'cap ferret', 'lège-cap-ferret', 'lege cap ferret', 'gironde wildfire'],
   traffic: ['trafic routier', 'circulation', 'embouteillages', 'congestion'],
   cctv: ['caméras', 'cameras', 'caméras publiques', 'cameras publiques', 'vidéosurveillance', 'videosurveillance', 'webcams'],
   radio: ['radio', 'radios', 'stations de radio'],

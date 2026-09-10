@@ -479,6 +479,16 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // silently turn "reject an unknown link" into "enable the gas layer".
   Object.freeze({ id: 'gas-fr', token: '1', disposition: 'enabled-only' }),
   Object.freeze({ id: 'georisques', token: 'gr', disposition: 'enabled-only' }),
+  // TWO characters, because every single one is gone: a–y are claimed and `z`
+  // is the canonical UNKNOWN token two tests assert on. `gi` for Gironde and
+  // not `mf` for mégafeu — a token is read next to `gr` (georisques) and `gs`
+  // would have been a coin toss between them.
+  //
+  // `enabled-only`, so the cursor is NOT serialized. A link that pinned
+  // somebody else's instant would open on a half-burnt forest with no way for
+  // the reader to know an hour had been chosen for them; the layer's own
+  // default — the closing frame — is the only state still true today.
+  Object.freeze({ id: 'gironde-megafire-2026', token: 'gi', disposition: 'enabled-only' }),
   Object.freeze({ id: 'hubeau-hydro', token: 'h', disposition: 'enabled-only' }),
   // A DIGIT, and NOT the `l` this layer was written against: `l` went to
   // edf-power-plants while this branch sat unmerged, and `8` — this layer's

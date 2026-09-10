@@ -591,6 +591,47 @@ transaction quota. Requires a free `FIRMS_MAP_KEY`
 (https://firms.modaps.eosdis.nasa.gov/api/map_key/); the layer is empty without it.
 The former bundled 2026-05-25 snapshot was removed 2026-07-16.
 
+### Copernicus EMS EMSR899 + EFFIS + NASA FIRMS (`gironde_megafire_2026/`)
+
+The `gironde-megafire-2026` layer replays one CLOSED event — the Gironde
+mégafeu of 22 July to 1 August 2026, the largest French forest fire since 1949.
+Unlike `local-firms` next door, **nothing is fetched at runtime**: the pack is
+frozen into the repo and needs no key, because the fire cannot change again and
+because FIRMS's near-real-time archive is a rolling window that would have lost
+the 22 July detections. Rebuild with
+`node scripts/build-gironde-megafire-2026.mjs` (that one run DOES need
+`FIRMS_MAP_KEY`).
+
+Three publishers, three obligations:
+
+- **Copernicus EMS Rapid Mapping**, activation
+  [EMSR899](https://mapping.emergency.copernicus.eu/activations/EMSR899/) —
+  five dated delineation/grading products over AOI 01 "Le Porge", drawn by
+  photo-interpreters on four Airbus Pléiades Neo frames (0.3 m) and one
+  Sentinel-2. The pack carries their burnt-area polygons, fire fronts, active
+  flames and each product's published statistics. Free and open under the
+  Copernicus data and information policy (Regulation (EU) No 1159/2013);
+  redistribution keeps the wording **"Contains modified Copernicus EMS Rapid
+  Mapping data (EMSR899) 2026"**.
+- **EFFIS** (JRC MapServer WFS, `ms:modis.ba.poly`) — the closing perimeter,
+  37 191 ha, plus the eleven smaller burnt areas mapped in the same box over the
+  same fortnight. Same Copernicus policy; credit **"European Forest Fire
+  Information System — EFFIS, Copernicus EMS"**.
+- **NASA FIRMS** — 9 524 VIIRS (S-NPP, NOAA-20, NOAA-21) and MODIS thermal
+  detections inside the window, carrying the two days no satellite
+  photographed. Same public-domain terms and the same acknowledgement as the
+  live layer above.
+
+Hectare counts on screen are always the PUBLISHER's, never re-derived from the
+simplified drawing; the raw geometry was checked against them once and lands
+0.18–0.20 % low across all five products, which is this pack's flat projection
+rather than a disagreement. The three institutional totals disagree with each
+other by design — 31 602 ha (Copernicus, 29 July), 37 191 ha (EFFIS, final),
+47 910 ha (GDACS alert WF1029628) — and the layer shows the first two side by
+side rather than choosing. See
+`src/data/local_data/gironde_megafire_2026/README.md` and the header of
+`src/data/megafirePack.js`.
+
 ### OurAirports + IGN BD TOPO® (`airports/`)
 
 `airports/airports.geojsonl` bundles a **selection** of the OurAirports

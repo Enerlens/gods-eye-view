@@ -65,6 +65,7 @@
     "qa:power-grid-coverage:lines": "node scripts/grid-audit/audit-lines.mjs",
     "qa:rte-generation": "node scripts/qa-rte-generation.mjs",
     "qa:fr-hydro": "node scripts/qa-fr-hydro.mjs",
+    "qa:gironde-megafire": "node scripts/qa-gironde-megafire.mjs",
     "qa:label-click": "node scripts/qa-label-click.mjs",
     "qa:legend-rail": "node scripts/qa-legend-rail.mjs",
     "qa:flights-type": "node scripts/qa-flights-type.mjs",

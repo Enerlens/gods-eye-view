@@ -8,7 +8,7 @@
 // panel draws before anything is switched on, the subset of the optional layer
 // API the module implements, its default parameters, and a `load()` that
 // imports the module. `main.js` registers stubs built from these entries
-// (`createLazyLayer`), so the 60 layer modules and their 4.7 MB of
+// (`createLazyLayer`), so the 61 layer modules and their 4.7 MB of
 // pre-minification JavaScript leave the entry chunk and arrive per layer, on
 // the first toggle that needs one.
 //
@@ -526,5 +526,14 @@ export const LAYER_MANIFEST = Object.freeze([
     capabilities: Object.freeze(['destroy', 'getStats']),
     load: () => import('./localLayers.js')
       .then((module) => module.default.find((layer) => layer.id === 'local-firms')),
+  }),
+  Object.freeze({
+    id: 'gironde-megafire-2026',
+    name: 'Mégafeu de Gironde (juil. 2026)',
+    icon: '🜂',
+    source: 'Copernicus EMS · EFFIS · NASA FIRMS',
+    capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
+    defaultParams: Object.freeze({ cursorMs: null, playing: false }),
+    load: () => import('./girondeMegafire.js').then((module) => module.default),
   }),
 ]);

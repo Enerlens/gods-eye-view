@@ -90,6 +90,9 @@ export const LAYER_MANIFEST_SOURCES = Object.freeze([
   { module: './localLayers.js', pick: 'local-ports' },
   { module: './localLayers.js', pick: 'telegeography-submarine-cables' },
   { module: './localLayers.js', pick: 'local-firms' },
+  // Immediately after the LIVE fire row, because the pair is the point: one
+  // says what is burning now, the other what burnt in Gironde in July 2026.
+  { module: './girondeMegafire.js' },
 ].map((entry) => Object.freeze(entry)));
 
 /** Vite asset suffixes and extensions node cannot load on its own. */

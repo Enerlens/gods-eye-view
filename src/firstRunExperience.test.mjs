@@ -699,10 +699,19 @@ test('the voice TOOL SCHEMA is byte-identical to main — the mission mapping is
   // rows whose price the register withheld. +364 bytes, one cache bust — and
   // the wording was cut to the bone because this session prefix is re-sent on
   // every response against a 40 000 tokens-per-minute ceiling.
-  assert.equal(block.length, 38026, 'tool schema byte length drifted from the frozen baseline');
+  //
+  // Re-frozen a SEVENTH time: `gironde-megafire-2026` joined the two layer
+  // enums, plus one clause of common-name mapping. The clause is not optional
+  // padding — without it "montre-moi l'incendie de Gironde" resolves to
+  // `local-firms`, which is the LIVE fire row and draws nothing over Gironde in
+  // September, so the model would confidently report an empty map for a fire
+  // the pack holds in full. +238 bytes, one cache bust. It is NOT in the
+  // `analyst_query` or `get_entity_context` enums: the layer publishes no
+  // queryable per-entity records, only perimeters and a clock.
+  assert.equal(block.length, 38264, 'tool schema byte length drifted from the frozen baseline');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '3bb25f428500a0fffffa0fbd9f3122578bb8da82f8d9c77b4156fe21e11fa7ff',
+    '05bd6a49779714a17138ab1797b4d9f25d76ee69fffacacab5ccbcf28cf631f0',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
 
