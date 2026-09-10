@@ -47,6 +47,61 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   le changer. Mesuré dans le DOM à 1440×900, sur le même relevé : la clé passe
   de 692 px de contenu dans une fenêtre de 216 px — 3,2 écrans de défilement,
   le titre « Bouées marines » sorti par le haut — à 219 px, soit un écran.
+- **Les pastilles de bruit des aéroports parlent français : la conséquence
+  d'abord, le seuil comme preuve, et quatre lignes au lieu de huit.** Une zone A
+  à Bordeaux-Mérignac disait « Zone A · LFBD — B. MERIGNAC / 70 Lden dB(A) /
+  gêne très forte — constructions à usage d'habitation interdites / arrêté du
+  22/12/2004 / arrêté : http://… / avions seulement — contours généralisés au
+  1:39 757 ». Six lignes de données, huit lignes à l'écran : l'URL en prenait
+  deux et l'avertissement deux. Elle dit maintenant :
+
+  > Bruit des avions · zone A — B. MERIGNAC
+  > gêne très forte : logements neufs interdits
+  > 70 dB(A) et plus en moyenne sur 24 h
+  > arrêté préfectoral du 22/12/2004 · LFBD
+  > avions seulement, ni route ni train — tracé à ~11 m près
+
+  Le titre dit **de quoi on parle** : « Zone A » est une lettre du Code de
+  l'urbanisme, et sur un polygone coloré elle n'apprend à personne qu'il s'agit
+  du bruit des avions. La conséquence pour ce sol passe en tête, le seuil
+  devient sa preuve, et le code OACI descend sur la ligne de l'arrêté — c'est ce
+  qu'il identifie, le fichier s'appelant `PEB_<OACI>_<JJ>_<MM>_<AAAA>.pdf`.
+
+  **Trois corrections d'exactitude sont passées avec la lisibilité.** « 70 » est
+  un plancher et non une mesure : le registre publie l'anneau le plus intérieur
+  avec ses deux seuils égaux (70/70 en Lden, 96/96 en psophique) parce qu'il n'y
+  a rien au-delà, et la carte dit désormais « 70 dB(A) **et plus** » — conditionné
+  à la lettre de zone, jamais à l'égalité des nombres, qu'une bande amputée d'un
+  seuil produit aussi. « 1:39 757 » devient « ~11 m » (~1,1 km en vue
+  d'ensemble), qui n'est pas une nouvelle donnée mais la seule forme du même
+  chiffre qui dise à quelle distance d'une limite cesser de croire le
+  remplissage. Et l'avertissement psophique monte sur la ligne du seuil
+  (« ancien indice de 89 à 96 — pas des décibels ») : à Saint-Cyr, où la carte
+  dépense quatre lignes sur deux zones qui se recouvrent, la phrase
+  d'explication tombe en bas du budget, et deux chiffres qui ressemblent à des
+  décibels doivent rester lisibles pour ce qu'ils sont sans elle.
+
+  **Aucune carte ne porte plus l'URL de l'arrêté.** La surface est un canvas
+  monté `interactive: false` : un lien n'y est pas un lien, c'est quatre-vingts
+  caractères insélectionnables qui dépensent un quart de la carte pour être
+  inutilisables. Les crédits gardent le service, la fiche garde la date.
+
+  **Deux défauts trouvés en chemin.** La carte du repère perdait ses
+  avertissements : elle ne passait pas par le budget de six lignes, en produisait
+  huit, et les deux qui tombaient étaient « avions seulement » et l'échelle —
+  la panne même que ce module documente avoir corrigée, restée vivante sur la
+  seule carte qui n'y passait pas. Elle y passe, et l'ordre est devenu la
+  priorité déclarée de la couche : la règle et son seuil, **puis** quelle zone a
+  été retenue et ce qu'elle a battu, puis les contradictions du registre, puis
+  l'arrêté — la date siégeait avant l'ambiguïté, donc un point couvert par deux
+  zones qui se recouvrent imprimait sa provenance et laissait tomber le fait
+  qu'il y avait eu un choix. Et la phrase du tirage mixte n'atteignait aucun
+  écran : elle vivait dans un helper que seule la carte en mode point appelait,
+  or `area` y est faux par construction.
+
+  Mesuré le 2026-09-10 dans un vrai navigateur, avec le code de mise en page de
+  l'application : les seize nouvelles lignes tiennent **toutes** sur une rangée,
+  les quatre anciennes gardées en témoin se replient **toutes** en deux.
 
 - **La légende des aéroports perd ses deux dernières lignes de forme : cinq
   lignes deviennent trois.** Ce matin la légende récitait encore « Piste

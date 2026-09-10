@@ -157,6 +157,20 @@ export const BRUIT_PROBE_PIXELS = 101;
 export const BRUIT_PROBE_FEATURE_COUNT = 24;
 
 /**
+ * The OGC standard pixel, in metres — 0.28 mm.
+ *
+ * Named because it is the hinge between the two ways this layer can say the
+ * same thing: multiply a degree-per-pixel by {@link OGC_DEGREE_TO_METERS} and
+ * divide by this, and you have the scale denominator GeoServer keys its
+ * generalisation on; multiply a denominator BY it and you have the ground size
+ * of one service pixel, which is the form a reader can use.
+ */
+export const OGC_STANDARD_PIXEL_M = 0.00028;
+
+/** GeoServer's fixed degree-to-metre factor for a geographic CRS. No latitude term. */
+export const OGC_DEGREE_TO_METERS = 111319.4907932736;
+
+/**
  * The OGC scale denominator {@link BRUIT_PROBE_PIXEL_DEG} produces.
  *
  * GeoServer converts a geographic BBOX with the fixed
@@ -165,7 +179,7 @@ export const BRUIT_PROBE_FEATURE_COUNT = 24;
  * is the same number everywhere.
  */
 export const BRUIT_PROBE_SCALE_DENOMINATOR = Math.round(
-  (BRUIT_PROBE_PIXEL_DEG * 111319.4907932736) / 0.00028,
+  (BRUIT_PROBE_PIXEL_DEG * OGC_DEGREE_TO_METERS) / OGC_STANDARD_PIXEL_M,
 );
 
 /**
@@ -226,8 +240,35 @@ export const BRUIT_AREA_PIXEL_DEG = 1e-2;
 
 /** The OGC scale denominator {@link BRUIT_AREA_PIXEL_DEG} produces. */
 export const BRUIT_AREA_SCALE_DENOMINATOR = Math.round(
-  (BRUIT_AREA_PIXEL_DEG * 111319.4907932736) / 0.00028,
+  (BRUIT_AREA_PIXEL_DEG * OGC_DEGREE_TO_METERS) / OGC_STANDARD_PIXEL_M,
 );
+
+/**
+ * A scale denominator as the thing a reader can picture: how much ground one
+ * pixel of the service covers.
+ *
+ * "1:39 757" is not information to anybody who does not draw maps, and it was
+ * the last line of every card this family paints. It is also not a NEW claim —
+ * the denominator IS `metres / OGC_STANDARD_PIXEL_M`, so multiplying it back
+ * returns the number the probe was built from: 1e-4° × 111 319 = **11.1 m** at
+ * the probe scale, **1 113 m** at the overview's. Same fact, and the one form
+ * of it that tells a reader how far from a boundary to stop trusting the wash.
+ *
+ * Rounded to two significant figures below a kilometre and to one tenth above,
+ * because the input is itself a generalisation and a metre of precision on it
+ * would be invented.
+ *
+ * @param {number} denominator
+ * @returns {?string} e.g. `11 m`, `1,1 km`, or null on a denominator that is
+ *   not a finite positive number.
+ */
+export function bruitGroundResolutionText(denominator) {
+  const metres = Number(denominator) * OGC_STANDARD_PIXEL_M;
+  if (!Number.isFinite(metres) || metres <= 0) return null;
+  return metres < 1000
+    ? `${Math.round(metres)} m`
+    : `${(metres / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km`;
+}
 
 /**
  * First year of Lden.
@@ -256,24 +297,40 @@ export const BRUIT_LDEN_MAX_OBSERVED = 70;
 export const BRUIT_PSOPHIQUE_MIN_OBSERVED = 72;
 
 /**
- * The two indices, in the words that keep them apart.
+ * The two indices, in the words that go straight after a number — and `null`
+ * for the one that must never be given a unit at all.
  *
  * `psophique` deliberately does not carry a unit. The indice psophique is a
  * dimensionless index abandoned in 2002 and it is NOT decibels; the
  * correspondence with Lden is a regulatory table, not a conversion, and it is
- * not in this data.
+ * not in this data. `unknown` is null, and {@link bandText} branches on that
+ * null rather than on the index name: the day a third index appears, a card
+ * prints "unité non déterminée" instead of inventing decibels.
+ *
+ * The index NAME moved out of these values and into
+ * {@link BRUIT_INDEX_SENTENCES}. "70 Lden dB(A)" made a reader parse two
+ * technical tokens to reach one number; "70 dB(A) et plus en moyenne sur 24 h"
+ * says the same thing in the words the number actually means, and "Lden" is
+ * still one line below for anyone checking against the arrêté.
  */
 export const BRUIT_INDEX_LABELS = Object.freeze({
-  lden: 'Lden dB(A)',
-  psophique: 'indice psophique',
+  lden: 'dB(A)',
+  psophique: 'ancien indice',
   unknown: null,
 });
 
-/** How each index is explained on a card, once, in full. */
+/**
+ * How each index is explained on a card, once, in full.
+ *
+ * These no longer repeat what {@link bandText} already said on the line above —
+ * the threshold line carries the everyday meaning ("en moyenne sur 24 h"), and
+ * these carry the part a reader cannot guess: that the evening and the night
+ * are weighted, and that the pre-2002 scale does not convert.
+ */
 export const BRUIT_INDEX_SENTENCES = Object.freeze({
-  lden: 'Lden — niveau moyen pondéré jour/soirée/nuit, en dB(A)',
-  psophique: 'indice psophique — échelle sans unité, abandonnée en 2002 : ce n’est pas un niveau en dB',
-  unknown: 'indice indéterminé — l’arrêté et les seuils publiés ne concordent pas',
+  lden: 'indice Lden : la soirée et la nuit comptent plus fort',
+  psophique: 'indice psophique, d’avant 2002 : pas convertible en dB(A)',
+  unknown: 'unité incertaine : l’arrêté et les seuils ne concordent pas',
 });
 
 /**
@@ -289,12 +346,24 @@ export const PEB_ZONE_ORDER = Object.freeze(['A', 'B', 'C', 'D']);
  * one part that is identical at every airport and under both indices, which is
  * why they are spelled out and the thresholds are not. Wording follows the
  * Code de l'urbanisme's own account of articles L.112-3 to L.112-16.
+ *
+ * ── WRITTEN FOR SOMEBODY WHO HAS NEVER READ A PEB ───────────────────────────
+ * The register's own vocabulary — *constructions à usage d'habitation*,
+ * *isolation acoustique imposée*, and a zone D whose name is the bare word
+ * "information" — is faithful and unreadable. What a reader wants from a
+ * coloured polygon is whether a home can be built on it, so that is the clause
+ * these lead with; the severity grade stays in front of it because it is the
+ * only channel that is comparable between two airports on different indices.
+ *
+ * Each stays under ~60 characters. That is not a style rule: the world overlay
+ * wraps a card line at about that width, so a longer sentence does not say
+ * more, it costs a second screen line and pushes a fact off the bottom.
  */
 export const PEB_ZONE_LABELS = Object.freeze({
-  A: 'gêne très forte — constructions à usage d’habitation interdites',
-  B: 'gêne forte — habitat très limité, isolation acoustique imposée',
-  C: 'gêne modérée — habitat limité, isolation acoustique imposée',
-  D: 'information — pas de restriction de construire, isolation acoustique et information des acquéreurs obligatoires',
+  A: 'gêne très forte : logements neufs interdits',
+  B: 'gêne forte : logements neufs très limités, isolation imposée',
+  C: 'gêne modérée : logements neufs limités, isolation imposée',
+  D: 'construction libre, isolation imposée, acheteurs prévenus',
 });
 
 /** PGS zones, most exposed first. Published as the digits 1/2/3. */
@@ -308,9 +377,9 @@ export const PGS_ZONE_ORDER = Object.freeze(['1', '2', '3']);
  * differently from the PEB and never merged with it.
  */
 export const PGS_ZONE_LABELS = Object.freeze({
-  1: 'zone I — aide à l’insonorisation au taux le plus élevé',
-  2: 'zone II — aide à l’insonorisation',
-  3: 'zone III — aide à l’insonorisation au taux le plus bas',
+  1: 'zone I : insonorisation financée, au taux le plus élevé',
+  2: 'zone II : insonorisation financée',
+  3: 'zone III : insonorisation financée, au taux le plus bas',
 });
 
 /**
@@ -691,25 +760,72 @@ export function foldByAirport(bands) {
 }
 
 /**
- * The band, in the unit it is actually in.
+ * Is this band the innermost ring of its plan — the one with nothing above it?
+ *
+ * Gated on the ZONE LETTER and never on the numbers, and that is the whole
+ * point. `projectBruitZones` fills a missing threshold from the one that IS
+ * present, so a band published with a single value arrives as `low === high`
+ * and is indistinguishable by its numbers from the top band. Only the letter
+ * says which ring of the document this is.
+ */
+function isInnermostZone(band) {
+  const order = band?.kind === 'pgs' ? PGS_ZONE_ORDER : PEB_ZONE_ORDER;
+  const key = typeof band?.zone === 'string' ? band.zone.trim().toUpperCase() : '';
+  return key !== '' && key === order[0];
+}
+
+/**
+ * The band, in the unit it is actually in and in the words a reader has.
  *
  * Returns null rather than a number when the index could not be settled: a
  * threshold with no unit beside it is read as decibels by everyone, which is
- * the failure this whole module exists to prevent.
+ * the failure this whole module exists to prevent. The `unknown` branch is
+ * reached through {@link BRUIT_INDEX_LABELS} being null, not through the index
+ * name, so an index nobody has written a label for cannot acquire decibels.
+ *
+ * ── "70" IS A FLOOR, NOT A MEASUREMENT ──────────────────────────────────────
+ * The register publishes the innermost ring with its two thresholds EQUAL —
+ * zone A comes back 70/70 in Lden and 96/96 in psophique — because there is no
+ * outer band beyond it and the ground inside is exposed to that value AND
+ * ABOVE. Printed as a bare "70 Lden dB(A)" it reads as "it is 70 dB here",
+ * which is the one thing the polygon does not say. `et plus` is added only for
+ * {@link isInnermostZone}, so a band that simply lost a threshold still prints
+ * the number it has and claims nothing about what is beyond it.
+ *
+ * ── `short` DROPS THE GLOSS AND NEVER THE WARNING ───────────────────────────
+ * A card names its own band once at full length and then mentions other bands
+ * in a list — "aussi sur ce point", the aerodrome's four rings, the PGS beside
+ * the PEB. Repeating "en moyenne sur 24 h" in each of those says nothing new
+ * and wraps the line, so `short` drops it.
+ *
+ * It does NOT drop "— pas des décibels". That clause is not a gloss: on the
+ * psophique branch the reader is holding two digits that look exactly like
+ * decibels and are not, and a list is precisely where a stray "89 à 96" would
+ * be skimmed. The two indices can also appear on ONE card — an aerodrome still
+ * on a 1985 arrêté beside one reissued in Lden — so the warning cannot lean on
+ * a fuller line above it saying the same thing.
  *
  * @param {object|null|undefined} band
+ * @param {{short?: boolean}} [options]
  * @returns {?string}
  */
-export function bandText(band) {
+export function bandText(band, { short = false } = {}) {
   const low = band?.low;
   const high = band?.high;
   if (!Number.isFinite(low) && !Number.isFinite(high)) return null;
   const unit = BRUIT_INDEX_LABELS[band?.index ?? 'unknown'];
-  const span = (Number.isFinite(low) && Number.isFinite(high) && low !== high)
-    ? `${low} – ${high}`
-    : String(Number.isFinite(high) ? high : low);
-  if (!unit) return `seuils ${span} — indice non déterminé`;
-  return band.index === 'lden' ? `${span} ${unit}` : `${unit} ${span}`;
+  const banded = Number.isFinite(low) && Number.isFinite(high) && low !== high;
+  const value = Number.isFinite(high) ? high : low;
+  const open = !banded && isInnermostZone(band);
+  const span = banded ? `de ${low} à ${high}` : `${value}${open ? ' et plus' : ''}`;
+  if (!unit) return `${span}, unité non déterminée`;
+  // The unit is a SUFFIX in Lden and a PREFIX in psophique, because "dB(A)"
+  // qualifies the number and "ancien indice" names the scale the number is on.
+  if (band.index === 'psophique') return `${unit} ${span} — pas des décibels`;
+  // `70 dB(A) et plus`, not `70 et plus dB(A)`: the unit belongs to the number,
+  // the open end to the band.
+  const withUnit = banded ? `${span} ${unit}` : `${value} ${unit}${open ? ' et plus' : ''}`;
+  return short ? withUnit : `${withUnit} en moyenne sur 24 h`;
 }
 
 /**
@@ -1117,8 +1233,8 @@ export function projectBruitArea({
     // band's outline at the probe scale — see `refineBruitCollection` — and
     // that second pass is done in the background, so a view can legitimately
     // hold thirty fine bands and four coarse ones. This is the one number the
-    // card prints as "contours généralisés au 1:X", and the only reading of it
-    // that is true of EVERY shape drawn is the worst one. `refinedBands` and
+    // card prints as "tracé à ~X près", and the only reading of it that is true
+    // of EVERY shape drawn is the worst one. `refinedBands` and
     // `coarseBands` beside it are what let the card say the mixture out loud
     // rather than flattening it to its worst case.
     ...bruitAreaScale(all),

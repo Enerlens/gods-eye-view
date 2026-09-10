@@ -38,7 +38,9 @@ import {
   BRUIT_PROBE_PIXEL_DEG,
   BRUIT_PROBE_SCALE_DENOMINATOR,
   BRUIT_PSOPHIQUE_MIN_OBSERVED,
+  PEB_ZONE_LABELS,
   PEB_ZONE_ORDER,
+  PGS_ZONE_LABELS,
   PGS_ZONE_ORDER,
   arreteDocumentDate,
   bandText,
@@ -147,14 +149,18 @@ test('a pre-2002 arrêté is an index, not decibels — Saint-Cyr publishes 96 a
   assert.equal(bands.length, 2);
   for (const band of bands) {
     assert.equal(band.index, 'psophique');
-    assert.equal(BRUIT_INDEX_LABELS.psophique, 'indice psophique');
-    // The label carries NO unit, and the text puts the words BEFORE the number
-    // so nothing on screen can be read as "96 dB".
-    assert.ok(!/dB/.test(bandText(band)), `"${bandText(band)}" must not mention decibels`);
-    assert.ok(bandText(band).startsWith('indice psophique'));
+    assert.equal(BRUIT_INDEX_LABELS.psophique, 'ancien indice');
+    // The label carries NO decibel unit, the words come BEFORE the number, and
+    // the line closes on the denial — so nothing on screen can be read as
+    // "96 dB". The denial survives `short`, which is where a list would skim it.
+    assert.ok(!/dB\(/.test(bandText(band)), `"${bandText(band)}" must not carry a dB unit`);
+    assert.ok(bandText(band).startsWith('ancien indice'));
+    assert.ok(bandText(band).endsWith('pas des décibels'));
+    assert.ok(bandText(band, { short: true }).endsWith('pas des décibels'));
   }
-  assert.equal(norm(bandText(bands[0])), 'indice psophique 96');
-  assert.equal(norm(bandText(bands[1])), 'indice psophique 89 – 96');
+  // Zone A is the innermost ring — 96/96 in the register — so it is a FLOOR.
+  assert.equal(norm(bandText(bands[0])), 'ancien indice 96 et plus — pas des décibels');
+  assert.equal(norm(bandText(bands[1])), 'ancien indice de 89 à 96 — pas des décibels');
 });
 
 test('the unit comes from the LATER of the two dates — Gap is Lden on a 1985 register row', () => {
@@ -167,7 +173,9 @@ test('the unit comes from the LATER of the two dates — Gap is Lden on a 1985 r
   assert.equal(band.effectiveDate, '2017-04-11');
   assert.equal(band.revisedDocument, true);
   assert.equal(band.index, 'lden');
-  assert.equal(norm(bandText(band)), '70 Lden dB(A)');
+  // Zone A, 70/70 in the register: the ground inside is at 70 AND ABOVE.
+  assert.equal(norm(bandText(band)), '70 dB(A) et plus en moyenne sur 24 h');
+  assert.equal(norm(bandText(band, { short: true })), '70 dB(A) et plus');
 });
 
 test('a document name with a literal space still parses — Montendre is the one row in 298', () => {
@@ -205,7 +213,12 @@ test('the verdict is checked against the values, and a disagreement suppresses t
   assert.equal(BRUIT_INDEX_LABELS.unknown, null);
   assert.equal(
     norm(bandText({ low: 84, high: 96, index: disputed.index })),
-    'seuils 84 – 96 — indice non déterminé',
+    'de 84 à 96, unité non déterminée',
+  );
+  // No zone letter on that literal, so nothing claims an open top either.
+  assert.equal(
+    norm(bandText({ low: 96, high: 96, index: disputed.index })),
+    '96, unité non déterminée',
   );
   // …and the same in the other direction.
   const other = noiseIndexOf({ dateArret: '1985-07-03Z', refDoc: null, low: 56, high: 65 });
@@ -252,7 +265,7 @@ test('thresholds published back to front are put in order and the row says so', 
   assert.equal(zoneB.low, 65);
   assert.equal(zoneB.high, 70);
   assert.equal(zoneB.inverted, true);
-  assert.equal(norm(bandText(zoneB)), '65 – 70 Lden dB(A)');
+  assert.equal(norm(bandText(zoneB)), 'de 65 à 70 dB(A) en moyenne sur 24 h');
 });
 
 test('one band published as two polygons is merged, and the piece count is kept', () => {
@@ -364,7 +377,7 @@ test('the PGS is a different schema on a sibling layer, not a rename', () => {
   assert.equal(band.index, 'lden');
   assert.equal(band.arreteDate, '2013-12-11');
   assert.equal(band.updatedOn, '2018-10-05');
-  assert.equal(norm(bandText(band)), '55 – 65 Lden dB(A)');
+  assert.equal(norm(bandText(band)), 'de 55 à 65 dB(A) en moyenne sur 24 h');
   // Reading the same row with the PEB field map yields a band with no numbers.
   const wrong = zones(PGS, PGS_POINT, 'peb')[0];
   assert.equal(wrong.low, null);
@@ -422,11 +435,31 @@ test('"two indices here" counts the bands the point is IN, not everything return
 test('the two zone vocabularies are ordered most-exposed-first and cover what is published', () => {
   assert.deepEqual([...PEB_ZONE_ORDER], ['A', 'B', 'C', 'D']);
   assert.deepEqual([...PGS_ZONE_ORDER], ['1', '2', '3']);
-  // Each index is explained once, in full, and the psophique sentence says out
-  // loud that it is not a level in decibels.
-  assert.ok(/pas un niveau en dB/.test(BRUIT_INDEX_SENTENCES.psophique));
-  assert.ok(/dB\(A\)/.test(BRUIT_INDEX_SENTENCES.lden));
+  // THE UNIT INVARIANT LIVES ON THE THRESHOLD LINE, not in the explanation.
+  // `bandText` is the only thing that ever prints a number, so that is where
+  // "a value is never shown without what it is measured in" has to hold — and
+  // holding it there is what freed the sentence below to say the part a reader
+  // cannot infer.
+  for (const band of zones(LFNA, LFNA_POINT)) {
+    assert.equal(band.index, 'lden');
+    assert.ok(/dB\(A\)/.test(bandText(band)), bandText(band));
+    assert.ok(/dB\(A\)/.test(bandText(band, { short: true })), 'including the short form');
+  }
+  // Each index is explained once, and the psophique sentence says out loud that
+  // it does not convert to decibels.
+  assert.ok(/dB\(A\)/.test(BRUIT_INDEX_SENTENCES.psophique));
+  assert.ok(/pas convertible/.test(BRUIT_INDEX_SENTENCES.psophique));
+  assert.ok(/Lden/.test(BRUIT_INDEX_SENTENCES.lden));
   assert.ok(/ne concordent pas/.test(BRUIT_INDEX_SENTENCES.unknown));
+  // Nothing in the vocabulary outgrows the card. `worldOverlayDraw` wraps at
+  // about sixty characters, so a longer line does not say more — it costs a
+  // second row and pushes a fact off a six-line card.
+  for (const [name, table] of [['PEB', PEB_ZONE_LABELS], ['PGS', PGS_ZONE_LABELS],
+    ['index', BRUIT_INDEX_SENTENCES]]) {
+    for (const [key, text] of Object.entries(table)) {
+      assert.ok(text.length <= 60, `${name} ${key} is ${text.length} characters: ${text}`);
+    }
+  }
 });
 
 // ── THE OVERVIEW ────────────────────────────────────────────────────────────

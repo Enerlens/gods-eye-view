@@ -25,7 +25,8 @@ import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 
 import {
-  BRUIT_AREA_SCALE_DENOMINATOR, BRUIT_PROBE_SCALE_DENOMINATOR, projectBruit, projectBruitArea,
+  BRUIT_AREA_SCALE_DENOMINATOR, BRUIT_PROBE_SCALE_DENOMINATOR, bruitGroundResolutionText,
+  projectBruit, projectBruitArea,
 } from './bruitFeed.js';
 import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
 import bruitFranceLayer, {
@@ -55,7 +56,7 @@ import bruitFranceLayer, {
   bruitDayText,
   bruitDrawOrder,
   bruitEmphasis,
-  bruitCommonCaveats,
+  bruitCardCaveat,
   bruitGuidanceLabel,
   BRUIT_REFINE_POLL_MS,
   BRUIT_REFINE_POLL_STRIKES,
@@ -171,9 +172,9 @@ test('the most exposed zone wins, and the card names the clause that decided it'
 test('the runner-up stays on the card, so a reader can see what was not chosen', () => {
   const { peb, pgs } = answers(LFPZ);
   const card = norm(bruitScanDescription(LFPZ, peb, pgs));
-  assert.ok(card.includes('2 zones sous le repère'), card);
+  assert.ok(card.includes('2 zones ici, retenue : la plus exposée'), card);
   assert.ok(card.includes(BRUIT_WINNER_RULES.zone), card);
-  assert.ok(card.includes('aussi sous le repère : zone B — indice psophique 89 – 96'), card);
+  assert.ok(card.includes('aussi sous le repère : zone B — ancien indice de 89 à 96 — pas des décibels'), card);
   // And the register contradicting itself is stated, not smoothed over.
   assert.ok(card.includes('deux zones qui se recouvrent'), card);
 });
@@ -186,9 +187,10 @@ test('two airports at one point are two facts, and the strictest of them is the 
   assert.equal(peb.rule, 'zone');
   assert.equal(peb.overlapping, false, 'two airports is not one plan overlapping itself');
   const card = norm(bruitScanDescription(LEBOURGET, peb, pgs));
-  assert.ok(card.includes('deux plans se superposent ici : LFPB, LFPG'), card);
-  assert.ok(card.includes('aussi sous le repère : zone D — 50 – 56 Lden dB(A)'), card);
-  assert.equal(norm(bruitMarkerTitle(LEBOURGET, peb, pgs)), 'Zone A · LFPB — PARIS LE BOURGET');
+  assert.ok(card.includes('deux aéroports ici : LFPB, LFPG'), card);
+  assert.ok(card.includes('aussi sous le repère : zone D — de 50 à 56 dB(A)'), card);
+  assert.equal(norm(bruitMarkerTitle(LEBOURGET, peb, pgs)),
+    'Bruit des avions · zone A — PARIS LE BOURGET');
 });
 
 test('a band the point is NOT in can never become the answer', () => {
@@ -287,11 +289,11 @@ test('nothing to choose from is a null winner, not the first thing in the array'
 test('an empty answer names the nearest aerodrome that HAS a plan, from its published point', () => {
   const { peb, pgs } = answers(TOUSSUS);
   assert.equal(peb.winner, null);
-  assert.equal(norm(bruitMarkerTitle(TOUSSUS, peb, pgs)), 'Aucun plan de bruit aérien sur ce point');
+  assert.equal(norm(bruitMarkerTitle(TOUSSUS, peb, pgs)), 'Bruit des avions — aucun plan sur ce point');
   const card = norm(bruitScanDescription(TOUSSUS, peb, pgs));
   assert.ok(card.includes('aucun plan d’exposition au bruit ne couvre ce point'), card);
-  assert.ok(card.includes('LFPG — P. CH. DE-GAULLE, à 39,4 km'), card);
-  assert.ok(card.includes('arrêté du 03/04/2007'), card);
+  assert.ok(card.includes('P. CH. DE-GAULLE (LFPG), à 39,4 km'), card);
+  assert.ok(card.includes('arrêté 03/04/2007'), card); // in the nearest-aerodrome sentence
   // Out of reach is silence, not a nearest aerodrome in another region.
   assert.equal(bruitNearestSentence(null), null);
   assert.equal(bruitNearestSentence({ oaci: 'LFPG', distanceKm: null }), null);
@@ -305,8 +307,8 @@ test('standing ON an aerodrome that answers nothing is the most informative empt
   const here = norm(bruitNearestSentence({
     oaci: 'LFPN', name: 'TOUSSUS', arreteDate: '1985-07-03', distanceKm: 0,
   }));
-  assert.ok(here.includes('le repère est sur l’aérodrome LFPN — TOUSSUS'), here);
-  assert.ok(here.includes('arrêté du 03/07/1985'), here);
+  assert.ok(here.includes('le repère est sur TOUSSUS (LFPN)'), here);
+  assert.ok(here.includes('arrêté 03/07/1985'), here);
   assert.ok(here.includes('le service ne renvoie aucun polygone ici'), here);
   assert.ok(!here.includes('0 km'), here);
   assert.equal(BRUIT_ARRETE_UNDER_MARKER_KM, 0.5);
@@ -321,7 +323,7 @@ test('"the service did not answer" and "there is nothing here" are different sen
   // getting this wrong turns an outage into a clean bill of health.
   const down = { ...TOUSSUS, available: { peb: false, pgs: false } };
   const { peb, pgs } = answers(down);
-  assert.equal(norm(bruitMarkerTitle(down, peb, pgs)), 'Plans de bruit — service sans réponse');
+  assert.equal(norm(bruitMarkerTitle(down, peb, pgs)), 'Bruit des avions — service sans réponse');
   const card = norm(bruitScanDescription(down, peb, pgs));
   assert.ok(card.includes('le service PEB n’a pas répondu — ce n’est pas « aucune zone ici »'), card);
   assert.ok(!card.includes('aucun plan d’exposition au bruit ne couvre ce point'), card);
@@ -335,32 +337,47 @@ test('every threshold on screen carries its unit, or says it could not be settle
   // Saint-Cyr is on a 1985 arrêté: 96 is an indice psophique and NOT 96 dB.
   const { peb, pgs } = answers(LFPZ);
   const card = norm(bruitScanDescription(LFPZ, peb, pgs));
-  assert.ok(card.includes('indice psophique 96'), card);
+  assert.ok(card.includes('ancien indice 96 et plus'), card);
   assert.ok(!/96 dB/.test(card), card);
-  assert.ok(card.includes('ce n’est pas un niveau en dB'), card);
+  // THE DENIAL RIDES ON THE THRESHOLD LINE, and that is what makes it
+  // unbudgetable. Saint-Cyr publishes two overlapping zones, so this card
+  // spends four of its five lines on the choice and the register's own
+  // contradiction — the fuller `BRUIT_INDEX_SENTENCES.psophique` falls off the
+  // bottom, and the number is still not readable as decibels without it.
+  assert.ok(card.includes('pas des décibels'), card);
+  assert.ok(!card.includes('pas convertible en dB(A)'), card);
+  // On a card with room, the explanation is there too.
+  const roomy = norm(bruitBandDescription(peb.winner, peb));
+  assert.ok(roomy.includes('pas des décibels'), roomy);
+  assert.ok(roomy.includes('pas convertible en dB(A)'), roomy);
   // Gap is the opposite case: a 1985 register row on a 2017 document is Lden.
   const gap = answers(LFNA);
   const gapCard = norm(bruitScanDescription(LFNA, gap.peb, gap.pgs));
-  assert.ok(gapCard.includes('70 Lden dB(A)'), gapCard);
-  assert.ok(gapCard.includes('arrêté du 11/04/2017'), gapCard);
+  assert.ok(gapCard.includes('70 dB(A) et plus'), gapCard);
+  assert.ok(gapCard.includes('arrêté préfectoral du 11/04/2017'), gapCard);
   assert.ok(gapCard.includes('date reprise du document'), gapCard);
   // A band whose index could not be settled prints no unit at all.
   const unsettled = bruitBandLabel({
     kind: 'peb', zone: 'C', low: 84, high: 96, index: 'unknown',
   });
-  assert.equal(norm(unsettled), 'zone C — seuils 84 – 96 — indice non déterminé');
+  assert.equal(norm(unsettled), 'zone C — de 84 à 96, unité non déterminée');
   assert.ok(!/dB/.test(unsettled));
 });
 
 test('the band card repeats the register\'s own contradictions rather than tidying them', () => {
   const answer = chooseBruitAnswer(LFMD.peb, 'peb');
   const zoneB = norm(bruitBandDescription(answer.winner, answer));
-  assert.ok(zoneB.includes('65 – 70 Lden dB(A)'), zoneB);
+  assert.ok(zoneB.includes('de 65 à 70 dB(A)'), zoneB);
   assert.ok(zoneB.includes('seuils publiés à l’envers'), zoneB);
   assert.ok(zoneB.includes('LFMD — CANNES-MANDELIEU'), zoneB);
   assert.ok(zoneB.includes('producteur SSBA-SE'), zoneB);
-  assert.ok(zoneB.includes('PEB_LFMD_08_02_2005.pdf'), zoneB);
   assert.ok(zoneB.includes(`retenue : ${BRUIT_WINNER_RULES.only}`), zoneB);
+  // NO URL. The overlay is a canvas with `interactive: false`, so a link there
+  // is eighty unselectable characters spending two of six rows. The document is
+  // named by the pair that finds it — `PEB_<OACI>_<DD>_<MM>_<YYYY>.pdf`.
+  assert.ok(!zoneB.includes('http'), zoneB);
+  assert.ok(zoneB.includes('arrêté préfectoral du 08/02/2005'), zoneB);
+  assert.ok(zoneB.includes('LFMD'), zoneB);
   // A band beside the point says so on its own card, and carries no "retenue".
   const zoneC = norm(bruitBandDescription(answer.nearby[0], answer));
   assert.ok(zoneC.includes('zone voisine — le repère n’est pas dedans'), zoneC);
@@ -489,7 +506,7 @@ test('the marker takes the WINNER\'s colour, and its card is the winner\'s card'
   const marker = dataSource.entities.getById('bruit:scan-point');
   assert.ok(Cesium.Color.fromCssColorString(PEB_ZONE_COLORS.A)
     .equals(marker.billboard.color.getValue(now())));
-  assert.equal(norm(marker.name), 'Zone A · LFPZ — SAINT CYR L\'ECOLE');
+  assert.equal(norm(marker.name), 'Bruit des avions · zone A — SAINT CYR L\'ECOLE');
   // Every band drew a fill, a stroke per ring and a label, and each label
   // opens the SAME card as its own outline.
   const labels = dataSource.entities.values.filter((entity) => entity.label);
@@ -526,10 +543,9 @@ test('the PGS is drawn in its own colours and named as its own document', () => 
   const { peb, pgs } = answers(PGS);
   assert.equal(peb.winner, null, 'Roissy answers no PEB at this exact point');
   assert.equal(pgs.winner.zone, '3');
-  assert.equal(norm(bruitBandLabel(pgs.winner)), 'PGS zone 3 — 55 – 65 Lden dB(A)');
+  assert.equal(norm(bruitBandLabel(pgs.winner)), 'PGS zone 3 — de 55 à 65 dB(A)');
   const card = norm(bruitScanDescription(PGS, peb, pgs));
-  assert.ok(card.includes('plan de gêne sonore : PGS zone 3'), card);
-  assert.ok(card.includes('aide à l’insonorisation'), card);
+  assert.ok(card.includes('insonorisation financée : PGS zone 3'), card);
   // No colour in common with the PEB ramp: the two plans are not two grades of
   // one thing.
   const shared = Object.values(PGS_ZONE_COLORS).filter((c) => Object.values(PEB_ZONE_COLORS).includes(c));
@@ -548,10 +564,15 @@ test('what is NOT in this layer is stated on every card, not left to be inferred
     // on the Géoplateforme at all, and quiet ground beside a motorway must not
     // be inferred from its absence here.
     assert.ok(card.includes('avions seulement'), card);
-    assert.ok(card.includes('carte de bruit stratégique n’est pas publiée ici'), card);
-    // And the outline is a generalisation, not a survey.
-    assert.ok(card.includes('contours généralisés au 1:39 757'), card);
-    assert.ok(card.includes('ce n’est pas un relevé'), card);
+    assert.ok(card.includes('ni route ni train'), card);
+    // And the outline is a generalisation, not a survey — stated as the ground
+    // size of one service pixel, which is a thing a reader can act on. The full
+    // "la carte de bruit stratégique n'est pas publiée ici" is in the credits
+    // and the fiche; on a six-line card it cost two rows to say once.
+    assert.ok(card.includes('tracé à ~11 m près'), card);
+    // ONE line for the caveat, in every state — see `bruitCardCaveat`.
+    assert.equal(card.split(' · ').filter((l) => l.includes('avions seulement')).length, 1, card);
+    assert.ok(card.split(' · ').length <= BRUIT_CARD_MAX_LINES, card);
   }
 });
 
@@ -629,7 +650,7 @@ test('getStats separates "one zone underfoot" from "four zones on screen"', () =
   assert.equal(stats.winnerZone, 'B');
   assert.equal(stats.winnerRule, 'only');
   assert.equal(stats.winnerOaci, 'LFMD');
-  assert.equal(norm(stats.winnerBand), '65 – 70 Lden dB(A)');
+  assert.equal(norm(stats.winnerBand), 'de 65 à 70 dB(A) en moyenne sur 24 h');
   assert.equal(stats.index, 'lden');
   assert.equal(stats.airportsHere, 1);
   assert.equal(stats.scaleDenominator, 39_757);
@@ -766,12 +787,12 @@ test('nothing in an overview card mentions a marker, and the scale it names is i
   assert.ok(card.includes('4 zones publiées'), card);
   assert.ok(card.includes('zone A'), card);
   assert.ok(card.split(' · ').length <= 6, 'the shell paints six lines and no more');
-  assert.ok(card.includes('Lden'), card);
+  assert.ok(card.includes('dB(A)'), card);
   // A HUNDRED TIMES COARSER THAN A POINT SCAN, and the card prints the number
   // the payload carries rather than the module constant — the two modes must
   // never be able to claim each other's precision.
-  assert.ok(card.includes('1:3 975 696'), card);
-  assert.equal(card.includes('1:39 757'), false, 'never the point probe’s denominator');
+  assert.ok(card.includes('~1,1 km'), card);
+  assert.equal(card.includes('~11 m'), false, 'never the point probe’s resolution');
   assert.ok(card.includes('avions seulement'), 'the road-and-rail caveat is on every card');
   // And the sentence that sends a reader who needs a verdict back down.
   assert.ok(card.includes('descendez sous 12 km'), card);
@@ -856,7 +877,7 @@ test('the INSIDE of a band answers a click, and an enclave answers that it does 
   assert.ok(inside, 'a point inside a drawn band answers');
   // The strictest band containing the click leads, on the same ranking the
   // marker uses — at Saint-Cyr the point is in both A and B.
-  assert.ok(inside.title.startsWith('Zone A'), inside.title);
+  assert.ok(inside.title.startsWith('Bruit des avions · zone A'), inside.title);
   assert.ok(inside.details.some((line) => /aussi sur ce point/.test(line)));
   assert.ok(inside.details.some((line) => /avions seulement/.test(line)));
 
@@ -874,21 +895,24 @@ test('the INSIDE of a band answers a click, and an enclave answers that it does 
   assert.ok(cannesC, 'the fixture has a band the scan point is NOT in');
   const anchor = cannesC.anchor;
   const onC = bruitGroundCard({ lon: anchor.lon, lat: anchor.lat, payload: LFMD });
-  assert.ok(onC.title.startsWith('Zone C'), onC.title);
+  assert.ok(onC.title.startsWith('Bruit des avions · zone C'), onC.title);
 });
 
 test('an overview ground card says it was read off a generalised outline', () => {
   const cdg = AREA.aerodromes.find((entry) => entry.oaci === 'LFPG');
   const anchor = cdg.bands.find((band) => band.zone === 'C').anchor;
   const card = bruitGroundCard({ lon: anchor.lon, lat: anchor.lat, payload: AREA });
-  assert.ok(card.title.includes('LFPG'), card.title);
+  // The AERODROME, not its OACI code — four letters no reader outside aviation
+  // decodes. The code rides with the arrêté, which is what it identifies.
+  assert.ok(card.title.includes('P. CH. DE GAULLE'), card.title);
+  assert.equal(card.title.includes('LFPG'), false, card.title);
+  assert.ok(card.details.some((line) => line.includes('LFPG')), JSON.stringify(card.details));
   // A hundred metres of boundary is well under one vertex at 1:3,975,696, so
   // near an edge this answer is a guess — and it says so rather than letting a
   // coloured pixel pass for a legal limit. The altitude it names is the one
   // that would fix it: under 30 km the proxy waits for the fine outline.
   assert.ok(card.details.some((line) => /descendez sous 30 km/.test(line)), JSON.stringify(card.details));
-  assert.ok(card.details.some((line) => line.includes('1:3 975 696'.replace(/ /g, ' '))
-    || /1:3\s?975\s?696/.test(line)));
+  assert.ok(card.details.some((line) => /~1,1 km/.test(norm(line))), JSON.stringify(card.details));
   // The point-mode card says no such thing: its outline is a hundred times
   // finer and the sentence would be noise.
   const point = bruitGroundCard({ ...LFPZ_POINT, payload: LFPZ });
@@ -918,7 +942,15 @@ test('the sharpness sentence is read off the BAND, never off the mode', () => {
   const refined = at(stamp(AREA, BRUIT_PROBE_SCALE_DENOMINATOR)).details;
   assert.equal(refined.some((line) => /descendez sous|affinage/.test(line)), false,
     JSON.stringify(refined));
-  assert.ok(refined.some((line) => /arrêté : http/.test(line)), JSON.stringify(refined));
+  // The arrêté, named the way a canvas card can name it. This used to assert
+  // `arrêté : http…`, and the URL left every card in this module: the overlay
+  // is painted with `ctx.fillText` under `interactive: false`, so a link there
+  // is not a link — it is eighty unselectable characters spending two of six
+  // rows. What identifies the document is what the filename is built from.
+  assert.ok(refined.some((line) => /arrêté préfectoral du 03\/04\/2007/.test(line)),
+    JSON.stringify(refined));
+  assert.ok(refined.some((line) => line.includes('LFPG')), JSON.stringify(refined));
+  assert.equal(refined.some((line) => line.includes('http')), false, JSON.stringify(refined));
 
   // THE BUDGET CAN RUN OUT. A coarse band inside a foreground pass is work
   // still going on, not an altitude the reader is at the wrong side of —
@@ -943,7 +975,7 @@ test('a card is six lines, so the caveat is placed rather than pushed', () => {
   assert.equal(overflowing.length, BRUIT_CARD_MAX_LINES);
   assert.deepEqual(overflowing.slice(0, 5), ['a', 'b', 'c', 'd', 'e']);
   assert.ok(norm(overflowing[5]).includes('avions seulement'));
-  assert.ok(norm(overflowing[5]).includes('1:3 975 696'));
+  assert.ok(norm(overflowing[5]).includes('~1,1 km'));
   // Nulls cost nothing, and a short card is still capped by its own content.
   assert.deepEqual(bruitCardDetails([null, 'a', undefined, ''], { scaleDenominator: 39_757 }).length, 2);
 
@@ -1083,23 +1115,34 @@ test('the guidance line says the outline is about to change under the reader', (
 });
 
 test('a mixed draw never prints one scale as if it covered everything', () => {
-  const mixed = bruitCommonCaveats({
+  const mixed = norm(bruitCardCaveat({
     area: true,
     scaleDenominator: BRUIT_AREA_SCALE_DENOMINATOR,
     refinedBands: 30,
     coarseBands: 4,
-  }).join(' · ');
+  }));
   // The coarsest number is the headline, because it is the only one true of
   // every shape on screen — but on its own it understates thirty of them.
-  assert.match(norm(mixed), /1:3 975 696/);
-  assert.match(norm(mixed), /30 zones déjà affinées/);
+  assert.match(mixed, /~1,1 km/);
+  assert.match(mixed, /30 zones à ~11 m/);
   // A view that is entirely one scale says one number, exactly as before.
-  const done = bruitCommonCaveats({
+  const done = norm(bruitCardCaveat({
     area: true,
     scaleDenominator: BRUIT_PROBE_SCALE_DENOMINATOR,
     refinedBands: 34,
     coarseBands: 0,
-  }).join(' · ');
-  assert.match(norm(done), /1:39 757/);
-  assert.doesNotMatch(norm(done), /déjà affinée/);
+  }));
+  assert.match(done, /~11 m/);
+  assert.doesNotMatch(done, /zones à ~/);
+  // AND IT IS ONE LINE, in every state. The caveat costs one of six, so a
+  // second sentence here is a fact off the bottom of every card in the module.
+  for (const payload of [{}, { area: true }, { area: true, refinedBands: 30, coarseBands: 4 }]) {
+    assert.doesNotMatch(bruitCardCaveat(payload), / · /);
+  }
+  // The scale is a GROUND SIZE and not an OGC denominator, because "1:39 757"
+  // is not a thing a reader can act on and "~11 m" is.
+  assert.equal(bruitGroundResolutionText(BRUIT_PROBE_SCALE_DENOMINATOR), '11 m');
+  assert.equal(norm(bruitGroundResolutionText(BRUIT_AREA_SCALE_DENOMINATOR)), '1,1 km');
+  assert.equal(bruitGroundResolutionText(0), null);
+  assert.equal(bruitGroundResolutionText(null), null);
 });

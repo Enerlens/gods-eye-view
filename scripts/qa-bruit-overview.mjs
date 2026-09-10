@@ -158,6 +158,21 @@ async function shoot(page, name) {
 /** `toLocaleString('fr-FR')` separates thousands with U+202F, not a space. */
 const norm = (value) => String(value ?? '').replace(/[\s ]+/g, ' ');
 
+/**
+ * The ground size of one service pixel, from its OGC scale denominator.
+ *
+ * A COPY of `bruitGroundResolutionText`, and deliberately so: this harness
+ * proves what reached the SCREEN, so importing the formatter under test would
+ * let a broken one agree with itself. Two lines is a cheap independent witness.
+ */
+function groundResolution(denominator) {
+  const metres = Number(denominator) * 0.00028;
+  if (!Number.isFinite(metres) || metres <= 0) return null;
+  return metres < 1000
+    ? `${Math.round(metres)} m`
+    : `${(metres / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km`;
+}
+
 /** The layer's own cadence is 15 minutes; a harness cannot wait on it. */
 async function refresh(page) {
   await page.evaluate(async (id) => {
@@ -329,20 +344,23 @@ const note = (ok, message) => {
     // either one alone would fail on a cache the other side of that moment.
     // What must hold in every state is that the card's number matches the
     // payload's, which is the claim the whole scale-reporting machinery makes.
-    // Trimmed: the group is greedy and the denominator is followed by a space
-    // before the em dash, so an untrimmed capture never equals the stated one
-    // and this check would pass or fail on whitespace.
-    const cardScale = norm(cdgMarker?.description).match(/1:([\d ]+)/)?.[1]?.trim();
-    const statedScale = String(wide.stats?.scaleDenominator ?? '').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-    note(cardScale === statedScale,
-      `the card names the scale the payload reports (card 1:${cardScale}, payload 1:${statedScale})`);
-    note(cardScale === '3 975 696' || cardScale === '39 757',
-      `the scale is one of the two passes' own, not a third number (1:${cardScale})`);
+    // READ AS GROUND METRES, NOT AS A DENOMINATOR. The card used to print
+    // "contours généralisés au 1:3 975 696", which is exact and useless to a
+    // reader; it now prints the same fact as the ground size of one service
+    // pixel — "tracé à ~1,1 km près". Both passes' figures are derived from
+    // their own denominator by `bruitGroundResolutionText`, so this check is
+    // still comparing the card against the payload and not against a literal.
+    const cardScale = norm(cdgMarker?.description).match(/tracé à ~([\d,]+ (?:m|km))/)?.[1];
+    const stated = groundResolution(wide.stats?.scaleDenominator);
+    note(cardScale === stated,
+      `the card names the scale the payload reports (card ~${cardScale}, payload ~${stated})`);
+    note(cardScale === '1,1 km' || cardScale === '11 m',
+      `the scale is one of the two passes' own, not a third number (~${cardScale})`);
     // A refined view says the FINE scale and a coarse one says the coarse
     // scale; a mixed one says the coarse scale and names how many bands are
     // already better. The claim is never bigger than the geometry behind it.
     if (wide.stats?.coarseBands > 0) {
-      note(cardScale === '3 975 696',
+      note(cardScale === '1,1 km',
         `${wide.stats.coarseBands} bands are still coarse, so the card says the coarse scale`);
     }
     note(!/le repère/.test(String(cdgMarker?.description ?? '')),
@@ -434,8 +452,15 @@ const note = (ok, message) => {
       }, LAYER);
       note(card.selectedId === `${LAYER}:ground` && Boolean(card.ground?.title),
         `a click on the wash ${insideBand.pickedId} opened «${card.ground?.title ?? 'nothing'}»`);
-      note(/^Zone [A-D1-3]/.test(String(card.ground?.title ?? '')),
-        'the ground card names the band the click actually landed in');
+      // The SUBJECT leads and the ring follows — "Bruit des avions · zone C —
+      // P. CH. DE GAULLE". This used to pin `/^Zone [A-D1-3]/`, back when a
+      // card opened on a letter of the Code de l'urbanisme and left a reader to
+      // work out that a coloured polygon was about aircraft noise. What the
+      // check is for has not moved: the title must name the ring the click
+      // landed in.
+      note(/^(Bruit des avions|Aide à l’insonorisation) · zone [A-D1-3]\b/
+        .test(String(card.ground?.title ?? '')),
+      'the ground card names the band the click actually landed in');
     } else {
       note(false, 'no wash was pickable near the centre of the view');
     }
