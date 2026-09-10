@@ -91,9 +91,11 @@ import {
   settleContextModeChange,
   settleContextIntentReplay,
   settleUserFacingContextAction,
+  shouldAdoptSpaceMissionsForGlobeSelection,
   shouldCaptureContextSession,
   shouldDeferContextEntryDuringClear,
   shouldExitContextForLayerChange,
+  SPACE_MISSION_SELECTED_EVENT,
   spaceMissionEntryCancellationDisposition,
   contextModeWord,
 } from './contextModePolicy.js';
@@ -2371,6 +2373,7 @@ export class StyleManager {
     this._layerStateRestorePromise = null;
     this._awarenessSelectedHandler = null;
     this._awarenessClearedHandler = null;
+    this._spaceMissionSelectedHandler = null;
     this._disposed = false;
     this._draggableResizeObserver = null;
 
@@ -4621,6 +4624,10 @@ export class StyleManager {
       window.addEventListener('gev:awareness-subject-selected', this._awarenessSelectedHandler);
       window.addEventListener('gev:awareness-subject-cleared', this._awarenessClearedHandler);
     }
+    if (!this._spaceMissionSelectedHandler) {
+      this._spaceMissionSelectedHandler = () => this._revealSelectedSpaceMission();
+      window.addEventListener(SPACE_MISSION_SELECTED_EVENT, this._spaceMissionSelectedHandler);
+    }
     this._layerStateCoordinator?.destroy();
     this._layerStateCoordinator = null;
     this._layerStateRestorePromise = null;
@@ -4988,6 +4995,43 @@ export class StyleManager {
    */
   _claimContextVisualAuthority() {
     this.shareLinkManager?.claimRestoreLane?.('visual');
+  }
+
+  /**
+   * Put the mission the operator just picked on the globe on screen.
+   *
+   * The pick itself only fills `#space-mission-panel`, which sits behind up to
+   * two closed doors: the SPACE MISSIONS view, hidden whenever the mode was
+   * never adopted, and the Context panel, which rests collapsed. Selecting a
+   * mission and leaving both shut is a click that answers into a drawer.
+   *
+   * Deliberately NOT a Context entry. No snapshot is captured and no layer is
+   * cleared: the mission layer was already running before the pick, so there
+   * is no pre-entry state to restore and nothing the operator asked to lose.
+   * Toggling the mode back off therefore leaves the layer set exactly as the
+   * pick found it. See `shouldAdoptSpaceMissionsForGlobeSelection`.
+   *
+   * @returns {void}
+   */
+  _revealSelectedSpaceMission() {
+    if (shouldAdoptSpaceMissionsForGlobeSelection({
+      contextMode: this._contextMode,
+      contextModeChanging: this._contextModeChanging,
+      missionLayerEnabled: Boolean(this._dataManager?.isEnabled('rocket-launches')),
+    })) {
+      this._claimContextVisualAuthority();
+      this._contextMode = 'space-missions';
+      this._syncContextModeButtons();
+    }
+    // Expanding onto any other view would trade one wrong panel for another.
+    if (this._contextMode !== 'space-missions') return;
+    if (shouldExpandGlobalContextPanel({
+      action: 'space-mission-selected',
+      explicitUserAction: true,
+      succeeded: true,
+    })) {
+      this.setPanelCollapsed('global-context-panel', false, { explicit: true });
+    }
   }
 
   async _selectContextMode(mode, { notificationToken = null, signal = null } = {}) {
@@ -10410,6 +10454,10 @@ export class StyleManager {
     if (this._awarenessClearedHandler) {
       window.removeEventListener('gev:awareness-subject-cleared', this._awarenessClearedHandler);
       this._awarenessClearedHandler = null;
+    }
+    if (this._spaceMissionSelectedHandler) {
+      window.removeEventListener(SPACE_MISSION_SELECTED_EVENT, this._spaceMissionSelectedHandler);
+      this._spaceMissionSelectedHandler = null;
     }
     // Invalidate any in-flight Context transaction the same way a newer request
     // would. Without this, a reinstatement already past its awaits could

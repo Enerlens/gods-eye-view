@@ -15,6 +15,10 @@ const GLOBAL_CONTEXT_EXPLICIT_ACTIONS = new Set([
   'contacts',
   'space-missions',
   'cockpit',
+  // Picking a mission on the globe is an owner action like the three above:
+  // the readout it fills is painted inside this panel, so a pick that only
+  // selects leaves the answer behind a door the operator has to go find.
+  'space-mission-selected',
 ]);
 
 /**

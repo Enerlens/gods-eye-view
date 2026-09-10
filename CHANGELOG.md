@@ -144,6 +144,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   le lecteur n'a pas rejoué le feu.
 
 ### Fixed
+- **Cliquer une mission spatiale sur le globe ouvre enfin sa fiche.** La fiche
+  `SELECTED SPACE MISSION` se remplissait déjà au clic — nom, statut, pas de
+  tir, orbite, distance à la Terre, charge utile, rejeu de l'ascension — mais
+  elle est peinte dans la vue `SPACE MISSIONS` du panneau CONTEXTE, et le clic
+  laissait jusqu'à deux portes fermées devant elle. Il fallait aller chercher
+  la réponse à sa propre question.
+
+  **Deux états, deux pannes distinctes.** Quand la couche a été allumée depuis
+  DATA LAYERS, le mode est adopté et la vue est déjà la bonne, mais le panneau
+  se repose **replié** : la fiche n'a aucune boîte. Après un rechargement ou
+  l'ouverture d'un lien de partage — le cas courant — la couche revient allumée
+  avec une origine que l'entonnoir d'entrée du CONTEXTE refuse par principe,
+  donc le mode n'a jamais été adopté et la vue est **masquée** en plus : les
+  missions sont dessinées, cliquables et listées pendant que le panneau propose
+  encore `SPACE MISSIONS` comme si rien ne tournait. Un clic ouvre maintenant
+  les deux portes.
+
+  **Ce n'est pas une entrée dans le mode.** Aucun instantané n'est capturé et
+  aucune couche n'est éteinte : la couche tournait déjà avant le clic, il n'y a
+  donc pas d'état d'avant-entrée à restaurer ni rien que l'opérateur ait
+  demandé à perdre. Une couche allumée avant le clic — `local-firms` dans le
+  banc — l'est toujours après, et le reste quand on ressort du mode. Le clic
+  n'emprunte pas non plus le panneau à une session CONTACTS en cours.
+
 - **La lecture du mégafeu disait enfin où elle en est, et qu'elle est finie.**
   Trois défauts signalés d'une seule voix — « je ne sais pas trop où j'en suis
   quand j'appuie sur play, et une fois la simulation faite le bouton reste sur
