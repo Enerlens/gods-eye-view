@@ -78,7 +78,7 @@ Trois couches peignent un **effectif brut en aplat de couleur**, ce que le corpu
 
 Les trois modules **argumentent** leur choix dans leur en-tête, et l'argument est réel (`irveDepartements.js` : la densité couvre un facteur 2 300 et rend 95 départements indistinguables). Mais l'alternative qu'ils comparent est toujours *« aplat d'effectif contre aplat de densité »*. La bonne alternative n'est ni l'un ni l'autre : **cercle proportionnel pour l'effectif, aplat pour le taux, les deux ensemble**. C'est la figure canonique, elle existe depuis Minard, et elle n'apparaît nulle part dans GEV.
 
-Une seule couche utilise aujourd'hui la surface proportionnelle : `edf-power-plants` (« aire plutôt que rayon porte les mégawatts : un disque deux fois plus large revendiquerait quatre fois la capacité »). Elle prouve que le dépôt sait le faire.
+Une seule couche utilise aujourd'hui la surface proportionnelle : `edf-power-plants` (« aire plutôt que côté porte les mégawatts : une marque deux fois plus large revendiquerait quatre fois la capacité »). Elle prouve que le dépôt sait le faire — et depuis le 2026-09-10 elle porte la filière sur **deux canaux**, couleur ET silhouette découpée dans une pastille, ce que la même page réclame plus bas pour les couches où une teinte doit être rapportée à la légende pour être lue.
 
 ### Piste 3 — Le temps n'est jamais sur la carte
 
@@ -159,7 +159,7 @@ Colonnes : **dessine** = le signe actuel · **défaut** = ce qui cloche pour la 
 |---|---|---|---|---|
 | **Mix électrique** | régions peintes par le solde d'échange + 5 arcs frontaliers | Le solde est un **effectif signé en MW** peint en aplat — B1 — et il lui faudrait une rampe divergente centrée sur zéro. Les 5 arcs sont la seule carte de flux du produit. | **Prisme par région** : hauteur = \|MW\|, couleur = signe (import/export). L'Île-de-France en creux face à Auvergne-Rhône-Alpes en pic, c'est le fait structurel du réseau français rendu en une image. | **M** |
 | **Groupes de production** | point par unité | La puissance est le sujet et ne pilote pas la taille de façon lisible. | **Cylindre extrudé** : hauteur = puissance livrée, base = puissance installée. La différence entre les deux *est* le taux de charge, sans autre encodage. | M |
-| **Centrales EDF** | **disque d'aire ∝ puissance installée**, couleur = filière | **La seule couche correctement proportionnelle du dépôt.** | La passer en volume (cylindre) pour l'aligner sur ci-dessus : « le relief énergétique de la France ». | S |
+| **Centrales EDF** | **marque d'aire ∝ puissance installée**, couleur ET silhouette en pastille = filière, filtre à deux niveaux | **La seule couche correctement proportionnelle du dépôt.** | La passer en volume (cylindre) pour l'aligner sur ci-dessus : « le relief énergétique de la France ». | S |
 | **Petite hydro** | point par installation | 2 757 installations, la plupart minuscules. | Même échelle proportionnelle que les deux ci-dessus, pour que les trois couches énergie se lisent **ensemble**. Aujourd'hui elles utilisent trois grammaires. | S |
 | **Réseau électrique** | lignes par bande de tension, souterrain en tirets, postes dimensionnés | Bon. Une seule chose : les lignes HT sont clampées **au sol**, alors qu'elles sont à 30–60 m. | Les poser à leur hauteur (caténaire simplifiée). Change beaucoup l'impression de réseau en vue rasante, coût faible. | S |
 | **Réseau gaz** | tracés + points dimensionnés | Bon. | — | — |
@@ -260,12 +260,12 @@ Colonnes : **dessine** = le signe actuel · **défaut** = ce qui cloche pour la 
 
 | Couche | Loi | Plage | Ce qui sature |
 |---|---|---|---|
-| `edf-power-plants` | `7 + 0,27·√MW` px, plafond 26 px | 74 → 5 460 MW | à 4 953 MW (Gravelines est écrêtée) |
+| `edf-power-plants` | `13 + 0,3·√MW` px, plafond 34 px | 74 → 5 460 MW | à 4 900 MW (Gravelines et Paluel sont écrêtées) |
 | `fr-hydro-plants` | `4,5 + 0,62·kW^0,25` px, plafond 22 px | 40 kW → 1 800 MW | à 633 MW |
 | `rte-generation` | anneau ∝ `√(MW / référence)`, écrêté à 1 | ≥ 100 MW | — |
 | `france-energy` | hauteur de prisme ∝ \|MW\| | 1 544 → 7 781 MW | à 12 000 MW |
 
-Conséquence arithmétique, calculée sur les formules du dépôt : **une centrale de 900 MW fait 22 px chez `fr-hydro-plants` et 15,1 px chez `edf-power-plants`** — en aire, 380 px² contre 179 px², un facteur 2,1 pour la même puissance, sur la même carte, allumées ensemble. Et les deux couches déclarent la même borne haute (1 800 MW, Grand-Maison) : soit la même centrale est dessinée deux fois à deux tailles, soit l'une des deux bornes d'en-tête est fausse. À trancher.
+Conséquence arithmétique, recalculée sur les formules du dépôt après le relèvement du plancher d'`edf-power-plants` (2026-09-10, quand sa marque est devenue une silhouette et a eu besoin d'un raster qu'elle puisse occuper) : **une centrale de 900 MW fait 22,0 px chez `edf-power-plants` et 22 px chez `fr-hydro-plants`** — le facteur 2,1 en aire que cette ligne portait a disparu. Il ne faut pas en conclure que le problème est réglé : les deux lois restent deux lois, l'accord vaut sur 100 → 1 800 MW (17,2 px contre 17,6 à 100 MW ; 25,7 contre 22 à 1 800, où la petite hydro est écrêtée) et il est **le produit d'une coïncidence entre deux planchers**, pas d'une échelle partagée. Et les deux couches déclarent toujours la même borne haute (1 800 MW, Grand-Maison) : soit la même centrale est dessinée deux fois à deux tailles, soit l'une des deux bornes d'en-tête est fausse. À trancher.
 
 **Ce n'est pas « il faut une échelle unique »** : les trois domaines vont de 40 kW à 5 460 MW, et une seule loi écraserait la petite hydro ou saturerait la grosse. Ce qu'il faut, c'est **un module partagé** — le patron du dépôt existe déjà (`franceDepartements.js`, `geoMeshThinning.js`, `choroplethPrism.js`) — exposant une loi MW→px et une loi MW→hauteur, avec un plancher déclaré « hors échelle » sous 1 MW pour la petite hydro. Aujourd'hui trois modules ont réinventé trois exposants sans se citer, et `frHydroPlants.js` se contredit lui-même : sa ligne 46 promet *« area proportional to installed power »* quand sa ligne 224 calcule une racine **quatrième**, donc une aire proportionnelle à √P.
 

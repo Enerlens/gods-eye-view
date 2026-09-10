@@ -88,7 +88,8 @@ export const LAYER_MANIFEST = Object.freeze([
     name: 'Centrales EDF (FR)',
     icon: '◈',
     source: 'EDF Open Data',
-    capabilities: Object.freeze(['destroy', 'getStats']),
+    capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
+    defaultParams: Object.freeze({ filiere: null, kind: null }),
     load: () => import('./edfPowerPlants.js').then((module) => module.default),
   }),
   Object.freeze({

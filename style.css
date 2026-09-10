@@ -6322,6 +6322,43 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   opacity: 1;
 }
 
+/* ── Second-level chips ─────────────────────────
+   A sub-category of whatever the strip above it selected: the paliers under
+   NUCLÉAIRE, the water regimes under HYDRAULIQUE (`edfPowerPlants.js`). These
+   only exist while their parent is the thing being looked at, so they arrive
+   mid-strip and have to read as a CONTINUATION rather than as four more
+   siblings of the buttons beside them.
+
+   A leading dot and a softer frame, not an indent: `.data-toggle-controls`
+   wraps, so a margin would land in a different place on every panel width and
+   would be lost entirely whenever the parent strip happens to fill the line.
+
+   The dot is a pseudo-element for the same reason `.chip-fusion`'s is: the
+   voice layer and three QA harnesses read a chip's `textContent` as its name,
+   and a glyph baked into the label would join every one of those readings. */
+.data-toggle-chip.chip-sub {
+  border-color: rgba(255, 255, 255, 0.05);
+  background: transparent;
+  opacity: 0.86;
+}
+
+.data-toggle-chip.chip-sub::before {
+  content: '\2514';
+  margin-right: 4px;
+  opacity: 0.5;
+}
+
+.data-toggle-chip.chip-sub:hover,
+.data-toggle-chip.chip-sub:focus-visible,
+.data-toggle-chip.chip-sub.active {
+  opacity: 1;
+}
+
+.data-toggle-chip.chip-sub.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
 /* A chip the reader did not press and is not being invited to press YET: the
    frame a running replay is currently holding. It has to be legible as "you
    are here" without being legible as "this is selected", because the moment
