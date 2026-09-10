@@ -283,7 +283,7 @@ test('an anonymous plant still gets a card carrying nine facts', () => {
   // The card says WHY there is no name, rather than leaving a blank line.
   assert.ok(card.includes('nom non publié'), card);
   assert.ok(card.includes('installés'), card);
-  assert.ok(card.includes('12 mois glissants'), card);
+  assert.ok(card.includes('sur les 12 derniers mois'), card);
   assert.ok(card.includes(ANONYMOUS.commune), card);
   assert.ok(card.includes(ANONYMOUS.operator), card);
   assert.ok(card.includes('EIC'), card);
@@ -300,7 +300,10 @@ test('a named plant leads with its name and reports its load factor', () => {
   assert.ok(details.some((line) => line.includes('74,0 MW')), card);
   // 74 MW against 188,4 GWh injected is 29 %.
   assert.ok(details.some((line) => line.includes('29 %')), card);
-  assert.ok(details.some((line) => line.includes('417.6 m de chute')), card);
+  // Rounded to the metre, and said as a drop rather than as `chute`. The
+  // register's own `417.6` printed a DOT into a French card.
+  assert.ok(details.some((line) => line.includes('418 m de dénivelé')), card);
+  assert.ok(!card.includes('417.6'), card);
   assert.ok(details.some((line) => line.includes('IGN BD TOPO')), card);
   assert.ok(details.some((line) => line.includes('plan IGN')), card);
 });

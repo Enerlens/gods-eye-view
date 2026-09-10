@@ -174,6 +174,12 @@ function sceneProbe(page) {
         id: String(point.id),
         pixelSize: point.pixelSize,
         color: hex(point.color),
+        // `Infinity` does not survive the CDP JSON hop, so it is reported as a
+        // flag rather than as a number.
+        drawnOverTerrain: point.disableDepthTestDistance === Number.POSITIVE_INFINITY,
+        depthTestDisabledBeyond: Number.isFinite(point.disableDepthTestDistance)
+          ? point.disableDepthTestDistance : null,
+        show: point.show !== false,
         lat: carto ? carto.latitude * r2d : null,
         lon: carto ? carto.longitude * r2d : null,
       });
@@ -256,6 +262,15 @@ async function main() {
     check('and it carries all six reactors of capacity',
       probe.analyst.find((record) => record.name === 'GRAVELINES')?.units === 6);
     check('every disc is a distinct site', new Set(probe.points.map((p) => p.id)).size === 11);
+    // THE PARASOL. A point primitive carries one depth for its whole quad, so
+    // a finite `disableDepthTestDistance` lets the ground in front of the
+    // anchor eat everything below it: reproduced at Gravelines at 6 km camera
+    // height, where the 5 460 MW disc painted as a flat-bottomed dome. There
+    // is no pixel test for it here because the failure is in the depth buffer,
+    // not in the geometry — the primitive is the right size either way.
+    check('the discs are drawn OVER the terrain, not depth-tested against it',
+      probe.points.length > 0 && probe.points.every((p) => p.drawnOverTerrain),
+      `depth-tested beyond ${probe.points.find((p) => !p.drawnOverTerrain)?.depthTestDisabledBeyond} m`);
     await shoot(page, '01-fleet.png');
 
     // ── ii. capacity is drawn as area ──────────────────────────────────────
@@ -315,6 +330,26 @@ async function main() {
       `${probe.stats.capacityMw} MW`);
     check('a hydro plant claims no unit count it was never given',
       probe.analyst.find((record) => record.name === 'GRAND-MAISON')?.units === null);
+
+    // ── iv-bis. the price of drawing over the terrain ──────────────────────
+    // Depth testing off at every distance means nothing else stops a site on
+    // the far side of the planet from painting through the globe. The cull is
+    // a per-frame horizon pass, and this is the only place it can be proved:
+    // put the camera over the antipode of metropolitan France and every one of
+    // these discs has to be hidden.
+    console.log('[qa] iv-bis. the far side of the planet does not paint through the globe');
+    await setView(page, -177.4, -46.6, 8_000_000);
+    await pump(page, 6, 80);
+    const antipode = await sceneProbe(page);
+    check('every disc on the far side of the globe is culled',
+      antipode.points.length === 11 && antipode.points.every((point) => point.show === false),
+      `${antipode.points.filter((point) => point.show).length} still shown`);
+    await setView(page, FRANCE.lon, FRANCE.lat, FRANCE.height);
+    await pump(page, 6, 80);
+    const back = await sceneProbe(page);
+    check('and they come back when the camera does',
+      back.points.length === 11 && back.points.every((point) => point.show === true),
+      `${back.points.filter((point) => !point.show).length} still hidden`);
 
     // ── v. turning it off leaves nothing behind ────────────────────────────
     console.log('[qa] v. the fleet disappears when the layer is off');

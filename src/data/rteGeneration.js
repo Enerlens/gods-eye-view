@@ -181,10 +181,10 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
 
 /** Human caption for each placement anchor, printed on every card. */
 export const RTE_PLACEMENT_NOTES = Object.freeze({
-  'edf-published': 'drawn on EDF’s own published coordinate for this station',
-  'osm-plant': 'drawn on the OpenStreetMap outline of the station itself',
-  'rte-switchyard': 'drawn on the RTE switchyard its register entry names — the yard, not the hall',
-  'commune-centre': 'drawn at the centre of its commune — no open source publishes the station',
+  'edf-published': 'posée sur la coordonnée qu’EDF publie pour cette centrale',
+  'osm-plant': 'posée sur l’emprise de la centrale cartographiée dans OpenStreetMap',
+  'rte-switchyard': 'posée sur le poste électrique que son entrée au registre nomme — le poste, pas la salle des machines',
+  'commune-centre': 'posée au centre de sa commune : aucune source ouverte ne publie où elle est',
 });
 
 /**
@@ -218,7 +218,14 @@ export function rteDiscSize(ringPx, load) {
 }
 
 /**
- * Format a megawatt figure the way a control room writes it.
+ * Format a megawatt figure the way a FRENCH control room writes it.
+ *
+ * The grouping separator was a COMMA, from `toLocaleString('en-US')`, and on a
+ * French card that is not a cosmetic difference: `5,460 MW` reads as five and
+ * a half megawatts to the reader this layer is for, off a station that carries
+ * five thousand four hundred and sixty. Grouped with a plain space, like
+ * `edfPowerPlants.formatMegawatts`, and the decimal of a gigawatt figure is a
+ * comma because that is what a decimal separator is here.
  *
  * The minus is U+2212, not a hyphen: this layer prints negative megawatts
  * beside negative percentages and the two have to look like the same sign.
@@ -227,14 +234,17 @@ export function formatGenMw(mw) {
   if (!Number.isFinite(mw)) return '—';
   const abs = Math.abs(mw);
   const sign = mw < 0 ? '−' : '';
-  if (abs >= 10_000) return `${sign}${(abs / 1000).toFixed(1)} GW`;
-  return `${sign}${Math.round(abs).toLocaleString('en-US')} MW`;
+  if (abs >= 10_000) return `${sign}${(abs / 1000).toFixed(1).replace('.', ',')} GW`;
+  // `fr-FR` groups with U+202F on modern ICU and U+00A0 on older ones; both are
+  // normalised so the overlay measures and wraps the string predictably.
+  return `${sign}${Math.round(abs).toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ')} MW`;
 }
 
 /** Format a load fraction as a percentage, keeping its sign. */
 export function formatLoad(load) {
   if (!Number.isFinite(load)) return '—';
-  return `${load < 0 ? '−' : ''}${Math.round(Math.abs(load) * 100)}%`;
+  // A non-breaking space before the % sign, as French typography wants it.
+  return `${load < 0 ? '−' : ''}${Math.round(Math.abs(load) * 100)}\u00a0%`;
 }
 
 /**
@@ -246,18 +256,26 @@ export function formatLoad(load) {
 export function formatPublishedAge(at, now = Date.now()) {
   if (!Number.isFinite(at)) return null;
   const minutes = Math.round((now - at) / 60_000);
-  if (minutes < 0) return 'published for the hour ahead';
-  if (minutes < 90) return `${minutes} min ago`;
+  if (minutes < 0) return 'publié pour l’heure à venir';
+  if (minutes < 90) return `il y a ${minutes} min`;
   const hours = Math.round(minutes / 60);
-  if (hours < 36) return `${hours} h ago`;
-  return `${Math.round(hours / 24)} d ago`;
+  if (hours < 36) return `il y a ${hours} h`;
+  return `il y a ${Math.round(hours / 24)} j`;
 }
 
-/** The clock hour a published step belongs to, in the viewer's own timezone. */
+/**
+ * The clock hour a published step belongs to, in the viewer's own timezone.
+ *
+ * The TIMEZONE is the reader's — the step happened at one instant and they
+ * should see it on their own clock — but the FORMAT is French, because the
+ * sentence around it is. Left to the browser's locale it rendered `10:00 AM`
+ * in the middle of « mesure de l'heure de… », which is a reader's first clue
+ * that a card was assembled out of two languages.
+ */
 function formatStepClock(at) {
   if (!Number.isFinite(at)) return null;
   try {
-    return new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return new Date(at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   } catch {
     return null;
   }
@@ -266,6 +284,21 @@ function formatStepClock(at) {
 /**
  * Card copy for a selected station. Every line is a published value or a
  * statement about where a published value came from.
+ *
+ * ── IN FRENCH, AND IN WORDS ─────────────────────────────────────────────────
+ * This card shipped entirely in English — `69% of nameplate`, `3 of 4 groups
+ * reporting`, `drawing from the grid`, `hour of 14:00 · published 25 min ago` —
+ * over a globe whose every other French source speaks French, and over a
+ * dataset whose subject is French power stations. Half of it was also
+ * industry shorthand a reader outside the sector cannot decode: `nameplate` is
+ * the maximum a machine is built for, a `group` is one turbine or one reactor,
+ * and a NEGATIVE megawatt is the single most surprising thing on this layer.
+ *
+ * The negative reading gets a sentence rather than a sign, for the same reason
+ * `bruitFrance.js` spells out what a zone letter means: a reader who does not
+ * already know that a stopped reactor still draws ~50 MW for its own pumps
+ * will read a magenta disc as production.
+ *
  * @param {object} site - Joined site record.
  * @param {number} [now]
  * @returns {string} Newline-separated card copy.
@@ -276,33 +309,35 @@ export function buildRteSelectionLabel(site, now = Date.now()) {
   const installed = Number.isFinite(site?.installedMw) ? site.installedMw : null;
 
   if (Number.isFinite(site?.mw)) {
-    const load = Number.isFinite(site.load) ? ` · ${formatLoad(site.load)} of nameplate` : '';
+    const load = Number.isFinite(site.load) ? ` · ${formatLoad(site.load)} de son maximum` : '';
     details.push(
       `${site.mw < 0 ? '🔌' : '⚡'} ${formatGenMw(site.mw)}`
-      + `${installed ? ` / ${formatGenMw(installed)} installed` : ''}${load}`,
+      + `${installed ? ` sur ${formatGenMw(installed)} installés` : ''}${load}`,
     );
     if (site.mw < 0) {
-      details.push('↓ drawing from the grid — its own pumps and instruments, or storage charging');
+      details.push('↓ elle PREND du courant au réseau au lieu d’en fournir — ses propres '
+        + 'pompes et instruments, ou un stockage en train de se remplir');
     }
     const clock = formatStepClock(site.latestAt);
     const age = formatPublishedAge(site.latestAt, now);
     if (clock || age) {
-      details.push(`🕐 hour of ${clock || '—'}${age ? ` · published ${age}` : ''}`);
+      details.push(`🕐 mesure de l’heure de ${clock || '—'}${age ? `, publiée ${age}` : ''}`);
     }
     if (site.reporting < site.units.length) {
-      details.push(`▸ ${site.reporting} of ${site.units.length} groups reporting`);
+      details.push(`▸ ${site.reporting} de ses ${site.units.length} groupes ont transmis une mesure`
+        + ' — un groupe est une turbine ou un réacteur');
     }
     // Where RTE publishes the turbine groups inside a plant the register only
     // carries whole, those groups reached this station by NAME, not by code.
     // That is weaker evidence and the card says so rather than blending it in.
     const byName = site.units.filter((unit) => unit.matchedBy === 'name').length;
     if (byName) {
-      details.push(`↳ ${byName} of them matched by station name — RTE publishes this `
-        + 'plant group by group, the register only as a whole');
+      details.push(`↳ ${byName} d’entre eux rattachés par le NOM de la centrale : RTE la publie `
+        + 'groupe par groupe, le registre ne la connaît qu’en bloc');
     }
   } else {
-    details.push(`◌ ${installed ? `${formatGenMw(installed)} installed` : 'installed power not published'}`);
-    details.push('RTE published no output for this station — not the same as producing nothing');
+    details.push(`◌ ${installed ? `${formatGenMw(installed)} installés, son maximum` : 'puissance installée non publiée'}`);
+    details.push('RTE n’a publié aucune mesure pour cette centrale — ce n’est PAS « elle ne produit rien »');
   }
 
   details.push(`◈ ${klass.label}`);
@@ -312,7 +347,7 @@ export function buildRteSelectionLabel(site, now = Date.now()) {
   const note = RTE_PLACEMENT_NOTES[site?.placement];
   if (note) {
     const km = Number.isFinite(site.anchorKm) && site.anchorKm > 0
-      ? ` (${site.anchorKm.toFixed(1)} km from the commune centre)`
+      ? ` (à ${site.anchorKm.toFixed(1).replace('.', ',')} km du centre de la commune)`
       : '';
     details.push(`◎ ${note}${km}`);
   }
@@ -324,7 +359,7 @@ export function buildRteSelectionLabel(site, now = Date.now()) {
       details.push(buildUnitRow(unit));
     }
     if (units.length > CARD_UNIT_ROWS) {
-      details.push(`… and ${units.length - CARD_UNIT_ROWS} more`);
+      details.push(`… et ${units.length - CARD_UNIT_ROWS} de plus`);
     }
   }
   return [site?.name || 'Site de production', ...details].join('\n');
@@ -340,7 +375,7 @@ export function buildUnitRow(unit) {
   const name = unit?.name || unit?.code || unit?.eic || 'groupe';
   const capacity = Number.isFinite(unit?.installedMw) ? unit.installedMw : null;
   if (!Number.isFinite(unit?.mw)) {
-    return `${name} · ${capacity ? `${Math.round(capacity)} MW` : '—'} · not reported`;
+    return `${name} · ${capacity ? `${Math.round(capacity)} MW` : '—'} · pas de mesure`;
   }
   const spark = generationSparkline(unit.history, capacity);
   const value = `${Math.round(unit.mw)}${capacity ? `/${Math.round(capacity)}` : ''} MW`;
@@ -353,7 +388,7 @@ export function buildUnitRow(unit) {
   const registry = Number.isFinite(unit?.registryMw)
     && Number.isFinite(capacity)
     && Math.abs(unit.registryMw - capacity) >= 1
-      ? ` (register: ${Math.round(unit.registryMw)} MW)`
+      ? ` (registre : ${Math.round(unit.registryMw)} MW)`
       : '';
   return `${name} · ${value}${registry}${spark ? `  ${spark}` : ''}`;
 }
@@ -401,7 +436,7 @@ export function createRteStationOverlayEntry(site, position) {
   const klass = rteGenerationClass(site.class);
   const value = Number.isFinite(site.mw)
     ? `${formatGenMw(site.mw)} / ${formatGenMw(site.installedMw)}`
-    : `${formatGenMw(site.installedMw)} installed`;
+    : `${formatGenMw(site.installedMw)} installés`;
   return {
     id: `${RTE_GEN_LABEL_PREFIX}${site.id}`,
     position,
@@ -488,8 +523,8 @@ export function buildRteLegend(sites) {
     if (!bucket) continue;
     const klass = RTE_GENERATION_CLASSES[id];
     const live = bucket.reporting
-      ? `${formatGenMw(bucket.mw)} of ${formatGenMw(bucket.installedMw)} — `
-      : `${formatGenMw(bucket.installedMw)} installed, no output published — `;
+      ? `${formatGenMw(bucket.mw)} produits sur ${formatGenMw(bucket.installedMw)} installés — `
+      : `${formatGenMw(bucket.installedMw)} installés, aucune production publiée — `;
     legend.push({
       label: klass.label,
       color: klass.color,
@@ -956,7 +991,7 @@ function collectDetectableObjects(options = {}) {
  */
 export function generationErrorFor(auth) {
   if (auth === 'ok' || auth === 'missing') return null;
-  return 'RTE output unavailable';
+  return 'production RTE indisponible';
 }
 
 /** Three-letter detection tag per class. */
@@ -975,9 +1010,9 @@ export function detectionTypeFor(klass) {
 }
 
 function buildLoadingLabel() {
-  if (_loading && !_registry) return 'loading the unit register...';
-  if (_loading) return 'refreshing unit output...';
-  if (_status === 'error') return _error || 'unavailable';
+  if (_loading && !_registry) return 'chargement du registre des groupes…';
+  if (_loading) return 'actualisation de la production…';
+  if (_status === 'error') return _error || 'indisponible';
   const parts = [];
   // WHAT IS DRAWN, and what stood down. `_sites.length` is what the register
   // holds; while EDF is drawing 69 of these stations the map shows fewer, and
@@ -989,9 +1024,9 @@ function buildLoadingLabel() {
   if (_joinStats?.placedUnits) {
     parts.push(`${_joinStats.placedUnits} groupes · ${formatGenMw(_joinStats.placedMw)}`);
   } else if (_auth === 'missing') {
-    parts.push('no RTE key — installed capacity only');
+    parts.push('sans clé RTE — puissance installée seulement');
   }
-  if (_joinStats?.unplacedUnits) parts.push(`${_joinStats.unplacedUnits} unplaced`);
+  if (_joinStats?.unplacedUnits) parts.push(`${_joinStats.unplacedUnits} groupes non placés`);
   return parts.join(' · ');
 }
 
@@ -1172,15 +1207,19 @@ const rteGenerationLayer = {
     const legend = [];
     const measured = _joinStats?.placedUnits || 0;
     legend.push({
-      label: measured ? 'Ring = installed · disc = output' : 'Ring = installed capacity',
+      label: measured
+        ? 'Anneau = puissance installée · disque = production'
+        : 'Anneau = puissance installée',
       color: '#dfe7ef',
       count: _sites.length,
       blurb: measured
-        ? 'A faint empty ring is a station RTE published nothing for; a crisp empty ring is a '
-          + 'station measured at zero — an outage. A magenta disc is a station DRAWING from the '
-          + 'grid: a stopped reactor still runs its own pumps, and reads as a ~50 MW load.'
-        : 'No RTE credential, so no output is drawn. Set RTE_CLIENT_ID and RTE_CLIENT_SECRET '
-          + 'from a free data.rte-france.com account and the rings fill.',
+        ? 'Un anneau pâle et vide : RTE n’a rien publié pour cette centrale. Un anneau net et '
+          + 'vide : elle a été mesurée à zéro, elle est à l’arrêt. Un disque magenta : elle PREND '
+          + 'du courant au réseau — un réacteur arrêté fait encore tourner ses pompes, et pèse '
+          + 'une cinquantaine de MW de consommation.'
+        : 'Aucune clé RTE, donc aucune production dessinée. Renseignez RTE_CLIENT_ID et '
+          + 'RTE_CLIENT_SECRET depuis un compte gratuit data.rte-france.com et les anneaux se '
+          + 'remplissent.',
     });
     legend.push(...buildRteLegend(_sites));
     return { chips: [], legend };

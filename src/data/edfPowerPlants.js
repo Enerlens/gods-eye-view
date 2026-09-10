@@ -3,6 +3,7 @@ import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { askJoin, publishJoin } from './layerJoins.js';
 import { PLANT_JOIN_KEYS, plantCrossRegisterLine } from './plantIdentity.js';
+import { horizonOccluder } from './iconOrientation.js';
 import {
   clearOverlaySource,
   setOverlayEntries,
@@ -33,10 +34,23 @@ import {
  * ── What is drawn, and why THAT ─────────────────────────────────────────────
  * One disc per SITE, its area proportional to installed capacity, coloured by
  * filière, labelled with the site's name, its megawatts and what it actually
- * is in the publisher's own vocabulary — `6 × REP 900` at Gravelines,
- * `Pompage mixte` at Grand-Maison, `2 × Charbon` at Cordemais. Area rather
- * than radius carries the megawatts: a disc twice as wide would otherwise
- * claim four times the capacity.
+ * is — `6 réacteurs` at Gravelines, `pompage-turbinage mixte` at Grand-Maison,
+ * `2 unités au charbon` at Cordemais. Area rather than radius carries the
+ * megawatts: a disc twice as wide would otherwise claim four times the
+ * capacity.
+ *
+ * THE MARK IS DRAWN OVER THE TERRAIN, not depth-tested against it. A point
+ * primitive carries one depth for its whole quad, so a depth-tested disc gets
+ * its lower half eaten by the ground in front of it and reads as a parasol
+ * rather than a disc — see the note on `disableDepthTestDistance` in
+ * `repaint`. The price is a per-frame horizon cull, in `onPreRender`.
+ *
+ * AND IT SAYS WHAT IT IS IN FRENCH A READER CAN ACT ON. The three files
+ * publish codes — `REP 900`, `Eclusée`, `tranche`, `réserve secondaire` — and
+ * this layer renders them through {@link PLANT_KIND_PLAIN} rather than at a
+ * reader. The publisher's own figures are untouched; only its vocabulary is
+ * translated, and the raw string is still one argument away
+ * (`plantKindText(site, { register: 'raw' })`).
  *
  * ── Honesty rules this layer is built around ────────────────────────────────
  *
@@ -125,22 +139,30 @@ const UPDATE_INTERVAL_MS = 1_800_000;
  * every marker that names what the site is in words. The colour repeats what
  * the text already says; it is never the only channel.
  *
- * `unitNoun` is the publisher's own unit of account: a nuclear site holds
- * réacteurs, a fossil-fired site holds tranches, and a hydro plant holds an
- * unpublished number of groups, which is why it has no noun here.
+ * `unitNoun` is the unit of account a reader can picture: a nuclear site holds
+ * réacteurs, a fossil-fired site holds unités — EDF's own word is `tranche`,
+ * which outside a control room is a slice of bread — and a hydro plant holds
+ * an unpublished number of groups, which is why it has no noun here.
+ *
+ * `subject` is what the place IS, in a sentence. `label` is a legend key and
+ * reads as one: "Nucléaire" beside a coloured swatch is a category, and
+ * "Centrale nucléaire" at the top of a card is an answer.
  */
 export const FILIERE_STYLES = Object.freeze({
   nucleaire: Object.freeze({
-    key: 'nucleaire', label: 'Nucléaire', color: '#ffd166', unitNoun: 'réacteur',
+    key: 'nucleaire', label: 'Nucléaire', subject: 'Centrale nucléaire',
+    color: '#ffd166', unitNoun: 'réacteur', unitNounFeminine: false,
     blurb: 'Réacteurs à eau pressurisée exploités par EDF',
   }),
   hydraulique: Object.freeze({
-    key: 'hydraulique', label: 'Hydraulique', color: '#4fc3f7', unitNoun: null,
-    blurb: 'Centrales EDF > 100 MW (ou réserve secondaire ≥ 20 MW)',
+    key: 'hydraulique', label: 'Hydraulique', subject: 'Centrale hydraulique',
+    color: '#4fc3f7', unitNoun: null,
+    blurb: 'Centrales EDF de plus de 100 MW, plus celles qui tiennent au moins 20 MW en réserve pour stabiliser le réseau',
   }),
   thermique: Object.freeze({
-    key: 'thermique', label: 'Thermique à flamme', color: '#f4736b', unitNoun: 'tranche',
-    blurb: 'Charbon, gaz et fioul exploités par EDF',
+    key: 'thermique', label: 'Thermique à flamme', subject: 'Centrale thermique',
+    color: '#f4736b', unitNoun: 'unité', unitNounFeminine: true,
+    blurb: 'Charbon, gaz et fioul brûlés par EDF pour produire de l’électricité',
   }),
 });
 
@@ -203,30 +225,167 @@ export function formatMegawatts(mw) {
 }
 
 /**
- * What the site IS, in one phrase: the unit count where the publisher gives
- * one, then the publisher's own word for the kind of plant.
+ * EDF's own vocabulary, in words a reader who does not work in the industry
+ * can act on.
  *
- * A hydro plant gets no count, because the file does not publish one — see the
- * module header. A site whose file names no kind gets the filière's own label
- * rather than an invented one.
+ * **THE PUBLISHER'S STRING IS A CODE, AND IT WAS ON SCREEN AS ONE.** The card
+ * over Le Blayais read `4 × REP 900`, `tranches couplées 1981-1983`, `40 MW de
+ * réserve secondaire`: three published fields, faithfully rendered, and not
+ * one of them says anything to somebody who came to look at a map of France.
+ * `REP` is an acronym for a reactor family, `900` is the palier and not this
+ * site's power, a `tranche` is a machine and not a slice of anything, and
+ * `couplée` means connected to the grid.
+ *
+ * This is the arrangement `bruitFrance.js` already uses for the noise plans —
+ * `PEB_ZONE_LABELS` turns the letter A into "logements neufs interdits" —
+ * ported here rather than reinvented: a table from the code to what it MEANS,
+ * consulted by the card, with the publisher's own figure left intact beside it.
+ *
+ * Two registers per entry, because a map label and a card have different
+ * budgets. `short` is what fits beside a name on the globe — `6 réacteurs`.
+ * `long` is what the card has room to say — `6 réacteurs à eau pressurisée de
+ * 900 MW`. `blurb` is the extra sentence a REGIME needs and a machine does
+ * not: "réacteur à eau pressurisée" is a thing a reader can picture, "Éclusée"
+ * is not, and the same five hydro regimes are already explained in exactly
+ * these words by the Petite hydro legend (`frHydroFeed.js`).
+ *
+ * Keyed on all thirteen strings the three files publish, measured against the
+ * live proxy on 2026-09-10. A value that is not in this table falls through to
+ * the publisher's own spelling rather than being dropped or guessed at.
+ */
+export const PLANT_KIND_PLAIN = Object.freeze({
+  // The number in a palier is the reactor family's unit power, NOT the site's:
+  // Gravelines is six machines of 900 MW, and saying "de 900 MW" beside a
+  // 5 460 MW site is only honest because the count is on the same line.
+  'REP 900': Object.freeze({ short: 'réacteur', long: 'réacteur à eau pressurisée de 900 MW' }),
+  'REP 1300': Object.freeze({ short: 'réacteur', long: 'réacteur à eau pressurisée de 1 300 MW' }),
+  'REP 1450': Object.freeze({ short: 'réacteur', long: 'réacteur à eau pressurisée de 1 450 MW' }),
+  Charbon: Object.freeze({ short: 'unité au charbon', long: 'unité au charbon' }),
+  'Gaz naturel': Object.freeze({ short: 'unité au gaz', long: 'unité au gaz naturel' }),
+  'Fioul Domestique': Object.freeze({ short: 'unité au fioul', long: 'unité au fioul domestique' }),
+  'Gaz naturel/Fioul Domestique': Object.freeze({
+    short: 'unité gaz ou fioul', long: 'unité au gaz naturel ou au fioul',
+  }),
+  Lac: Object.freeze({
+    short: 'retenue de lac', long: 'retenue de lac',
+    blurb: 'l’eau est stockée des mois et turbinée quand la demande grimpe',
+  }),
+  Eclusée: Object.freeze({
+    short: 'éclusée', long: 'éclusée',
+    blurb: 'sa retenue tient quelques heures à quelques jours de production',
+  }),
+  "Fil de l'eau": Object.freeze({
+    short: 'fil de l’eau', long: 'au fil de l’eau',
+    blurb: 'elle turbine le débit qui se présente, sans rien mettre en réserve',
+  }),
+  'Pompage pur': Object.freeze({
+    short: 'pompage-turbinage', long: 'pompage-turbinage',
+    blurb: 'elle remonte l’eau dans un lac haut aux heures creuses, et la turbine à la pointe',
+  }),
+  'Pompage mixte': Object.freeze({
+    short: 'pompage-turbinage mixte', long: 'pompage-turbinage mixte',
+    blurb: 'elle turbine l’eau qui lui arrive ET remonte de l’eau aux heures creuses',
+  }),
+  Marémotrice: Object.freeze({
+    short: 'marémotrice', long: 'usine marémotrice',
+    blurb: 'elle turbine le va-et-vient de la marée',
+  }),
+});
+
+/**
+ * The `technologie` column, where it says something the `kind` does not.
+ *
+ * Only one entry, and that is the measurement rather than an omission: over
+ * the 79 sites the column holds six values, and five of them (`REP 900`,
+ * `REP 1300`, `REP 1450`, `Charbon`, `Gaz`) repeat the kind word for word or
+ * are contained in it. `TAC` does not, and it is the difference between a
+ * plant that runs and a plant that waits.
+ */
+export const PLANT_TECH_PLAIN = Object.freeze({
+  TAC: 'turbine à combustion — une machine de pointe, démarrée pour quelques heures',
+});
+
+/** The `combustible` column, in words. */
+export const PLANT_FUEL_PLAIN = Object.freeze({
+  'Uranium Enrichi': 'uranium enrichi',
+  'Multi-oxyde d’uranium et de plutonium': 'MOX (uranium et plutonium recyclés)',
+  "Multi-oxyde d'uranium et de plutonium": 'MOX (uranium et plutonium recyclés)',
+});
+
+/** Plural of a plain noun phrase: the head word only. `unité au charbon` → `unités au charbon`. */
+function pluralizeHead(phrase, count) {
+  if (!Number.isFinite(count) || count < 2) return phrase;
+  const [head, ...rest] = String(phrase).split(' ');
+  if (!head || head.endsWith('s') || head.endsWith('x')) return phrase;
+  return [`${head}s`, ...rest].join(' ');
+}
+
+/**
+ * Look one published kind string up, tolerating the ` + ` join a site with two
+ * kinds arrives as.
+ * @param {string} kind
+ * @returns {{short: string, long: string, blurb: ?string}}
+ */
+export function plantKindPlain(kind) {
+  const parts = String(kind ?? '').split(' + ').map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return { short: '', long: '', blurb: null, known: false };
+  const entries = parts.map((part) => PLANT_KIND_PLAIN[part] || { short: part, long: part });
+  return {
+    short: entries.map((entry) => entry.short).join(' + '),
+    long: entries.map((entry) => entry.long).join(' + '),
+    // One regime, one sentence: a site published under two regimes gets the
+    // labels joined and no blurb, rather than two sentences arguing.
+    blurb: entries.length === 1 ? entries[0].blurb ?? null : null,
+    // Whether EVERY part was in the table. A code this build has never seen is
+    // still printed, but it is not inflected: see `plantKindText`.
+    known: parts.every((part) => Object.hasOwn(PLANT_KIND_PLAIN, part)),
+  };
+}
+
+/**
+ * What the site IS, in one phrase — the count the publisher gives, then what
+ * the machines are.
+ *
+ * `register: 'raw'` returns the publisher's own string, unchanged, which is
+ * what a data-quality reader and the unit tests want; the default is the plain
+ * one, which is what a reader wants. A hydro plant gets no count because the
+ * file publishes none — see the module header — and a site whose file names no
+ * kind gets the filière's own label rather than an invented one.
+ *
  * @param {object|null|undefined} site
+ * @param {{register?: 'plain'|'short'|'raw'}} [options]
  * @returns {string}
  */
-export function plantKindText(site) {
+export function plantKindText(site, { register = 'plain' } = {}) {
   const style = FILIERE_STYLES[String(site?.filiere ?? '')] || null;
-  const kind = String(site?.kind ?? '').trim() || style?.label || 'Centrale';
+  const raw = String(site?.kind ?? '').trim();
   const units = Number(site?.units);
-  if (!Number.isFinite(units) || units < 2) return kind;
-  return `${units} × ${kind}`;
+  const count = Number.isFinite(units) && units >= 2 ? units : null;
+  if (!raw) return style?.label || 'Centrale';
+  if (register === 'raw') return count ? `${count} × ${raw}` : raw;
+  const plain = plantKindPlain(raw);
+  const phrase = register === 'short' ? plain.short : plain.long;
+  if (!count) return phrase;
+  // A code this build has never seen keeps the publisher's `N × CODE` form.
+  // Inflecting it would invent French grammar for a string that is not a
+  // French word — a future `EPR2` would read `2 EPR2s`.
+  if (!plain.known) return `${count} × ${phrase}`;
+  return `${count} ${pluralizeHead(phrase, count)}`;
 }
 
 /**
  * Label text for one site: name, installed power, and what it is.
+ *
+ * THE SHORT REGISTER, because this one is painted on the globe beside a name
+ * and every character costs a collision. `GRAVELINES · 5 460 MW · 6 réacteurs`
+ * is a sentence; `GRAVELINES · 5 460 MW · 6 × REP 900`, which is what it said,
+ * is a part number. The palier survives on the card, where there is room for
+ * it.
  * @param {object} site
  * @returns {string}
  */
 export function plantLabelText(site) {
-  return `${site?.name ?? ''} · ${formatMegawatts(site?.mw)} · ${plantKindText(site)}`;
+  return `${site?.name ?? ''} · ${formatMegawatts(site?.mw)} · ${plantKindText(site, { register: 'short' })}`;
 }
 
 /**
@@ -442,22 +601,37 @@ export function buildEdfPlantCard(record, crossRegister = null) {
   const style = FILIERE_STYLES[String(record?.filiere ?? '')] || null;
   const lines = [String(record?.name ?? '').trim() || 'Centrale'];
 
-  lines.push(`⚡ ${formatMegawatts(record?.mw)} installés · ${plantKindText(record)}`);
+  // WHAT THIS PLACE IS, before anything it can do. The card used to open on
+  // "5 460 MW installés · 6 × REP 900", which asks a reader to already know
+  // both what a megawatt is worth and what a REP is; it now opens on the
+  // sentence "Centrale nucléaire · 6 réacteurs à eau pressurisée de 900 MW",
+  // and the number follows as its evidence. Same order as `bruitGroundCard`,
+  // for the same reason: the consequence leads, the measurement supports it.
+  lines.push(`◈ ${plantSubjectText(record)}`);
+  const regime = plantKindPlain(record?.kind).blurb;
+  if (regime) lines.push(`▸ ${regime}`);
 
-  // The publisher's own words for the machine, never merged with the filière
-  // label above — "Thermique à flamme · charbon" says two different things.
-  const machine = [record?.tech, record?.fuel]
-    .map((value) => String(value ?? '').trim())
-    .filter(Boolean)
-    .filter((value, index, all) => all.indexOf(value) === index)
-    .join(' · ');
-  if (machine) lines.push(`◈ ${machine}`);
+  // THE SENTENCE THIS WHOLE LAYER TURNS ON, and it was nowhere on the card.
+  // A disc sized by nameplate over a site with three of six reactors down
+  // looks exactly like a site running flat out, and a reader has no way to
+  // know that from a number labelled "installés" alone.
+  lines.push(`⚡ ${formatMegawatts(record?.mw)} installés : le maximum du site, `
+    + 'pas ce qu’il produit à cet instant');
+
+  // The machine and the fuel, where they say something the line above does
+  // not. `TAC` is the only technology string that survives that test, and the
+  // nuclear fuels are the only combustibles: everywhere else the column
+  // repeats the kind, and a card that printed "Charbon" under "unité au
+  // charbon" would be spending a line to say nothing twice.
+  for (const note of plantMachineNotes(record)) lines.push(`▸ ${note}`);
 
   // Secondary reserve is the site's contracted contribution to frequency
-  // containment. It is published for 56 of the 79 sites and, until now,
-  // travelled all the way into the client record to be rendered nowhere.
+  // containment — published for 56 of the 79 sites. "40 MW de réserve
+  // secondaire" is the contract's own name for it and means nothing outside a
+  // control room; what it does is one clause long.
   if (Number.isFinite(record?.secondaryReserveMw) && record.secondaryReserveMw > 0) {
-    lines.push(`↻ ${formatMegawatts(record.secondaryReserveMw)} de réserve secondaire`);
+    lines.push(`↻ ${formatMegawatts(record.secondaryReserveMw)} tenus en réserve `
+      + 'pour stabiliser le réseau en quelques minutes');
   }
 
   const where = [record?.commune, record?.departement, record?.region]
@@ -468,10 +642,7 @@ export function buildEdfPlantCard(record, crossRegister = null) {
   if (where) lines.push(`📍 ${where}`);
 
   const commissioned = commissioningText(record?.commissionedFrom, record?.commissionedTo);
-  if (commissioned) {
-    const plural = commissioned.includes('–');
-    lines.push(`🕐 ${plural ? 'tranches couplées' : 'couplée'} ${commissioned}`);
-  }
+  if (commissioned) lines.push(`🕐 ${plantCommissioningText(record, commissioned)}`);
 
   const operator = String(record?.operator ?? '').trim();
   // Every published row currently says EDF SA, so naming it adds nothing on its
@@ -480,23 +651,122 @@ export function buildEdfPlantCard(record, crossRegister = null) {
 
   // The vintage is per FILE, not per fleet: the three EDF datasets are three
   // editions, and a card that quoted one date for all of them would invent a
-  // snapshot that never existed.
+  // snapshot that never existed. Written the way a French reader writes a
+  // date, not the way a database stores one.
   const reference = String(record?.referenceDate ?? '').trim();
-  if (reference) lines.push(`# ${style?.label || 'EDF'} — situation au ${reference}`);
+  if (reference) {
+    lines.push(`# relevé EDF du parc ${(style?.label || 'électrique').toLowerCase()}, `
+      + `arrêté au ${frenchDay(reference)}`);
+  }
 
   // THE OTHER REGISTER, when it disagrees. 43 of the 69 sites both registers
   // hold agree to the megawatt and a card repeating the same figure would be
   // noise; the 12 that differ by more than 5 % differ for a reason worth a
   // line — Flamanville is 2 660 MW here and 4 280 at RTE, which is the EPR.
+  // The clause says WHY they differ, because "RTE : 1 680 MW" under "3 640 MW"
+  // reads as one of the two being wrong.
   const rte = plantCrossRegisterLine(
     'RTE',
     crossRegister?.mw ?? null,
     record?.mw ?? null,
-    crossRegister?.units ? `somme de ${crossRegister.units} groupe${crossRegister.units > 1 ? 's' : ''} ≥ 100 MW` : null,
+    crossRegister?.units
+      ? `n’y compte que ${crossRegister.units > 1 ? `les ${crossRegister.units} groupes` : 'le groupe'} de 100 MW et plus`
+      : null,
   );
   if (rte) lines.push(rte);
 
   return lines.join('\n');
+}
+
+/**
+ * The subject line: what kind of place this is, then what its machines are.
+ *
+ * The filière label comes first and in full — `Centrale nucléaire`, not
+ * `Nucléaire` — because it is the only line that answers "what am I looking
+ * at" for a reader who clicked a coloured dot.
+ * @param {object|null|undefined} record
+ * @returns {string}
+ */
+export function plantSubjectText(record) {
+  const style = FILIERE_STYLES[String(record?.filiere ?? '')] || null;
+  const subject = style ? style.subject : 'Centrale électrique';
+  // A hydro plant's kind IS its regime, and `Centrale hydraulique · retenue de
+  // lac` is the sentence. A site whose file names no kind gets the subject
+  // alone: `plantKindText` falls back to the filière label there, and pinning
+  // that after the subject would paint `Centrale électrique · Centrale`.
+  if (!String(record?.kind ?? '').trim()) return subject;
+  return `${subject} · ${plantKindText(record)}`;
+}
+
+/**
+ * What the `technologie` and `combustible` columns add, in words, or nothing.
+ *
+ * A value is printed only when the kind line has not already said it. That
+ * test is against the PUBLISHED strings rather than their expansions, because
+ * the expansions are prose and a substring test over prose would drop a real
+ * difference the first time two sentences happened to overlap.
+ * @param {object|null|undefined} record
+ * @returns {Array<string>}
+ */
+export function plantMachineNotes(record) {
+  const kind = String(record?.kind ?? '').trim().toLowerCase();
+  const notes = [];
+  const seen = new Set(kind ? [kind] : []);
+  const add = (raw, table, prefix = '') => {
+    const value = String(raw ?? '').trim();
+    if (!value) return;
+    const key = value.toLowerCase();
+    // `Gaz` under a kind of `Gaz naturel`: the column is naming the same
+    // machine in fewer words, which is not a second fact.
+    if (seen.has(key) || (kind && kind.includes(key))) return;
+    seen.add(key);
+    const plain = value.split(' + ')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => table[part] || part)
+      .join(' · ');
+    notes.push(`${prefix}${plain}`);
+  };
+  add(record?.tech, PLANT_TECH_PLAIN);
+  add(record?.fuel, PLANT_FUEL_PLAIN, 'combustible : ');
+  return notes;
+}
+
+/**
+ * The commissioning line, in the publisher's unit of account and in French.
+ *
+ * "tranches couplées 1981-1983" was two pieces of jargon and an en dash: a
+ * `tranche` is a machine and `couplée` is connected to the grid. The noun is
+ * the filière's own — a nuclear site counts réacteurs — and a single-unit site
+ * says so in the singular rather than talking about "tranches".
+ * @param {object|null|undefined} record
+ * @param {string} span From {@link commissioningText}.
+ * @returns {string}
+ */
+export function plantCommissioningText(record, span) {
+  const style = FILIERE_STYLES[String(record?.filiere ?? '')] || null;
+  const noun = style?.unitNoun || null;
+  const units = Number(record?.units);
+  const when = span.includes('–') ? `entre ${span.replace('–', ' et ')}` : `en ${span}`;
+  // No unit noun means no unit count — a hydro plant publishes neither, so the
+  // sentence is about the PLANT rather than about machines it never counted.
+  if (!noun) return `mise en service ${when}`;
+  // THE COUNT DECIDES THE PLURAL, not the span: a two-unit site commissioned
+  // in one year is still two machines, and it read "unité raccordée en 1977".
+  const counted = Number.isFinite(units) && units >= 2 ? units : null;
+  const many = counted !== null || span.includes('–');
+  // `unité` is feminine and `réacteur` is not, so the participle cannot be a
+  // constant: "2 unités raccordés" is the kind of sentence that makes a reader
+  // stop trusting the rest of the card.
+  const e = style?.unitNounFeminine ? 'e' : '';
+  if (many) return `${counted ? `${counted} ` : ''}${noun}s raccordé${e}s au réseau ${when}`;
+  return `${noun} raccordé${e} au réseau ${when}`;
+}
+
+/** An ISO day as a French reader writes it. Anything else passes through. */
+export function frenchDay(iso) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? '').trim());
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : String(iso ?? '').trim();
 }
 
 /**
@@ -636,6 +906,8 @@ export function createEdfPowerPlantsLayer({
   let _feedSource = null;
   /** Take-down for the fleet offer. Null while nothing is offered. */
   let _unpublishFleet = null;
+  /** Take-down for the per-frame horizon pass. Null while the row is off. */
+  let _preRenderRemover = null;
 
   /**
    * Offer this fleet's sites, so the two registers that borrowed its
@@ -678,7 +950,26 @@ export function createEdfPowerPlantsLayer({
         outlineWidth: 1,
         scaleByDistance: new Cesium.NearFarScalar(20_000, 1.25, 3_000_000, 0.55),
         translucencyByDistance: new Cesium.NearFarScalar(20_000, 1, 5_000_000, 0.35),
-        disableDepthTestDistance: 5000,
+        // NEVER A FINITE DISTANCE HERE, and the reason is what this line used
+        // to do. A point primitive carries ONE depth for its whole quad — the
+        // depth of the site's own coordinate — so a depth-tested disc is
+        // tested against the terrain under every pixel it covers. Looking
+        // down at any angle other than straight down, the ground below the
+        // anchor on screen is NEARER to the camera than the anchor is, so it
+        // wins the test and eats the bottom half of the disc; the ground
+        // above is farther, so the top half survives. The result is not a
+        // half-hidden marker, it is a PARASOL: a flat-bottomed dome that
+        // looks like a different symbol, on every site, at every camera
+        // height above the old 5 000 m threshold. Reproduced at Gravelines at
+        // 6 km, and it is what the fleet looks like at country scale, which
+        // is where this layer is actually read.
+        //
+        // Drawing over the terrain instead means a site on the far side of
+        // the planet would paint through the globe, so `onPreRender` culls
+        // against the horizon — the arrangement `rteGeneration.js` already
+        // uses for its station rings, which is why those rings were whole in
+        // the same frame these discs were halves.
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
         id: renderId,
       });
       _drawn.set(renderId, { record, position, point, basePixelSize });
@@ -693,6 +984,24 @@ export function createEdfPowerPlantsLayer({
     else if (_selectedId) clearSelection();
     publishOverlay(entries);
     _viewer?.scene?.requestRender?.();
+  }
+
+  /**
+   * Per-frame horizon pass.
+   *
+   * The price of drawing over the terrain: with the depth test off at every
+   * distance, Gravelines would paint through the planet from a camera over
+   * New Zealand. Nothing on this layer animates between polls — the files are
+   * annual — so this is its only per-frame work, and it is 79 dot products.
+   */
+  function onPreRender() {
+    if (!_enabled || !_drawn.size) return;
+    const camera = _viewer?.camera;
+    if (!camera) return;
+    const occluder = horizonOccluder(camera);
+    for (const drawn of _drawn.values()) {
+      if (drawn.point) drawn.point.show = occluder.isPointVisible(drawn.position);
+    }
   }
 
   function clearSelection() {
@@ -842,6 +1151,9 @@ export function createEdfPowerPlantsLayer({
       overlayHost.setVisible(EDF_PLANTS_OVERLAY_SOURCE_ID, true);
       overlayHost.setVisible(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID, true);
       if (_viewer) installClickHandler(_viewer);
+      if (_viewer?.scene?.preRender && !_preRenderRemover) {
+        _preRenderRemover = _viewer.scene.preRender.addEventListener(onPreRender);
+      }
       // The fleet is already drawn if a previous session loaded it; republish
       // the labels the overlay host dropped on disable.
       publishFleetJoin();
@@ -853,6 +1165,10 @@ export function createEdfPowerPlantsLayer({
       publishFleetJoin();
       clearSelection();
       removeClickHandler();
+      if (_preRenderRemover) {
+        _preRenderRemover();
+        _preRenderRemover = null;
+      }
       if (_pointCollection) _pointCollection.show = false;
       overlayHost.clearSource(EDF_PLANTS_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(EDF_PLANTS_OVERLAY_SOURCE_ID, false);
@@ -910,6 +1226,10 @@ export function createEdfPowerPlantsLayer({
       _enabled = false;
       clearSelection();
       removeClickHandler();
+      if (_preRenderRemover) {
+        _preRenderRemover();
+        _preRenderRemover = null;
+      }
       unregisterPickOwner(EDF_PLANTS_LAYER_ID);
       _drawn.clear();
       overlayHost.clearSource(EDF_PLANTS_OVERLAY_SOURCE_ID);

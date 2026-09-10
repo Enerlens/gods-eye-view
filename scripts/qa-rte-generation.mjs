@@ -188,11 +188,36 @@ function sceneProbe(page) {
   });
 }
 
-/** Count canvas pixels within `tolerance` of a colour. */
+/**
+ * Count canvas pixels within `tolerance` of a colour.
+ *
+ * ── REQUEST, RENDER AND READ IN ONE JS TASK ─────────────────────────────────
+ * The viewer runs with `preserveDrawingBuffer: false`, so the WebGL back buffer
+ * is cleared the moment a frame is presented. Measured on 2026-09-10 against
+ * this very app: a `drawImage` of `scene.canvas` from its own `page.evaluate`
+ * returns **960 000 fully black pixels** — so every colour count is 0 whatever
+ * is on screen. This probe therefore reported `0 → 0` for Paluel at 1 161 MW
+ * while `page.screenshot()` of the same frame held **235 pixels** of the
+ * nuclear colour, and — worse — its sibling guard "the basemap was not already
+ * that colour" PASSED, because a blank buffer satisfies `hidden < 200`. Two
+ * green checks over an empty read.
+ *
+ * `requestRender()` before `render()` and not just `render()`: the scene runs
+ * in request mode, so a bare `render()` from an idle frame draws nothing and
+ * leaves the cleared buffer exactly as it was.
+ *
+ * Returns the colour hits AND the non-black total, so a future zero says which
+ * of the two failures it is: nothing painted, or nothing read.
+ *
+ * @returns {Promise<{hits: number, painted: number, pixels: number}>}
+ */
 function countPixels(page, hex, tolerance = 24) {
   return page.evaluate((color, tol) => {
     const target = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
-    const canvas = window.__godsEyeView.viewer.scene.canvas;
+    const scene = window.__godsEyeView.viewer.scene;
+    scene.requestRender?.();
+    scene.render();
+    const canvas = scene.canvas;
     const off = document.createElement('canvas');
     off.width = canvas.width;
     off.height = canvas.height;
@@ -200,12 +225,14 @@ function countPixels(page, hex, tolerance = 24) {
     context.drawImage(canvas, 0, 0);
     const data = context.getImageData(0, 0, off.width, off.height).data;
     let hits = 0;
+    let painted = 0;
     for (let i = 0; i < data.length; i += 4) {
+      if (data[i] + data[i + 1] + data[i + 2] > 24) painted += 1;
       if (Math.abs(data[i] - target[0]) < tol
         && Math.abs(data[i + 1] - target[1]) < tol
         && Math.abs(data[i + 2] - target[2]) < tol) hits += 1;
     }
-    return hits;
+    return { hits, painted, pixels: data.length / 4 };
   }, hex, tolerance);
 }
 
@@ -301,7 +328,7 @@ async function main() {
     check('no station claims an output figure',
       probe.stations.every((s) => s.mw === null && s.load === null));
     check('the readout says a key is what is missing',
-      /capacity only/i.test(probe.stats.loadingLabel || ''), probe.stats.loadingLabel);
+      /puissance installée seulement/i.test(probe.stats.loadingLabel || ''), probe.stats.loadingLabel);
     check('and the legend says what to set',
       /RTE_CLIENT_ID/.test(probe.controls.legend[0]?.blurb || ''));
     check('the analyst records report no output rather than zero output',
@@ -386,18 +413,26 @@ async function main() {
       await waitForStations(page, 100);
       await sleep(1200);
       await pump(page, 24, 80);
-      const shown = await countPixels(page, hex);
+      const on = await countPixels(page, hex);
       await setLayerEnabled(page, false);
-      const hidden = await countPixels(page, hex);
+      const off = await countPixels(page, hex);
       await setLayerEnabled(page, true);
       await waitForStations(page, 100);
       await pump(page, 24, 80);
-      return { shown, hidden, label };
+      return {
+        shown: on.hits, hidden: off.hits, painted: on.painted, pixels: on.pixels, label,
+      };
     };
 
     // Paluel: 1 161 MW in the captured hour, the fixture's busiest reactor, so a
     // crisp ring with a solid disc inside it.
     const nuclear = await legible(0.634759, 49.858754, NUCLEAR_COLOR, 'nuclear');
+    // FIRST, that anything was read at all. Without this line a cleared back
+    // buffer reports "the disc is invisible" and "the basemap is not that
+    // colour" in the same breath, and both look like findings about the layer.
+    check('the frame was actually read back, not a cleared buffer',
+      nuclear.painted > nuclear.pixels / 4,
+      `${nuclear.painted} non-black of ${nuclear.pixels}`);
     check('a producing reactor paints pixels nothing else on screen was painting',
       nuclear.shown - nuclear.hidden > 40, `${nuclear.hidden} → ${nuclear.shown}`);
     check('and the basemap was not already that colour', nuclear.hidden < 200,
@@ -500,11 +535,11 @@ async function main() {
     // ── vii. the legend and the placement ──────────────────────────────────
     console.log('[qa] vii. the legend leads with the grammar and every ring states its anchor');
     check('the first legend row is the ring/disc grammar, not a filière',
-      /ring/i.test(probe.controls.legend[0]?.label || ''), probe.controls.legend[0]?.label);
+      /anneau/i.test(probe.controls.legend[0]?.label || ''), probe.controls.legend[0]?.label);
     check('and it names all three states a reader has to tell apart',
-      /faint empty ring/i.test(probe.controls.legend[0]?.blurb || '')
-      && /crisp empty ring/i.test(probe.controls.legend[0]?.blurb || '')
-      && /DRAWING from the/.test(probe.controls.legend[0]?.blurb || ''));
+      /anneau pâle et vide/i.test(probe.controls.legend[0]?.blurb || '')
+      && /anneau net et vide/i.test(probe.controls.legend[0]?.blurb || '')
+      && /PREND du courant au réseau/.test(probe.controls.legend[0]?.blurb || ''));
     check('nuclear has its own legend row, counted in stations',
       probe.controls.legend.some((row) => row.label === RTE_GENERATION_CLASSES.nuclear.label
         && row.count >= 15));
