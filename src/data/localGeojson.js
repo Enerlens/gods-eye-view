@@ -5,7 +5,6 @@ import { askJoin } from './layerJoins.js';
 import {
   airportCardDetails,
   airportLabelPriority,
-  airportMarkLegend,
   airportRenderSpec,
 } from './airportsPack.js';
 import {
@@ -364,12 +363,15 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
  * copy is: the module that knows what the tags mean is the module that decides
  * what the mark claims, and it is unit-tested without a scene.
  *
- * @type {Readonly<Record<string, {featureRender: Function, renderLegend: Function}>>}
+ * @type {Readonly<Record<string, {featureRender: Function, renderLegend?: Function}>>}
  */
 const PACK_RENDERERS = Object.freeze({
+  // No `renderLegend`: the airports row prints its tier key and nothing else.
+  // The two mark rows it used to add — the drawn runway, the IGN outline —
+  // named shapes a reader decodes off the map itself, and they cost more of
+  // the panel than the tier ladder they sat under.
   'local-airports': Object.freeze({
     featureRender: (properties) => airportRenderSpec(properties),
-    renderLegend: airportMarkLegend,
   }),
   'local-datacenters': Object.freeze({
     featureRender: datacenterRenderSpec,

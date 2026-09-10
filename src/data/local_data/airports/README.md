@@ -202,9 +202,14 @@ are on the **card**, with the surface, one click away on the field the reader
 actually pointed at, which is the only place a quantity of this kind is legible.
 The diameter keeps carrying the **order**, and an order is decoded off the marks
 themselves — Roissy towers over the grass strip beside it whether or not a key
-says "3 000 m et plus". The bounds stay frozen and stay documented here; the two
-rows the legend does keep, `Piste tracée` and `Emprise au sol`, name *drawn
-shapes* a reader would otherwise have to guess at. See `airportMarkLegend`.
+says "3 000 m et plus". The bounds stay frozen and stay documented here.
+
+The two mark rows that outlived them — `Piste tracée` and `Emprise au sol`,
+naming the drawn runway and the IGN outline — went the same way the same day.
+They named *shapes*, and a shape is the one thing a reader decodes off the map
+without a key: a line at a true bearing is a runway, a filled outline is
+ground. **The airports row now prints the tier ladder and nothing else**, and
+`localGeojson.js` hands the layer no `renderLegend` at all.
 
 ### The runway itself
 

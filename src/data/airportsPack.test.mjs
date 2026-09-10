@@ -5,8 +5,6 @@ import { readFileSync } from 'node:fs';
 
 import {
   AIRPORT_DISPLAY_FLOORS,
-  AIRPORT_DRAWN_FOOTPRINT_SUFFIX,
-  AIRPORT_DRAWN_RUNWAY_SUFFIX,
   AIRPORT_LENGTH_CLASSES,
   AIRPORT_LENGTH_UNKNOWN,
   AIRPORT_TIERS,
@@ -19,8 +17,6 @@ import {
   airportIcaoCode,
   airportLabelPriority,
   airportLengthClass,
-  airportLengthClassOf,
-  airportMarkLegend,
   airportRenderSpec,
   airportRunwaySegments,
   airportTier,
@@ -353,12 +349,12 @@ test('the render spec sizes by the measurement, rings what was never published, 
   assert.deepEqual(drawn.lines[0], {
     lon1: 2.55274, lat1: 48.9957, lon2: 2.61018, lat2: 48.9988, widthM: 45,
   });
-  // The suffix is what lets ONE tally answer two questions.
-  assert.equal(drawn.key, `len3000${AIRPORT_DRAWN_RUNWAY_SUFFIX}`);
-  assert.equal(airportLengthClassOf(drawn.key), 'len3000');
+  // The key is the length class and nothing else: it sizes the pastille, and
+  // no legend reads the marks back out of it any more.
+  assert.equal(drawn.key, 'len3000');
 
   const sized = airportRenderSpec({ runways: { longestM: 1500 } });
-  assert.equal(sized.key, 'len1000', 'no geometry, no suffix');
+  assert.equal(sized.key, 'len1000');
   assert.equal(sized.lines.length, 0);
 
   const unknown = airportRenderSpec({});
@@ -409,28 +405,27 @@ test('a 3 000 m runway buys its own orbital range, and an aeroclub never does', 
   assert.equal(shuttle.cardMaxDistance, 14_000_000);
 });
 
-test('the legend names the drawn marks and never the runway lengths', () => {
-  const rows = airportMarkLegend(new Map([
-    ['len3000+rw', { total: 1200, visible: 900 }],
-    ['len3000', { total: 80, visible: 80 }],
-    ['nolength', { total: 300, visible: 300 }],
-  ]));
-  // The length classes are NOT a legend row any more: the metres are on the
-  // card, one click away, and the diameter is left to carry the order alone.
-  assert.deepEqual(rows.map((r) => r.label), ['Piste tracée']);
-  assert.equal(rows[0].count, 900, 'the row counts the drawn half, not the class');
-  for (const entry of [...AIRPORT_LENGTH_CLASSES, AIRPORT_LENGTH_UNKNOWN]) {
-    assert.ok(!rows.some((row) => row.label === entry.label),
-      `${entry.label} must not come back as a legend row`);
-  }
-  // One colour across both mark rows: the datum is the swatch's shape.
-  assert.equal(new Set(rows.map((r) => r.color)).size, 1);
-  assert.ok(rows.every((r) => r.glyph.startsWith('data:image/svg+xml;base64,')));
+test('the airports row offers no size legend at all', async () => {
+  // The tier ladder is the whole legend now: the four length rows went first,
+  // then the two mark rows ("Piste tracée", "Emprise au sol"). What is left is
+  // decoded off the map — a line at a true bearing is a runway, a filled
+  // outline is ground — and the metres are on the card, one click away.
+  const pack = await import('./airportsPack.js');
+  const legends = Object.keys(pack).filter((name) => /legend/i.test(name));
+  assert.deepEqual(legends, ['airportTierLegend'],
+    'the pack publishes exactly one legend, and it is the tier one');
 
-  // A mark nobody drew is absent, not zero: the row would promise a shape.
-  assert.deepEqual(airportMarkLegend(new Map()), []);
-  assert.deepEqual(airportMarkLegend(new Map([['len1800', { total: 40, visible: 40 }]])), [],
-    'a class with no drawn geometry publishes no row at all');
+  // And that one legend never names a length class or a drawn mark.
+  const rows = airportTierLegend(
+    Object.fromEntries(AIRPORT_TIERS.map((tier) => [tier.key, { total: 9, visible: 9 }])),
+  );
+  const labels = new Set(rows.map((row) => row.label));
+  for (const entry of [...AIRPORT_LENGTH_CLASSES, AIRPORT_LENGTH_UNKNOWN]) {
+    assert.ok(!labels.has(entry.label), `${entry.label} must not come back as a legend row`);
+  }
+  for (const gone of ['Piste tracée', 'Emprise au sol']) {
+    assert.ok(!labels.has(gone), `${gone} is not a row any more`);
+  }
 });
 
 test('runway geometry refuses the two rows that would put a runway in the wrong place', () => {
@@ -906,39 +901,24 @@ test('the shipped footprint is read back defensively, and an older pack simply h
   );
 });
 
-test('the render key carries both marks, and the class survives being read back', () => {
+test('a field carries both marks without either of them touching the render key', () => {
   const ring = [[0, 0], [0.01, 0], [0.01, 0.01], [0, 0]];
   const both = airportRenderSpec({
     runways: { longestM: 4215, geom: [[0, 0, 0.01, 0.01, 45]] },
     footprint: { areaHa: 2832, rings: [ring] },
   });
-  assert.equal(both.key, `${AIRPORT_LENGTH_CLASSES[0].key}${AIRPORT_DRAWN_RUNWAY_SUFFIX}${AIRPORT_DRAWN_FOOTPRINT_SUFFIX}`);
-  assert.equal(airportLengthClassOf(both.key), AIRPORT_LENGTH_CLASSES[0].key);
+  assert.equal(both.key, AIRPORT_LENGTH_CLASSES[0].key);
+  assert.equal(both.lines.length, 1);
   assert.deepEqual(both.footprint, [ring]);
 
   // The aeroclub case the whole join exists for: no runway shape, an outline.
   const outlineOnly = airportRenderSpec({ runways: { longestM: 700 }, footprint: { rings: [ring] } });
-  assert.ok(outlineOnly.key.endsWith(AIRPORT_DRAWN_FOOTPRINT_SUFFIX));
-  assert.ok(!outlineOnly.key.includes(AIRPORT_DRAWN_RUNWAY_SUFFIX));
-  assert.equal(airportLengthClassOf(outlineOnly.key), AIRPORT_LENGTH_CLASSES.at(-1).key);
+  assert.equal(outlineOnly.key, AIRPORT_LENGTH_CLASSES.at(-1).key);
+  assert.equal(outlineOnly.lines.length, 0);
+  assert.deepEqual(outlineOnly.footprint, [ring]);
 
   // And `surface` stays null: the outline is not the polygon Cesium parsed.
   assert.equal(both.surface, null);
-});
-
-test('the mark legend names the outline, and counts it separately from the runway', () => {
-  const rows = airportMarkLegend(new Map([
-    [`${AIRPORT_LENGTH_CLASSES[0].key}${AIRPORT_DRAWN_RUNWAY_SUFFIX}${AIRPORT_DRAWN_FOOTPRINT_SUFFIX}`,
-      { total: 5, visible: 5 }],
-    [`len300${AIRPORT_DRAWN_FOOTPRINT_SUFFIX}`, { total: 200, visible: 120 }],
-  ]));
-  const footprintRow = rows.find((row) => row.label === 'Emprise au sol');
-  const runwayRow = rows.find((row) => row.label === 'Piste tracée');
-  assert.ok(footprintRow, 'a drawn mark must have a legend row (D1)');
-  assert.equal(footprintRow.count, 125, 'the row counts what is DRAWN, both classes together');
-  assert.equal(runwayRow.count, 5);
-  assert.match(footprintRow.blurb, /IGN/, 'the row names the publisher the rest of the pack is not');
-  assert.notEqual(footprintRow.glyph, runwayRow.glyph);
 });
 
 test('the shipped pack carries the IGN outlines the ground channel was chosen on', () => {

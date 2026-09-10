@@ -30,7 +30,6 @@
  */
 
 import { geometryAreaM2 } from './datacentersPack.js';
-import { sizeBarGlyph, sizeFootprintGlyph } from './sizeLegendGlyphs.js';
 
 /**
  * ISO 3166-1 codes OurAirports uses for France and the French overseas
@@ -1183,7 +1182,8 @@ export function airportTierLegend(tally) {
  * declared classes beat a continuous scale nobody can read back. What the
  * diameter delivers is the ORDER — and only the order: the five rows that used
  * to print these bounds on the map are gone, and the metres are on the card
- * instead (see {@link airportMarkLegend} for the whole argument).
+ * instead, in metres and with their surface, one click away on the field the
+ * reader actually pointed at, which is where a QUANTITY is legible at all.
  *
  * The bounds are still FROZEN DOMAIN values (C1) — never quantiles of what is
  * on screen — and they are operational rather than statistical, which is what
@@ -1220,8 +1220,8 @@ export function airportTierLegend(tally) {
  *
  * `label` is no longer painted anywhere — the legend stopped printing this
  * ladder. It stays because it NAMES the class wherever the pack is read (this
- * file, the README, the test that holds those names out of the legend), and a
- * class known only as `len1800` is a class nobody can discuss.
+ * file, the README, the tests), and a class known only as `len1800` is a class
+ * nobody can discuss.
  */
 export const AIRPORT_LENGTH_CLASSES = Object.freeze([
   Object.freeze({ key: 'len3000', minM: 3000, label: '3 000 m et plus', pixelSize: 18, count: 1280 }),
@@ -1238,52 +1238,10 @@ export const AIRPORT_LENGTH_UNKNOWN = Object.freeze({
   count: 1314,
 });
 
-/**
- * Suffix marking a feature whose runway is also DRAWN, not only sized.
- *
- * It rides on the render-spec key because the renderer tallies exactly one key
- * per feature, and both the size the feature draws at and the marks it carries
- * have to come back out of that one tally. Stripped by
- * {@link airportLengthClassOf} before any lookup.
- */
-export const AIRPORT_DRAWN_RUNWAY_SUFFIX = '+rw';
-
-/**
- * Suffix marking a feature whose IGN footprint is drawn.
- *
- * A SECOND suffix rather than a second key, and both are appended in a fixed
- * order, because a field can carry neither, either or both marks — 227 carry
- * both — and the tally has exactly one bucket per feature to say so.
- */
-export const AIRPORT_DRAWN_FOOTPRINT_SUFFIX = '+fp';
-
-/** Every render-spec suffix, longest-first so stripping cannot leave a stub. */
-const RENDER_KEY_SUFFIXES = Object.freeze([
-  AIRPORT_DRAWN_FOOTPRINT_SUFFIX,
-  AIRPORT_DRAWN_RUNWAY_SUFFIX,
-]);
-
 const LENGTH_CLASS_BY_KEY = new Map([
   ...AIRPORT_LENGTH_CLASSES.map((entry) => [entry.key, entry]),
   [AIRPORT_LENGTH_UNKNOWN.key, AIRPORT_LENGTH_UNKNOWN],
 ]);
-
-/** The length class inside a render-spec key, with every drawn-mark suffix off. */
-export function airportLengthClassOf(key) {
-  let raw = String(key ?? '');
-  // Loop rather than one test: `hub+rw+fp` has to come back as `hub`, and the
-  // day a third mark is added the caller must not have to be edited too.
-  let stripped = true;
-  while (stripped) {
-    stripped = false;
-    for (const suffix of RENDER_KEY_SUFFIXES) {
-      if (!raw.endsWith(suffix)) continue;
-      raw = raw.slice(0, -suffix.length);
-      stripped = true;
-    }
-  }
-  return raw;
-}
 
 /**
  * Which length class one packed airport draws at.
@@ -1359,9 +1317,7 @@ export function airportRenderSpec(props) {
   const footprint = airportFootprintRings(props);
   const orbit = orbitRange(props, classKey);
   return {
-    key: `${classKey}`
-      + (lines.length > 0 ? AIRPORT_DRAWN_RUNWAY_SUFFIX : '')
-      + (footprint.length > 0 ? AIRPORT_DRAWN_FOOTPRINT_SUFFIX : ''),
+    key: classKey,
     pixelSize: entry.pixelSize,
     hollow: classKey === AIRPORT_LENGTH_UNKNOWN.key,
     /**
@@ -1400,87 +1356,6 @@ export function airportRenderSpec(props) {
      */
     footprint,
   };
-}
-
-/**
- * Graphite for both mark rows. ONE colour, because in these rows the datum is
- * the swatch's SHAPE — a bar, an outline; a hue that moved with it would encode
- * the same fact twice (A3). The tier rows above are where colour means something.
- */
-export const AIRPORT_SIZE_SWATCH_COLOR = '#c3ccd8';
-
-/**
- * Build the mark legend from a live tally keyed by {@link airportRenderSpec}.
- *
- * Two rows, and neither of them is a scale: they say what the two DRAWN shapes
- * are. D1 covers them exactly as it covers a colour — a line at a true length
- * and a true bearing is a measurement on the map, and nothing on screen can
- * otherwise tell a reader that only 4 790 of the 7 464 fields carry one.
- *
- * ── THE FIVE LENGTH ROWS THAT USED TO OPEN THIS BLOCK ───────────────────────
- *
- * Four class rows and a hollow ring, carrying one 40-word blurb repeated four
- * times: half of the right-hand block, spent restating metre bounds nobody
- * reads back off a 13 px disc. The measurement is not lost — it is on the
- * card, in metres and with its surface, one click away on the field the reader
- * actually pointed at, which is where a QUANTITY is legible at all.
- *
- * What the diameter keeps carrying is the ORDER, and an order is decoded off
- * the marks themselves: Roissy towers over the grass strip beside it whether or
- * not a key prints "3 000 m et plus". D1 asks for a key wherever a mark makes a
- * claim a reader would otherwise have to guess at — the drawn runway does, the
- * IGN outline does, and a ranking of dot sizes does not.
- *
- * Counts are what is DRAWN, so a display chip that hides four fifths of the
- * pack empties these rows rather than lying about them.
- *
- * @param {Map<string,{total:number, visible:number}>|object} tally
- * @returns {Array<{label:string,color:string,glyph:string,blurb:string,count:number}>}
- */
-export function airportMarkLegend(tally) {
-  const entries = tally instanceof Map ? [...tally] : Object.entries(tally || {});
-  let drawnRunways = 0;
-  let drawnFootprints = 0;
-  for (const [key, bucket] of entries) {
-    if (!bucket?.total) continue;
-    const raw = String(key);
-    // The suffixes ride on the render-spec key, so one tally bucket per feature
-    // still answers both questions — see AIRPORT_DRAWN_RUNWAY_SUFFIX.
-    const visible = bucket.visible ?? bucket.total;
-    if (raw.includes(AIRPORT_DRAWN_RUNWAY_SUFFIX)) drawnRunways += visible;
-    if (raw.includes(AIRPORT_DRAWN_FOOTPRINT_SUFFIX)) drawnFootprints += visible;
-  }
-
-  const legend = [];
-  if (drawnRunways > 0) {
-    legend.push({
-      label: 'Piste tracée',
-      color: AIRPORT_SIZE_SWATCH_COLOR,
-      glyph: sizeBarGlyph(16, 2),
-      blurb: 'Le trait EST la piste : ses deux seuils publiés, donc sa longueur '
-        + 'et son cap vrais, et son épaisseur vraie une fois assez près. Il ne '
-        + 'descend jamais sous le diamètre de sa pastille. 4 790 terrains sur '
-        + '7 464 sont géoréférencés en amont — 279 seulement en France, où le '
-        + 'long tail des aéroclubs n’a pas de coordonnées de seuil.',
-      count: drawnRunways,
-    });
-  }
-
-  if (drawnFootprints > 0) {
-    legend.push({
-      label: 'Emprise au sol',
-      color: AIRPORT_SIZE_SWATCH_COLOR,
-      glyph: sizeFootprintGlyph(),
-      blurb: 'Le contour EST le terrain : l’emprise levée par l’IGN (BD TOPO), '
-        + 'plaquée sur le relief, donc à l’échelle du sol et non en pixels. '
-        + '417 terrains français sur les 1 335 du paquet, dont 212 n’avaient '
-        + 'aucune forme — l’aéroclub que personne n’a jamais géoréférencé en '
-        + 'amont. Hors de France, aucun : la BD TOPO s’arrête à la frontière.',
-      count: drawnFootprints,
-    });
-  }
-
-  return legend;
 }
 
 /**
