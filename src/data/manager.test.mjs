@@ -2789,7 +2789,7 @@ test('destroy settles an explicit refresh waiting behind invalidated periodic wo
 });
 
 // ── Per-layer row controls (chips + color legend) ───────────────────────────
-// The satellites layer is the first consumer: a DENSE catalog chip and a class
+// The satellites layer is the first consumer: a STARLINK catalog chip and a class
 // legend rendered under its row. The manager owns the DOM and the param write;
 // the layer only declares what it wants, so the chip can never disagree with
 // the layer's real state.
@@ -2883,7 +2883,7 @@ function makeRowControlLayer() {
         return {
           chips: [{
             id: 'catalog',
-            label: 'DENSE',
+            label: 'STARLINK',
             active: dense,
             title: 'toggle the dense catalog',
             params: { catalog: dense ? 'core' : 'dense' },
@@ -3045,7 +3045,7 @@ test('a layer that declares row controls renders its chips — and no key', asyn
 
     const chips = collectByClass(controls, 'data-toggle-chip');
     assert.equal(chips.length, 1);
-    assert.equal(chips[0].textContent, 'DENSE');
+    assert.equal(chips[0].textContent, 'STARLINK');
     assert.equal(chips[0].dataset.chipId, 'catalog');
     assert.equal(chips[0].attributes['aria-pressed'], 'false');
     assert.equal(chips[0].title, 'toggle the dense catalog');
@@ -3195,7 +3195,7 @@ test('an async layer pushes its own row refresh, and a busy chip refuses clicks'
       return {
         chips: [{
           id: 'catalog',
-          label: settled ? 'DENSE' : 'DENSE ···',
+          label: settled ? 'STARLINK' : 'STARLINK ···',
           active: settled,
           busy: !settled,
           disabled: !settled,
@@ -3220,7 +3220,7 @@ test('an async layer pushes its own row refresh, and a busy chip refuses clicks'
       .querySelector('[data-layer-id="satellites"]')
       .querySelector('.data-toggle-controls');
     const chip = collectByClass(controls, 'data-toggle-chip')[0];
-    assert.equal(chip.textContent, 'DENSE ···');
+    assert.equal(chip.textContent, 'STARLINK ···');
     assert.equal(chip.disabled, true);
     assert.equal(chip.attributes['aria-busy'], 'true');
     assert.equal(chip.attributes['aria-pressed'], 'false', 'busy is never reported as active');
@@ -3232,7 +3232,7 @@ test('an async layer pushes its own row refresh, and a busy chip refuses clicks'
     // The layer settles and pushes its own refresh — no panel poll involved.
     settled = true;
     module._listener();
-    assert.equal(chip.textContent, 'DENSE');
+    assert.equal(chip.textContent, 'STARLINK');
     assert.equal(chip.disabled, false);
     assert.equal(chip.attributes['aria-pressed'], 'true');
     assert.equal(chip.attributes['aria-busy'], 'false');

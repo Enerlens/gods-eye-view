@@ -70,7 +70,7 @@ test('class labels name the type, and the ISS names itself', () => {
   assert.equal(satelliteClassLabel('geo'), 'GEO');
   assert.equal(satelliteClassLabel('stations'), 'STATION');
   assert.equal(satelliteClassLabel('visual'), 'VISUAL');
-  assert.equal(satelliteClassLabel('dense'), 'COMMS · STARLINK');
+  assert.equal(satelliteClassLabel('dense'), 'STARLINK');
   assert.equal(satelliteClassLabel('stations', { isIss: true }), 'STATION · ISS');
 });
 
@@ -129,8 +129,8 @@ test('class colors are distinct, valid, and never borrow the military amber', ()
 });
 
 test('the dense shell stays dimmer than the class it sits among', () => {
-  // NVG/FLIR collapse the scene to Rec.601 luma, and DENSE mode puts thousands
-  // of COMMS points in the same LEO volume as VISUAL. Luma separation is what
+  // NVG/FLIR collapse the scene to Rec.601 luma, and the STARLINK catalog puts
+  // thousands of points in the same LEO volume as VISUAL. Luma separation is what
   // keeps the core catalog readable through the dense shell.
   const luma = (hex) => {
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -138,7 +138,7 @@ test('the dense shell stays dimmer than the class it sits among', () => {
   };
   assert.ok(
     luma(SATELLITE_CLASSES.visual.color) - luma(SATELLITE_CLASSES.comms.color) > 0.2,
-    'COMMS must stay well below VISUAL in luminance',
+    'the STARLINK shell must stay well below VISUAL in luminance',
   );
   assert.ok(
     luma(SATELLITE_CLASSES.station.color) > luma(SATELLITE_CLASSES.visual.color),
@@ -192,8 +192,8 @@ test('the legend lists present classes in order and omits absent ones', () => {
   const legend = satelliteClassLegend(tallySatelliteClasses(['geo', 'gps-ops', 'stations']));
   assert.deepEqual(legend.map((row) => row.klass), ['station', 'nav', 'geo'],
     'legend follows SATELLITE_CLASS_ORDER, not input order');
-  // COMMS only exists in DENSE mode — the legend must not advertise a class
-  // that has nothing on screen.
+  // The STARLINK class only exists once the chip is on — the legend must
+  // never advertise a class that has nothing on screen.
   assert.equal(legend.some((row) => row.klass === 'comms'), false);
 
   const row = legend.find((entry) => entry.klass === 'nav');
@@ -208,7 +208,7 @@ test('the legend drops zero and negative counts', () => {
   assert.deepEqual(satelliteClassLegend(null), []);
 });
 
-test('the DENSE row chip is stateless and declares the params to apply', () => {
+test('the STARLINK row chip is stateless and declares the params to apply', () => {
   // The chip never carries its own state: it declares the params to apply, so
   // whatever else drives the catalog param (Space Missions capture/restore)
   // stays authoritative. Whether it reads ACTIVE is decided by the dense LOAD,
@@ -217,7 +217,7 @@ test('the DENSE row chip is stateless and declares the params to apply', () => {
     _setDenseCatalogStateForTest({});
     const chip = satellitesLayer.getRowControls().chips.find((entry) => entry.id === 'catalog');
     assert.equal(chip.id, 'catalog');
-    assert.equal(chip.label, 'DENSE');
+    assert.equal(chip.label, 'STARLINK');
     assert.equal(chip.active, false);
     assert.equal(chip.busy, false);
     assert.equal(chip.state, 'idle');
@@ -236,7 +236,7 @@ test('an invalid catalog mode is rejected without disturbing the chip', () => {
   assert.equal(chip.active, false);
 });
 
-test('DENSE reports loading, then ACTIVE only once the points exist', async () => {
+test('STARLINK reports loading, then ACTIVE only once the points exist', async () => {
   const originalFetch = globalThis.fetch;
   const refreshes = [];
   try {
@@ -256,10 +256,10 @@ test('DENSE reports loading, then ACTIVE only once the points exist', async () =
     const settled = await settleChip();
     assert.equal(settled.active, true, 'active once the dense points are on screen');
     assert.equal(settled.state, 'active');
-    assert.equal(settled.label, 'DENSE');
+    assert.equal(settled.label, 'STARLINK');
     assert.deepEqual(settled.params, { catalog: 'core' }, 'a settled chip toggles back off');
 
-    // The completion pushed a refresh, and the legend gained COMMS with it —
+    // The completion pushed a refresh, and the legend gained STARLINK with it —
     // without that push the row would keep the pre-load counts for 5 minutes.
     assert.ok(refreshes.length >= 2, 'load start and load completion each pushed a refresh');
     const legend = satellitesLayer.getRowControls().legend;
@@ -270,7 +270,7 @@ test('DENSE reports loading, then ACTIVE only once the points exist', async () =
   }
 });
 
-test('a failed DENSE load reverts the mode rather than leaving an active chip', async () => {
+test('a failed STARLINK load reverts the mode rather than leaving an active chip', async () => {
   const originalFetch = globalThis.fetch;
   const warn = console.warn;
   console.warn = () => {};
@@ -285,14 +285,14 @@ test('a failed DENSE load reverts the mode rather than leaving an active chip', 
 
     assert.equal(settled.active, false, 'a 502 must never present as a live dense catalog');
     assert.equal(settled.state, 'error');
-    assert.equal(settled.label, 'DENSE ✕');
+    assert.equal(settled.label, 'STARLINK ✕');
     assert.match(settled.title, /502/, 'the chip explains why');
     assert.equal(satellitesLayer.getParams().catalog, 'core', 'the mode reverts to reality');
     assert.deepEqual(settled.params, { catalog: 'dense' }, 'clicking retries');
     assert.equal(
       satellitesLayer.getRowControls().legend.some((row) => row.klass === 'comms'),
       false,
-      'no COMMS class is advertised when nothing loaded',
+      'no STARLINK class is advertised when nothing loaded',
     );
     assert.ok(pushes >= 2, 'the failure pushed its own refresh');
 
@@ -352,7 +352,7 @@ test('a 200 that yields no usable satellites is a failure, not a live catalog', 
 test('an explicit return to core clears a failure the user never caused', async () => {
   // Space Missions forces dense; if that load fails it reverts the param to
   // core itself. The mission's restore of an already-core snapshot then changes
-  // nothing — and used to leave DENSE ✕ latched on the user's row.
+  // nothing — and used to leave STARLINK ✕ latched on the user's row.
   const originalFetch = globalThis.fetch;
   const warn = console.warn;
   console.warn = () => {};
@@ -367,7 +367,7 @@ test('an explicit return to core clears a failure the user never caused', async 
     satellitesLayer.setParams({ catalog: 'core', showPoints: true, showOrbits: true });
     const restored = satellitesLayer.getRowControls().chips[0];
     assert.equal(restored.state, 'idle', 'the error does not survive the restore');
-    assert.equal(restored.label, 'DENSE');
+    assert.equal(restored.label, 'STARLINK');
     assert.doesNotMatch(restored.title, /502/);
   } finally {
     console.warn = warn;

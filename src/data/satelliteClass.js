@@ -58,13 +58,13 @@ export const SATELLITE_CLASSES = Object.freeze({
     blurb: 'Brightest naked-eye objects — CelesTrak visual group',
   }),
   comms: Object.freeze({
-    label: 'COMMS',
-    // Dim slate — thousands of these appear in DENSE mode. They must read as
-    // texture behind the core catalog, never compete with it. Rec.601 luma
-    // ~0.40 against VISUAL's ~0.69 keeps the two separable even when the
-    // NVG/FLIR shaders collapse the scene to a single channel.
+    label: 'STARLINK',
+    // Dim slate — thousands of these appear once the STARLINK chip is on.
+    // They must read as texture behind the core catalog, never compete with
+    // it. Rec.601 luma ~0.40 against VISUAL's ~0.69 keeps the two separable
+    // even when the NVG/FLIR shaders collapse the scene to a single channel.
     color: '#54697f',
-    blurb: 'Broadband constellation shell — shown only in DENSE mode',
+    blurb: 'Starlink broadband shell — shown only while the STARLINK chip is on',
   }),
 });
 
@@ -83,7 +83,10 @@ const GROUP_CLASS = Object.freeze({
   glonass: Object.freeze({ klass: 'nav', subtype: 'GLONASS' }),
   galileo: Object.freeze({ klass: 'nav', subtype: 'GALILEO' }),
   geo: Object.freeze({ klass: 'geo', subtype: null }),
-  dense: Object.freeze({ klass: 'comms', subtype: 'STARLINK' }),
+  // No subtype: the class LABEL already reads STARLINK, and "STARLINK ·
+  // STARLINK" would say it twice. The class KEY stays `comms` — the family
+  // slot a second broadband shell would join — so only the surface changed.
+  dense: Object.freeze({ klass: 'comms', subtype: null }),
 });
 
 /** Unknown groups fall back to the neutral bucket rather than vanishing. */
@@ -160,7 +163,7 @@ export function tallySatelliteClasses(entries) {
 /**
  * Build the layer-row legend from a class tally.
  * Classes with no members are omitted so the legend never advertises a class
- * that is not on screen (COMMS only appears once DENSE is on).
+ * that is not on screen (STARLINK only appears once the chip is on).
  * @param {Record<string, number>} counts Class key → count (see tallySatelliteClasses).
  * @returns {Array<{ klass: string, label: string, color: string, blurb: string, count: number }>}
  *   Present classes in legend order.
