@@ -17,18 +17,55 @@ Two consequences shape everything below:
 
 ## The staging deployment
 
-One box, one URL, always showing the branch you most recently opened a pull
-request for. The VPS polls GitHub every three minutes; nothing on GitHub needs
-a route back into the VPS, and the box holds no CI credentials.
+One box, one URL, showing the branch you most recently opened a pull request
+for — as long as that branch still contains main. The VPS polls GitHub every
+three minutes; nothing on GitHub needs a route back into the VPS, and the box
+holds no CI credentials.
 
 ```
 GitHub (public repo)
-   ↑ poll every 3 min: newest open PR, else main
+   ↑ poll every 3 min: newest open PR if it contains main, else main
 /opt/gev/gev-deploy.sh  ──build──▶  docker compose  ──▶  gev container :4173
                                                             ↑            ↑
                                               cloudflared tunnel     tailnet
                                               gev.enerlens.com    100.x.x.x:4173
 ```
+
+### What the URL is allowed to show
+
+**Whatever is served contains main.** A preview is main plus the pull request,
+never main minus a merge. That qualifier is the whole rule, and it exists
+because the URL lied on 2026-09-10: PR #155 had been cut at #152, so #153 and
+#154 were merged and stayed invisible for the rest of the afternoon while the
+box reported a healthy, freshly built container. Nothing was broken — the agent
+had faithfully deployed exactly what it was asked to deploy.
+
+So `auto` now measures the candidate before showing it. It asks GitHub how many
+commits of main the branch is missing (`/compare/<main>...<head>`, `behind_by`)
+and, if the answer is anything but zero, shows **main** instead and says why.
+The same applies when the answer cannot be obtained at all — a rate limit, an
+outage, a pull request opened from a fork whose branch does not exist here:
+main is the ref that cannot be missing merged work, so main is the fallback.
+**To get a branch on the URL, rebase it onto main.** That is the only new
+obligation this rule creates, and CI asks for it anyway.
+
+The verdict is cached against the exact pair of shas it was computed for, so a
+three-minute timer spends **one** API call per push rather than twenty per hour
+against the 60/h anonymous quota this IP shares with its neighbours.
+
+An explicit pin (`echo my-branch > /opt/gev/target`) still outranks all of
+this — it is a decision, not an accident — but a stale pin now announces itself
+in the journal and in `state/selection` instead of being discovered hours later.
+
+`cat /opt/gev/state/selection` answers "why am I looking at this?" in one line:
+
+```
+2026-09-10T14:32:11Z auto -> main@2a4163b (PR #155 arrets-idfm-icones-et-fiche is 2 commit(s) behind main)
+```
+
+`scripts/gev-deploy-target.test.mjs` runs the real script against a fake GitHub
+and holds every branch of that decision, including the refusal to publish a ref
+that predates the access gate.
 
 ### Layout on the VPS
 
@@ -40,6 +77,8 @@ GitHub (public repo)
 | `/opt/gev/src` | the source tree the agent swaps out, unpacked from a tarball |
 | `/opt/gev/target` | `auto` (default), `main`, or a branch name to pin |
 | `/opt/gev/state/deployed` | `branch@sha` currently live |
+| `/opt/gev/state/selection` | one line: which ref was chosen this tick, and why it was not the other one |
+| `/opt/gev/state/freshness` | `<head> <base> <behind_by>`, the cached verdict for one pair of shas |
 | `/opt/gev/gev-health-probe.sh` | availability probe (copy of `deploy/vps/gev-health-probe.sh`) |
 | `/opt/gev/state/health.log` | one line per probe, ~7 days |
 
@@ -73,6 +112,7 @@ image has none) and no 473 MB of expanded intermediates on the volume.
 
 ```bash
 ssh vps 'cat /opt/gev/state/deployed'          # what is live right now
+ssh vps 'cat /opt/gev/state/selection'         # ...and why it, rather than main
 ssh vps 'echo my-branch > /opt/gev/target'     # pin staging to one branch
 ssh vps 'echo auto      > /opt/gev/target'     # back to newest-open-PR
 ssh vps 'systemctl start gev-deploy.service'   # deploy now, do not wait
@@ -82,7 +122,9 @@ ssh vps 'docker logs -n 50 gev'                # why the app misbehaves
 
 A failed build leaves the previous container running: staging never goes dark
 because a PR does not compile. A ref cut before the access gate existed is
-refused outright rather than deployed open.
+refused outright rather than deployed open. A branch that is behind main is not
+refused — it is simply not shown, and main takes the URL until the branch is
+rebased.
 
 ### Why the source arrives as a tarball and not a clone
 
