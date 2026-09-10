@@ -63,6 +63,79 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   vehicles reporting here » aurait accusé le flux de ce que le lecteur venait
   de faire.
 
+- **Les cinq marchés voisins sont délimités, et jamais remplis.** Jusqu'ici
+  l'Espagne n'existait nulle part sur le globe : une flèche sortait du cadre et
+  le lecteur fournissait le pays de mémoire. Les contours de la Grande-Bretagne,
+  de l'Espagne péninsulaire, de l'Italie, de la Suisse et du couple
+  Allemagne + Belgique sont désormais tracés — Natural Earth 1:50m, domaine
+  public, 674 points pour les cinq.
+
+  **Un trait, jamais un aplat**, et c'est la même règle que partout ailleurs
+  dans cette couche : un polygone rempli, ici, c'est à quoi ressemble une
+  MESURE, et rien n'a été mesuré à l'intérieur de l'Espagne. Trois marques,
+  trois affirmations : prisme rempli = mesuré, et voilà combien ; emprise à
+  plat hachurée = connu, non publié (la Corse) ; contour vide = c'est la
+  contrepartie, et c'est tout ce qu'on en sait. Le contour prend la couleur du
+  flux, et il reste dessiné en ardoise quand le flux tombe à zéro — un arc est
+  une direction et une direction de rien n'est rien, tandis que « qui est en
+  face » reste vrai à zéro.
+
+  Deux limites de périmètre voyagent avec le fichier : le contour espagnol est
+  le **marché péninsulaire**, donc sans les Baléares ni les Canaries, et le
+  britannique est la **zone d'ajustement GB**, donc sans l'Irlande du Nord.
+  L'Allemagne et la Belgique partagent un contour parce qu'elles partagent un
+  champ.
+
+### Changed
+- **Le mix électrique cesse de dessiner 96 départements pour 12 mesures.**
+  La couche mesure douze régions ; elle en dessinait quatre-vingt-seize. Le
+  premier lecteur venu l'a lu exactement comme ça se dessinait — « chaque
+  département a une hauteur qui est représentative du niveau de puissance qu'il
+  exporte […] on n'arrive pas à distinguer un département par rapport à un
+  autre » — c'est-à-dire une lecture de mesures DÉPARTEMENTALES sur une carte
+  où aucun département n'est mesuré, suivie du constat qu'ils se ressemblent
+  tous. Ils se ressemblaient parce qu'ils sont identiques : huit prismes à la
+  même altitude pour une seule mesure francilienne.
+
+  Les départements sont désormais **fusionnés topologiquement** en un contour
+  par région avant tout tracé. Treize marques au lieu de quatre-vingt-seize —
+  douze prismes et la Corse — et les coutures ont disparu avec les frontières
+  intérieures : mesuré sur le fichier livré, 96 polygones, 118 anneaux et
+  14 335 sommets deviennent 31 anneaux de 5 742 sommets, parce que 4 253
+  segments partagés s'annulent, dont 139 pour la seule Île-de-France. La fusion
+  n'est ni une bibliothèque ni une approximation : le fichier des départements
+  est une subdivision planaire propre où chaque segment interne apparaît
+  exactement deux fois, ce qu'un test vérifie sur les treize régions. Aucun
+  département n'atteint plus la scène ni la moindre étiquette.
+
+  **Le prisme ne tient plus toute la région, et la carte le dit.** Douze
+  régions fusionnées pavent la France sans jeu : extrudées, elles se recollent
+  en une seule mesa dès qu'on regarde de biais. Chaque prisme est donc posé sur
+  l'emprise de sa région **réduite à 90 %** — une homothétie, pas un tampon
+  intérieur, qui se recouperait dans le Cotentin et les vallées alpines — ce
+  qui ouvre un canyon de 12 à 34 km entre voisines (recul moyen mesuré : 6,3 km
+  pour l'Île-de-France, 17,2 km pour la Nouvelle-Aquitaine). La contrepartie est
+  payée et non escamotée : le **périmètre exact** de chaque région est tracé au
+  sol, sous son prisme, de la même couleur, et la légende énonce les deux. Les
+  îles trop petites pour porter un volume (Ré, Oléron, Belle-Île, Noirmoutier,
+  Yeu, Porquerolles) gardent ce trait et perdent le prisme : une colonne de
+  78 km sur 23 km² mesure sa région et a l'air de mesurer l'île.
+
+- **Les cinq flèches d'échange partent de la frontière, plus du centre du
+  pays.** Toutes partaient du même point au milieu du Berry, ce qui dessinait
+  un pays qui commerce depuis son centre de gravité. Chaque arc quitte
+  maintenant le point de la frontière française **le plus proche du point de
+  référence de son marché**, calculé sur la même géométrie fusionnée, la Corse
+  étant exclue de la recherche pour que l'arc italien parte des Alpes et non de
+  Bonifacio : Angleterre 1,58 E / 50,87 N, Espagne 1,44 O / 43,05 N, Italie
+  7,71 E / 44,07 N, Suisse 7,42 E / 47,45 N, Allemagne + Belgique 6,47 E /
+  49,46 N. Que ces cinq points tombent près d'interconnexions réelles est une
+  **conséquence, pas une affirmation** : `ech_comm_*` est un solde commercial
+  entre deux zones de marché et ne porte aucun tracé. La corde raccourcissant,
+  le trait s'affine (10 px au lieu de 15) et le cintre s'aplatit (20 km au lieu
+  de 60), sans quoi la liaison suisse devenait un arceau de croquet de 94 km de
+  portée.
+
 ### Fixed
 - **L'URL de recette ne peut plus être en retard sur `main`.** Le 2026-09-10 à
   15 h 25, `gev.enerlens.com` servait une branche coupée à la #152 : la #153
