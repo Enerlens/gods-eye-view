@@ -157,6 +157,7 @@
 
 import * as Cesium from 'cesium';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
+import { markViewportRead, releaseCameraSettle, watchCameraSettle } from './cameraSettle.js';
 import {
   PRISM_BASE_HEIGHT_M,
   PRISM_BODY_ALPHA,
@@ -1350,6 +1351,10 @@ async function loadSites(box, { force = false } = {}) {
 
 async function loadViewport({ force = false } = {}) {
   if (!_enabled || !_viewer) return;
+  // Whatever this call concludes — records, a zoom-in verdict or a failure —
+  // it concludes it about the view the camera is showing right now. See
+  // `cameraSettle.js`: an arrival on any other view has to be read afresh.
+  markViewportRead(_viewer, SUP_FR_LAYER_ID);
   const regime = updateRegime(_viewer);
   const box = regime === 'national' ? null : cameraSupBox(_viewer);
   // A camera that is inside the sites regime but gives no usable rectangle —
@@ -1369,6 +1374,23 @@ function onCameraChanged() {
   _cameraDebounceTimer = setTimeout(() => {
     void loadViewport();
   }, CAMERA_DEBOUNCE_MS);
+}
+
+/**
+ * The camera has come to REST — read the view it stopped on. `camera.changed`
+ * goes quiet before an eased flight lands, so the load a flight triggers
+ * describes a camera still in the air; `cameraSettle.js` carries the
+ * measurement and the "have we already read this view" short-circuit.
+ *
+ * It SUPERSEDES the pending debounce rather than racing it: on a hand pan
+ * `moveEnd` arrives while that timer is still armed, and letting both run
+ * would ask the same question twice.
+ */
+function onCameraSettled() {
+  if (!_enabled) return;
+  clearTimeout(_cameraDebounceTimer);
+  _cameraDebounceTimer = null;
+  void loadViewport();
 }
 
 function collectDetectableObjects(options = {}) {
@@ -1485,6 +1507,8 @@ const supFranceLayer = {
     if (!_cameraChangedAttached) {
       viewer.camera.changed.addEventListener(onCameraChanged);
       claimCameraSensitivity(viewer, SUP_FR_LAYER_ID);
+      // Arrival, as opposed to motion — see `onCameraSettled`.
+      watchCameraSettle(viewer, SUP_FR_LAYER_ID, onCameraSettled);
       _cameraChangedAttached = true;
     }
     if (!_preRenderRemover) {
@@ -1519,6 +1543,7 @@ const supFranceLayer = {
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
       releaseCameraSensitivity(viewer, SUP_FR_LAYER_ID);
+      releaseCameraSettle(viewer, SUP_FR_LAYER_ID);
       _cameraChangedAttached = false;
     }
     if (_preRenderRemover) {

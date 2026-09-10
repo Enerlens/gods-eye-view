@@ -1067,8 +1067,9 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
    * be a second set of rules for the same camera.
    *
    * The rescan is REQUESTED rather than waited for: these layers scan on a
-   * debounced `moveEnd`, so polling for it would be a guess dressed as a
-   * measurement. `refreshLayer` runs the same scan and resolves when it lands.
+   * debounced `camera.changed` and — since `cameraSettle.js` — on `moveEnd`
+   * too, so polling for either would be a guess dressed as a measurement.
+   * `refreshLayer` runs the same scan and resolves when it lands.
    *
    * @param {string} layerId Registered layer identifier.
    * @param {object} report The `layerDrawingReport` that asked for this.

@@ -22,6 +22,7 @@ import {
 import { horizonOccluder } from './iconOrientation.js';
 import { boxContains, padBox } from './viewportBox.js';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
+import { markViewportRead, releaseCameraSettle, watchCameraSettle } from './cameraSettle.js';
 import { ensureGeoidReady, geoidHeight } from './geoid.js';
 
 /**
@@ -1099,6 +1100,9 @@ export function createMarineBuoysLayer({
    */
   function onCameraChanged() {
     if (!_enabled) return;
+    // The cull that follows answers for the view the camera is showing right
+    // now — see `cameraSettle.js` for why an arrival has to say so.
+    markViewportRead(_viewer, BUOY_LAYER_ID);
     if (applyVisibility()) publishCards();
   }
 
@@ -1108,6 +1112,15 @@ export function createMarineBuoysLayer({
     if (_cameraChangedAttached || !camera?.changed?.addEventListener) return;
     camera.changed.addEventListener(onCameraChanged);
     claimCameraSensitivity(_viewer, BUOY_LAYER_ID);
+    // Arrival, as opposed to motion. `changed` goes quiet before an eased
+    // flight lands (measured Paris → Rouen: last `changed` t=2.5 s, `moveEnd`
+    // t=3.3 s), so the last cull a flight triggers is computed against a
+    // camera still in the air. Unlike the viewport layers this costs no
+    // request — but the wrong answer is just as visible: stations behind the
+    // limb of the halfway pose stay hidden over the destination, and the card
+    // cohort describes a sea nobody is looking at, until the operator nudges
+    // the camera or the fifteen-minute poll comes round.
+    watchCameraSettle(_viewer, BUOY_LAYER_ID, onCameraChanged);
     _cameraChangedAttached = true;
   }
 
@@ -1115,6 +1128,7 @@ export function createMarineBuoysLayer({
     if (!_cameraChangedAttached) return;
     _viewer?.camera?.changed?.removeEventListener?.(onCameraChanged);
     releaseCameraSensitivity(_viewer, BUOY_LAYER_ID);
+    releaseCameraSettle(_viewer, BUOY_LAYER_ID);
     _cameraChangedAttached = false;
   }
 
