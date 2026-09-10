@@ -1,0 +1,12 @@
+[Unit]
+Description=Probe the God's Eye View public URL every five minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+# Spread against gev-deploy.timer, which restarts the container it probes.
+AccuracySec=30s
+RandomizedDelaySec=20s
+
+[Install]
+WantedBy=timers.target

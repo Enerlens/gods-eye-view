@@ -23,6 +23,32 @@ services:
       # a persistent volume, and therefore the only one where the accumulation
       # is worth anything. Set CHRONICLE_IRVE_DYNAMIC=0 in .env to stop it.
       CHRONICLE_IRVE_DYNAMIC: ${CHRONICLE_IRVE_DYNAMIC:-1}
+      # Ceiling for the V8 heap, INSIDE the mem_limit below. Node sizes its
+      # old space from the HOST's memory, not the cgroup's, so an unset default
+      # on this 8 GB box lets the heap grow past a 1 GiB container limit and the
+      # kernel OOM-kills the process instead of V8 collecting. 768 MiB leaves
+      # ~256 MiB for the C++ side, buffers and the gzip streams.
+      NODE_OPTIONS: ${GEV_NODE_OPTIONS:---max-old-space-size=768}
+    # Bounds, because this box is shared with the Enerlens production database.
+    #
+    # Measured 2026-09-09: the container idles at ~197 MiB and ~2% CPU with NO
+    # limit of any kind, on a host with 427 MB free, 4.6 GB available and
+    # ZERO swap. Nothing here is throttling today's traffic — these are the
+    # blast radius. An Overpass or AIS cache that runs away, or a burst of cold
+    # boots gzipping 8 MB of JavaScript on the fly, would otherwise take the
+    # memory and the cores out from under Postgres.
+    #
+    #  - mem_limit/memswap_limit equal: the host has no swap, and equal values
+    #    are how Docker says "and don't start using any".
+    #  - cpus is a CEILING (CFS quota), not a reservation: it caps a runaway.
+    #  - cpu_shares is the WEIGHT under contention, and it is the half of this
+    #    that protects Enerlens. Default is 1024; at 512 GEV yields the core to
+    #    the database when both want it, while still burning up to 1.5 vCPU
+    #    whenever the box is otherwise idle.
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 1.5
+    cpu_shares: 512
     ports:
       # Loopback for the Cloudflare tunnel, tailnet address for direct access.
       - "127.0.0.1:${GEV_PORT:-4173}:4173"

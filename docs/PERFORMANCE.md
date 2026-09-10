@@ -250,6 +250,42 @@ origin. The exception is the window right after each deploy, when the content
 hash changes and the first visitor per asset pays a MISS — and staging
 redeploys every three minutes while a PR is open.
 
+### Re-measured after brotli and the container limits (phase 4)
+
+Same script, same box, same `--visitors 10 --duration 10` methodology as row 1
+above (the seven assets discoverable from the served HTML), 9 September 2026,
+build `main@4717c07` — so this pair IS comparable end to end:
+
+| | Boots/s | p50 | p95 | p99 | Egress | Container RSS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Before (10 visitors, 10 s) | 6.0 | 21.9 ms | 901 ms | 1,004 ms | 16.8 MB/s | 295 MiB |
+| After (10 visitors, 10 s) | **112.8** | 7.7 ms | **32.8 ms** | 51 ms | 136.9 MB/s | — |
+| After (50 visitors, 30 s) | **129.9** | 39.1 ms | **149.7 ms** | 177.5 ms | 158.5 MB/s | **306.8 MiB** |
+
+**A factor of nineteen, and it was the gzip.** The section above named the
+ceiling correctly: throughput was pinned at 16.8–17.7 MB/s while the container
+burned 175 % of 200 % CPU compressing the same bytes for every visitor.
+`scripts/precompress-dist.mjs` turned that into a file read, and the number
+that was flat at every load level is now 158 MB/s. Nothing else about the
+server changed.
+
+The container now runs with `mem_limit: 1g`, `cpus: 1.5`, `cpu_shares: 512` and
+`--max-old-space-size=768` (V8 reports an 816 MiB heap ceiling). Under 50
+concurrent cold boots it peaked at **306.8 MiB — 30 % of its limit** — and
+~100–114 % CPU, i.e. it never reached its own 150 % ceiling, because the load
+generator was competing for the same two cores.
+
+**Verdict for plan task 4.5: stay on the KVM 2.** The trigger for an upgrade
+was `/api` p95 over 1 s or RSS near the bound; the measurement is 150 ms and
+30 %. No `docker builder prune`, no KVM 4.
+
+Two caveats, both biasing in known directions. This run replayed the seven
+static requests and no `/api`, so it measures delivery rather than the proxies
+— the earlier 23-request trace put `/api` p95 at 19–34 ms under the harder,
+pre-brotli conditions, and nothing since has made those routes slower. And the
+load generator ran **on the box under test**, taking CPU from the server it was
+measuring, which pushes the reported latency up rather than down.
+
 ## Reference machine — the small laptop (phase 0.3)
 
 The M5 numbers above hide every cost that decides whether this application is

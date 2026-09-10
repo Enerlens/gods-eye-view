@@ -1269,21 +1269,45 @@ const _militaryInstallationsRateLimiter = makeRateLimiter({ windowMs: 60_000, ma
 const _routeRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 200 });
 
 /**
- * Opt-in per-IP rate limiter for the cost-bearing API proxies (OpenAI / Google).
- * DEFAULT IS UNLIMITED: when the env var is unset, `0`, or non-numeric, this
+ * Opt-in rate limiter for the cost-bearing API proxies (OpenAI / Google).
+ * DEFAULT IS UNLIMITED: when both env vars are unset, `0`, or non-numeric, this
  * returns `null` and the caller skips the check entirely — a runtime no-op that
- * preserves the original behavior. Only a positive integer N enables a fixed
- * 60s window of N requests/IP (built lazily once, then reused so its per-IP
- * window state persists across requests). The global backstop is set to a
- * generous multiple of the per-IP cap so a single host can't starve the rest.
+ * preserves the original behavior.
+ *
+ * TWO CEILINGS, and they answer different questions.
+ *
+ * The per-IP one (N requests/minute/address) is the one that has existed: it
+ * stops one visitor, or one runaway test harness, from spending the account.
+ * Against a public page it is close to worthless — a caller with a hundred
+ * addresses has a hundred buckets — and its implied global backstop is 20×
+ * the per-IP cap, so the 20/min that reads as prudent on `gev.enerlens.com` is
+ * really an authorisation to bill 400 OpenAI calls a minute.
+ *
+ * The global one is therefore the ceiling that matters the moment the Basic
+ * gate comes off, and it is set separately BECAUSE it is a different decision:
+ * per-IP is fairness, global is the bill. Deliberately blunt — once it trips,
+ * everyone gets a 429 until the window rolls, and the page degrades (no HUD
+ * summary, no nearby places) rather than the account draining. A public origin
+ * whose spend is bounded only by a per-IP limit is an open wallet with a queue.
+ *
+ * When only the global cap is configured, per-IP is set to the same number:
+ * one shared bucket for everybody, which is exactly what "global only" means.
  *
  * @param {string|undefined} envValue - Raw env value (requests/min/IP).
+ * @param {string|undefined} globalEnvValue - Raw env value (requests/min, all callers).
  * @returns {((key:string)=>boolean)|null} An `allow(key)` fn, or null when unlimited.
  */
-function makeOptInRateLimiter(envValue) {
-  const max = Number(envValue);
-  if (!Number.isFinite(max) || max <= 0) return null; // unset/0/garbage -> unlimited
-  return makeRateLimiter({ windowMs: 60_000, max: Math.floor(max), globalMax: Math.floor(max) * 20 });
+export function makeOptInRateLimiter(envValue, globalEnvValue) {
+  const perIp = Number(envValue);
+  const global = Number(globalEnvValue);
+  const globalMax = Number.isFinite(global) && global > 0 ? Math.floor(global) : 0;
+  if (!Number.isFinite(perIp) || perIp <= 0) {
+    // unset/0/garbage per-IP -> unlimited, unless a global ceiling was asked for
+    if (!globalMax) return null;
+    return makeRateLimiter({ windowMs: 60_000, max: globalMax, globalMax });
+  }
+  const max = Math.floor(perIp);
+  return makeRateLimiter({ windowMs: 60_000, max, globalMax: globalMax || max * 20 });
 }
 // Built LAZILY on first request, NOT at module load: `.env` values are applied to process.env later
 // (the plugin config hook calls loadEnv → process.env, AFTER this module is imported), so reading
@@ -1294,12 +1318,22 @@ let _openAiRateLimiter; // undefined = not built yet; null = unlimited; fn = act
 let _googleRateLimiter;
 /** OpenAI cost endpoints (realtime/token + hud-summary). Null = unlimited (default). */
 function openAiRateLimiter() {
-  if (_openAiRateLimiter === undefined) _openAiRateLimiter = makeOptInRateLimiter(process.env.GEV_RATELIMIT_OPENAI_PER_MIN);
+  if (_openAiRateLimiter === undefined) {
+    _openAiRateLimiter = makeOptInRateLimiter(
+      process.env.GEV_RATELIMIT_OPENAI_PER_MIN,
+      process.env.GEV_RATELIMIT_OPENAI_GLOBAL_PER_MIN,
+    );
+  }
   return _openAiRateLimiter;
 }
 /** Google cost endpoint (nearby-places). Null = unlimited (default). */
 function googleRateLimiter() {
-  if (_googleRateLimiter === undefined) _googleRateLimiter = makeOptInRateLimiter(process.env.GEV_RATELIMIT_GOOGLE_PER_MIN);
+  if (_googleRateLimiter === undefined) {
+    _googleRateLimiter = makeOptInRateLimiter(
+      process.env.GEV_RATELIMIT_GOOGLE_PER_MIN,
+      process.env.GEV_RATELIMIT_GOOGLE_GLOBAL_PER_MIN,
+    );
+  }
   return _googleRateLimiter;
 }
 
@@ -17217,7 +17251,10 @@ const VOICE_BRAIN_MAX_ROUNDS = 5;
 let _voiceBrainRateLimiter;
 function voiceBrainRateLimiter() {
   if (_voiceBrainRateLimiter === undefined) {
-    _voiceBrainRateLimiter = makeOptInRateLimiter(process.env.GEV_RATELIMIT_VOICE_BRAIN_PER_MIN);
+    _voiceBrainRateLimiter = makeOptInRateLimiter(
+      process.env.GEV_RATELIMIT_VOICE_BRAIN_PER_MIN,
+      process.env.GEV_RATELIMIT_VOICE_BRAIN_GLOBAL_PER_MIN,
+    );
   }
   return _voiceBrainRateLimiter;
 }
@@ -25428,6 +25465,75 @@ const CESIUM_BASE_DIR = `cesium-${JSON.parse(
   fs.readFileSync(path.join(__dirname, 'node_modules/cesium/package.json'), 'utf8'),
 ).version}`;
 
+/**
+ * Base directory for the aircraft glTF payload, pinned to its own bytes.
+ *
+ * `public/models/*.glb` is 3.5 MB of hangar fleet, and `public/` is copied to
+ * `dist/` verbatim: not one of those filenames carries a hash, so the same
+ * argument that version-pins Cesium above applies here, with one extra twist
+ * that only shows up on a real deployment.
+ *
+ * Measured on the preview server 2026-09-09: `vite preview` answers a model
+ * with `Cache-Control: no-cache` and a WEAK, mtime-derived ETag
+ * (`W/"470200-1788982392686"`). A returning visitor therefore pays a 304, not
+ * 3.2 MB — the plan's premise was wrong about that. What it costs instead is
+ * real and two-sided: `no-cache` means the Cloudflare edge stores nothing, so
+ * every visitor's FIRST aircraft pulls the bytes out of Paris; and the deploy
+ * script lays down a fresh tarball, so every redeploy gives every file a new
+ * mtime, a new ETag, and a full re-download of art that did not change.
+ *
+ * Hashing the DIRECTORY rather than each file is what keeps this cheap. The
+ * client never imports a GLB — the URLs are identity keys threaded through the
+ * model specs, the visual-anchor tables and the load-failure log — so a
+ * per-file `?url` import would mean rewriting that identity everywhere, and it
+ * would break the unit suite outright: `flights.test.mjs` imports `flights.js`
+ * under plain `node --test`, where `import x from './c172.glb?url'` throws
+ * ERR_UNKNOWN_FILE_EXTENSION. A build-time `define` has neither problem: it is
+ * a textual substitution, so Node sees an undefined identifier and
+ * `src/data/modelAssets.js` falls back to `/models`.
+ */
+const MODELS_DIR = path.join(__dirname, 'public/models');
+export const MODELS_BASE_DIR = `models-${(() => {
+  const hash = createHash('sha256');
+  for (const name of fs.readdirSync(MODELS_DIR).filter((f) => f.endsWith('.glb')).sort()) {
+    hash.update(name).update(fs.readFileSync(path.join(MODELS_DIR, name)));
+  }
+  return hash.digest('hex').slice(0, 8);
+})()}`;
+
+/**
+ * Move the copied `dist/models` under its content-hashed name.
+ *
+ * A rename after the fact, rather than an emitted asset, because these files
+ * reach `dist/` through vite's public-directory copy and never through the
+ * module graph — there is no import to hang `emitFile` off. `closeBundle` runs
+ * after that copy, and `emptyOutDir` (vite's default) means there is never a
+ * stale directory from a previous build to collide with.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function hashedModelsDirPlugin() {
+  let outDir = path.join(__dirname, 'dist');
+  return {
+    name: 'gev-hashed-models-dir',
+    apply: 'build',
+    // Read from the resolved config rather than assumed: `--outDir` is a real
+    // flag this repo uses (`perf:graph` builds into `.context/`), and renaming
+    // a directory in `dist/` while the bundle was written somewhere else would
+    // leave that build pointing at models it never moved.
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      const from = path.join(outDir, 'models');
+      if (!fs.existsSync(from)) return;
+      const to = path.join(outDir, MODELS_BASE_DIR);
+      fs.rmSync(to, { recursive: true, force: true });
+      fs.renameSync(from, to);
+    },
+  };
+}
+
 /** `CESIUM_BASE_DIR` as a regex literal — the version dots are not wildcards. */
 const CESIUM_BASE_DIR_RE = CESIUM_BASE_DIR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -25443,9 +25549,14 @@ const CESIUM_BASE_DIR_RE = CESIUM_BASE_DIR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'
  * the world they are. A returning visitor is fine either way (their disk cache
  * absorbs it); this is entirely about the first visit and the origin's egress.
  *
- * Two families of URL are immutable by construction, and this says so:
+ * Four families of URL are immutable by construction, and this says so:
  *   - `/assets/*` — Vite writes a content hash into every filename.
  *   - `/${CESIUM_BASE_DIR}/*` — pinned above, so the path moves on upgrade.
+ *   - `/${MODELS_BASE_DIR}/*` — the aircraft GLBs, under a directory named
+ *     after a hash of their own bytes (`MODELS_BASE_DIR`).
+ *   - the hashed webfonts, matched separately by `IMMUTABLE_FONT_RE` below —
+ *     they are hashed per FILE rather than per directory, because
+ *     `fonts.css` names them and has to stay revalidated.
  *
  * Everything else keeps vite's `no-cache`, `index.html` above all: it is the
  * map from those hashed names to content, and a stale copy would pin a visitor
@@ -25472,7 +25583,7 @@ const CESIUM_BASE_DIR_RE = CESIUM_BASE_DIR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'
  *
  * @returns {import('vite').Plugin}
  */
-const IMMUTABLE_ASSET_RE = new RegExp(`^/(?:assets|${CESIUM_BASE_DIR_RE})/`);
+const IMMUTABLE_ASSET_RE = new RegExp(`^/(?:assets|${CESIUM_BASE_DIR_RE}|${MODELS_BASE_DIR})/`);
 /**
  * The vendored webfonts, which live in `public/` and so are not hashed by
  * Vite — `npm run fonts:build` hashes them itself, for exactly this reason.
@@ -26258,7 +26369,7 @@ function withPreviewParity(plugin) {
  * plugins, configures the dev server host/port, and exposes selected
  * API keys to the client as import.meta.env defines.
  */
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   // Load only this checkout's dotenv files. Shell/Keychain values still win,
   // and no sibling workspace is consulted implicitly.
   const loaded = loadEnv(mode, __dirname, '');
@@ -26279,6 +26390,7 @@ export default defineConfig(({ mode }) => {
       // After the cache policy, so a pre-compressed body inherits the `Vary`
       // and `immutable` headers that pass already set on the same URL.
       precompressedAssetsPlugin(),
+      hashedModelsDirPlugin(),
       // `rebuildCesium` is what takes the engine through the module graph
       // instead of a 5.6 MB IIFE script tag — see the note above
       // `stripCesiumFromDocumentPages` for what it bought and what it removed.
@@ -26388,6 +26500,13 @@ export default defineConfig(({ mode }) => {
     define: {
       'import.meta.env.GOOGLE_MAPS_API_KEY': JSON.stringify(env.GOOGLE_MAPS_API_KEY),
       'import.meta.env.CESIUM_ION_TOKEN': JSON.stringify(env.CESIUM_ION_TOKEN),
+      // Where the aircraft GLBs actually live. Keyed on `command`, the same
+      // signal `hashedModelsDirPlugin` applies on, so the directory and the
+      // path that names it can never disagree; `vite dev` serves `public/`
+      // as-is, so dev keeps the plain path.
+      // `src/data/modelAssets.js` reads it through `typeof`, so Node — where
+      // this identifier is simply undefined — falls back to the same `/models`.
+      __GEV_MODELS_BASE__: JSON.stringify(command === 'build' ? `/${MODELS_BASE_DIR}` : '/models'),
     },
     build: {
       // The Cesium engine bundle is inherently large; raise the warning ceiling

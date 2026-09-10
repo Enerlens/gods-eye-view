@@ -14,6 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  MODELS_BASE_DIR,
   acceptsBrotli,
   isCesiumFreePage,
   parseGeoidQuery,
@@ -52,6 +53,16 @@ test('the vendored webfonts may promise a year, because they carry their hash', 
   }
 });
 
+test('the content-hashed aircraft GLBs may promise a year', () => {
+  // 3.5 MB of hangar fleet. Served under `/models/` it is `no-cache`, which
+  // the Cloudflare edge reads as "store nothing" — so every visitor's first
+  // aircraft comes out of Paris, and every redeploy's fresh mtimes invalidate
+  // the weak ETag that would otherwise have made it a 304.
+  for (const p of [`/${MODELS_BASE_DIR}/airplane.glb`, `/${MODELS_BASE_DIR}/b789.glb`]) {
+    assert.equal(staticAssetHeaders(p)['Cache-Control'], 'public, max-age=31536000, immutable', p);
+  }
+});
+
 test('an unhashed font, and the stylesheet that names them, are not frozen', () => {
   // `fonts.css` is to the faces what index.html is to the bundle: the map from
   // stable names to hashed ones. Freezing it would pin a returning visitor to a
@@ -59,6 +70,24 @@ test('an unhashed font, and the stylesheet that names them, are not frozen', () 
   for (const p of ['/fonts/fonts.css', '/fonts/inter-latin.woff2', '/fonts/inter.woff2']) {
     assert.equal(staticAssetHeaders(p)['Cache-Control'], undefined, p);
   }
+});
+
+test('the unhashed model path cannot claim immutability', () => {
+  // The pre-change path, and the one the dev server still serves. If a future
+  // change drops the hashed directory, this fails rather than freezing a
+  // mutable URL for a year.
+  assert.equal(staticAssetHeaders('/models/airplane.glb')['Cache-Control'], undefined);
+});
+
+test('the models directory is named after the bytes it holds', async () => {
+  // The whole promise above rests on this: change a GLB, and the URL moves.
+  const { createHash } = await import('node:crypto');
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const hash = createHash('sha256');
+  for (const name of readdirSync('public/models').filter((f) => f.endsWith('.glb')).sort()) {
+    hash.update(name).update(readFileSync(`public/models/${name}`));
+  }
+  assert.equal(MODELS_BASE_DIR, `models-${hash.digest('hex').slice(0, 8)}`);
 });
 
 test('index.html is never frozen — it is the map to every hashed name', () => {
