@@ -2805,7 +2805,15 @@ export class DataLayerManager {
     for (const layer of layers) {
       const controls = resolved.get(layer.id) || null;
       if (controls?.legend?.length) {
-        mapLegend.push({ layer, entries: controls.legend, surfaceFill: controls.surfaceFill === true });
+        mapLegend.push({
+          layer,
+          entries: controls.legend,
+          surfaceFill: controls.surfaceFill === true,
+          // A5's slot: what a layer had to leave out, and where its marks came
+          // from, printed WITH the key rather than in a panel that ships
+          // collapsed. Optional — a layer with nothing to disclose sends none.
+          note: typeof controls.note === 'string' ? controls.note.trim() : '',
+        });
       }
 
       const row = this._toggleContainer.querySelector(`[data-layer-id="${layer.id}"]`);
@@ -2898,7 +2906,7 @@ export class DataLayerManager {
       note.textContent = SURFACE_FILL_DRAPE_NOTE;
       fragment.appendChild(note);
     }
-    for (const { layer, entries } of groups) {
+    for (const { layer, entries, note } of groups) {
       const group = document.createElement('div');
       group.className = 'map-legend-group';
 
@@ -2944,6 +2952,14 @@ export class DataLayerManager {
 
         entry.append(swatch, text);
         group.appendChild(entry);
+      }
+      // Under the classes, not above them: the classes are what the key is FOR,
+      // and the disclosure qualifies them.
+      if (note) {
+        const line = document.createElement('div');
+        line.className = 'map-legend-note';
+        line.textContent = note;
+        group.appendChild(line);
       }
       fragment.appendChild(group);
     }

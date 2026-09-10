@@ -4,6 +4,22 @@
  * about a facility's capability, occupancy, or operational status.
  */
 
+/**
+ * The Overpass tag filters this layer's features are selected by — the live
+ * proxy's, and the France pack's.
+ *
+ * They live HERE, next to the class map they feed, because two sources now
+ * select these features: `militaryInstallationsProxy` in `vite.config.js` for
+ * the current viewport, and `scripts/build-osm-military-fr.mjs` for the
+ * bundled pack. A mark that one selects and the other does not would appear
+ * and disappear as a viewer crossed the altitude where one hands over to the
+ * other, and `militaryFrancePack.test.mjs` holds the two in step.
+ */
+export const MILITARY_TAG_FILTERS = Object.freeze([
+  '["military"~"^(airfield|naval_base|range|barracks|base)$"]',
+  '["landuse"="military"]',
+]);
+
 const CLASS_BY_MILITARY_TAG = {
   airfield: 'airfield',
   naval_base: 'naval_base',
@@ -135,6 +151,12 @@ export function normalizeMilitaryInstallations(payload, retrievedAt = new Date()
       osmType: type,
       class: klass,
       name: String(tags.name || tags['name:en'] || '').trim() || humanizeInstallationClass(klass),
+      // A1, on the name channel: `name` above falls back to a class label, and
+      // "Military land" is then indistinguishable from a site actually called
+      // that. This says which of the two it is, and the render order uses it —
+      // a surveyed name earns the pixels when a view has more sites than the
+      // cap can draw.
+      named: Boolean(String(tags.name || tags['name:en'] || '').trim()),
       ...point,
       footprint: footprintFrom(element),
       sources: [{ name: 'OpenStreetMap', id: `${type}/${osmId}`, retrievedAt }],

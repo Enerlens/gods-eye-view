@@ -18,46 +18,98 @@ import {
 // sequentially so overlapping renders cannot stack requests on the proxy.
 import { warmFireAnchorFloors } from './fireAnchors.js';
 import { normalizeMilitaryInstallations } from './militaryInstallationData.js';
+import { loadMilitaryFrancePack, recordsInBox } from './militaryFrancePack.js';
 import { militarySiteGlyph } from './militarySiteIcons.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 
 const LAYER_ID = 'military-installations';
 const REQUEST_DEBOUNCE_MS = 500;
+/**
+ * The widest box the LIVE query may ask for — the proxy's own contract, and the
+ * ceiling Overpass can actually serve. It is not, any more, the altitude at
+ * which this layer stops drawing.
+ *
+ * Measured 2026-09-10 against overpass-api.de with these filters: 1.5° answers
+ * in 4 s, 5° in 41 s, 7.5° in 50 s with the geometry dropped, 10° in 84 s. So
+ * this number was never a zoom policy — it was the point past which a request
+ * stopped coming back, and a probe at 7.7° measured the layer failing outright
+ * rather than waiting. Beyond it the map is drawn from the France pack (see
+ * `militaryFrancePack.js`), which needs no request at all, and only OUTSIDE
+ * France does pulling back still mean "zoom in to load".
+ */
 const MAX_VIEWPORT_DEGREES = 10;
 const MAX_RENDERED = 700;
+/**
+ * Which classes survive the render cap — A5, made a rule instead of an accident.
+ *
+ * The cohort used to be cut at 700 in whatever order Overpass answered in, and
+ * over a whole région that is 700 arbitrary marks of which nine in ten are the
+ * fourre-tout. Sorting by class first means the 39 airfields, 11 naval bases and
+ * 149 ranges of the entire French Republic are ALWAYS drawn, and what gets
+ * dropped is the class that says least — which the key states in as many words.
+ *
+ * Named before unnamed inside a class, then OSM id: an order that depends only
+ * on the records themselves, never on the camera, so a mark cannot appear and
+ * disappear as the globe turns (G3).
+ */
+const CLASS_PRIORITY = Object.freeze({
+  airfield: 0, naval_base: 1, range: 2, military_land: 3,
+});
+/**
+ * The class hues, as the plate's FILL.
+ *
+ * Each was lifted a step from the value it shipped with, and the reason is the
+ * mark's geometry rather than a taste for brighter colours: the hue used to be
+ * a thin silhouette floating over the photograph, and it is now a filled disc
+ * with a dark ring and a punched shape inside. A disc that dark reads as a hole
+ * in the imagery; the ring already supplies the contrast, so the fill is free
+ * to carry the hue at the value where hue is actually discriminable.
+ *
+ * B4 is unaffected: the four are DIFFERENTIATING, not ordered, and no reader is
+ * asked to rank them.
+ */
 const COLOR_BY_CLASS = {
-  airfield: '#5aa9ff',
-  naval_base: '#48c7d5',
-  range: '#d9a85d',
-  military_land: '#9ca6b0',
+  airfield: '#6fb8ff',
+  naval_base: '#4fd2e0',
+  range: '#e6b268',
+  military_land: '#a8bacd',
 };
 
 /**
- * On-screen size of a silhouette, and of the same silhouette when it is the
- * selected subject.
+ * On-screen size of a mark, and of the same mark when it is the selected
+ * subject.
  *
- * 24 px, not the 14 to 19 px the address-marker layers draw at: a mark that
- * has to be found before it can be read is a mark that is not doing its job,
- * and these carry a classification, not a decoration.
+ * 28 px, up from 24. The mark is now a plate carrying a punched silhouette, so
+ * its diameter has to hold two things rather than one: the hue that names the
+ * class and the shape inside it. Measured over a real orthophoto, the punch
+ * stops being nameable below ~16 px, which — with the ramp below — is what sets
+ * the nominal size rather than the other way round.
  */
-const GLYPH_PX = 24;
-const SELECTED_GLYPH_PX = 32;
+const GLYPH_PX = 28;
+const SELECTED_GLYPH_PX = 38;
 /**
  * The catch-all, four pixels down.
  *
  * `military_land` takes nine marks in ten and its shield names no subject —
  * only the family. Drawing it at the size of the three classes that DO name one
  * would let the class with the least to say cover the map with the most ink.
- * Size is the one channel left to say "this one says less", now that it is no
- * longer the only mark without a shape.
+ * Size is the one channel left to say "this one says less".
  */
-const CATCH_ALL_GLYPH_PX = 20;
+const CATCH_ALL_GLYPH_PX = 24;
 /**
- * The distance ramp under that size. Near enough to read a rooftop, the glyph
- * is drawn slightly over its nominal size; from the top of the layer's own
- * 10° viewport gate it is back to half, which is roughly the dot it replaced.
+ * The distance ramp under that size — F6, declared rather than inherited.
+ *
+ * The old ramp bottomed out at HALF nominal, which put the catch-all at 10 CSS
+ * px from 60 km up. That is the picture the layer was rebuilt for: on a Gironde
+ * capture at ~50 km, forty sites were 9 px specks the same value as the fields
+ * behind them. The floor is now 0.62 and it is reached at 140 km rather than
+ * 60, so the same view draws 24 px marks and the widest one this layer will
+ * load still draws 17 px — a plate that is found without being hunted for.
+ *
+ * It still ramps, and that is the point of F6: a mark big enough to read over a
+ * rooftop is a blanket over a département.
  */
-const GLYPH_SCALE = Object.freeze({ near: 800, nearValue: 1.1, far: 60_000, farValue: 0.5 });
+const GLYPH_SCALE = Object.freeze({ near: 1_000, nearValue: 1, far: 140_000, farValue: 0.62 });
 /** Key swatch raster. Small, and masked by the panel rather than tinted here. */
 const LEGEND_GLYPH_PX = 32;
 
@@ -144,7 +196,25 @@ const state = {
   viewer: null,
   dataSource: null,
   enabled: false,
+  /**
+   * The cohort on the globe: the live answer merged with the France pack for
+   * the current view, deduplicated by OSM id and ordered by CLASS_PRIORITY.
+   *
+   * Everything downstream — the render cap, `getNearby`, the pick registry, the
+   * count on the row — reads this one array, which is why the pack could be
+   * added without any of them learning that a second source exists.
+   */
   records: [],
+  /** The last bounded Overpass answer, before the pack is folded in. */
+  live: [],
+  /** The France pack, fetched once per session on first enable. */
+  pack: [],
+  packRetrievedAt: '',
+  packLoading: false,
+  /** Cohort size BEFORE the render cap — the N of A5's "n drawn of N". */
+  inViewCount: 0,
+  /** Whether the camera is past the live query's gate and the pack is carrying. */
+  wideView: false,
   recordById: new Map(),
   selectedId: null,
   lastUpdate: null,
@@ -171,6 +241,10 @@ const state = {
    * `state.records` that the globe had not drawn yet.
    */
   legend: [],
+  /** The key's one-line disclosure of provenance and clipping (A5). */
+  legendNote: '',
+  /** What the last paint put on the globe, so a camera settle can skip a repaint. */
+  paintSignature: '',
 };
 
 function colorFor(record) {
@@ -233,15 +307,49 @@ export function installationLegend(records) {
     legend.push({
       label: row.label,
       color: COLOR_BY_CLASS[row.key],
-      // The swatch IS the mark, at key size. Built by the same call the globe
-      // makes, so a silhouette cannot drift between the map and its key.
-      glyph: militarySiteGlyph(row.key, { px: LEGEND_GLYPH_PX }) || undefined,
+      // The swatch IS the mark, at key size, minus the ring the swatch's CSS
+      // mask would flatten into a plain dot (see `militarySiteIcons.js`). Built
+      // by the same call the globe makes, so a shape cannot drift between the
+      // map and its key.
+      glyph: militarySiteGlyph(row.key, { px: LEGEND_GLYPH_PX, key: true }) || undefined,
       blurb: row.blurb,
       count,
     });
   }
 
   return legend;
+}
+
+/**
+ * The key's one-line disclosure: where these marks come from, and what the view
+ * is NOT showing.
+ *
+ * A5 asks two things of any layer that clips — the count and the criterion —
+ * and this layer now has a second thing to declare beside it: past the live
+ * query's gate the marks come from a file with a date on it and no footprints,
+ * which is a different claim from "surveyed just now for this exact view".
+ *
+ * Empty when there is nothing to say: a view whose sites all fit and all came
+ * from the live answer needs no note, and a permanent one would be furniture.
+ *
+ * Pure, so the sentence can be pinned without a globe.
+ *
+ * @param {{drawn:number, inView:number, fromPack:number, packRetrievedAt:string}} counts
+ * @returns {string} French, like the rest of this key. Empty when silent.
+ */
+export function installationKeyNote({ drawn, inView, fromPack, packRetrievedAt }) {
+  const parts = [];
+  if (Number.isFinite(inView) && Number.isFinite(drawn) && inView > drawn) {
+    parts.push(`${drawn} marques sur ${inView} dans la vue — les classes nommées `
+      + '(base aérienne, base navale, champ de tir) passent avant le fourre-tout, '
+      + 'et un site nommé avant un site sans nom.');
+  }
+  if (fromPack > 0 && packRetrievedAt) {
+    parts.push(`${fromPack} viennent du pack France embarqué, relevé OSM du `
+      + `${packRetrievedAt} : un point par site, sans emprise. Zoomez pour `
+      + 'interroger OpenStreetMap en direct et récupérer les contours.');
+  }
+  return parts.join(' ');
 }
 
 /**
@@ -341,6 +449,9 @@ export function installationResponseSaturated(payload) {
 function installationLoadingLabel() {
   if (state.loading) return 'loading mapped installation context';
   if (state.status === 'zoom-in') return 'zoom in to load mapped installation context';
+  // Past the live gate the map is not waiting for anything, and saying "zoom
+  // in" there was the layer asking for a zoom it no longer needs.
+  if (state.wideView && state.records.length) return 'wide view — bundled France pack';
   return '';
 }
 
@@ -351,16 +462,80 @@ function setInstallationStatus(status, error = null) {
   governorRequestRender('installations-status');
 }
 
-function viewportBox(viewer) {
+/**
+ * The view rectangle, at ANY size — what the pack is filtered against.
+ *
+ * Null only when the camera has no rectangle at all (limb in frame) or the box
+ * is degenerate. A wide box is a perfectly good question to ask a local file;
+ * it is only a bad one to ask Overpass, which is what `viewportBox` is for.
+ */
+function displayBox(viewer) {
   const rectangle = viewer?.camera?.computeViewRectangle(viewer.scene.globe.ellipsoid);
   if (!rectangle) return null;
   const south = Cesium.Math.toDegrees(rectangle.south);
   const north = Cesium.Math.toDegrees(rectangle.north);
   const west = Cesium.Math.toDegrees(rectangle.west);
   const east = Cesium.Math.toDegrees(rectangle.east);
-  // Cross-dateline/global views require a zoom before a bounded request.
-  if (!Number.isFinite(south + north + west + east) || east <= west || north - south > MAX_VIEWPORT_DEGREES || east - west > MAX_VIEWPORT_DEGREES) return null;
+  if (!Number.isFinite(south + north + west + east) || east <= west || north <= south) return null;
   return { south, west, north, east };
+}
+
+/**
+ * The box the LIVE request may ask for, or null when the camera is past the
+ * gate — which is now a statement about Overpass, not about the layer.
+ */
+function viewportBox(viewer) {
+  const box = displayBox(viewer);
+  if (!box) return null;
+  // Cross-dateline/global views require a zoom before a bounded request.
+  if (box.north - box.south > MAX_VIEWPORT_DEGREES
+    || box.east - box.west > MAX_VIEWPORT_DEGREES) return null;
+  return box;
+}
+
+/**
+ * Merge the live answer with the pack, and put the result in drawing order.
+ *
+ * The LIVE record wins every collision, and the collision key is the OSM id
+ * both sources carry. That is what keeps a base re-mapped this morning from
+ * being drawn as the pack's month-old point — and, more visibly, what keeps its
+ * footprint, which the pack does not hold.
+ *
+ * Pure, and exported, because the ordering IS the clipping policy: it decides
+ * which 700 of a région's sites reach the globe.
+ *
+ * @param {Array<object>} live Records from the last bounded request.
+ * @param {Array<object>} pack Pack records inside the current view.
+ * @returns {Array<object>} One record per OSM id, in drawing order.
+ */
+export function mergeInstallationCohort(live, pack) {
+  const byId = new Map();
+  for (const record of Array.isArray(pack) ? pack : []) byId.set(record.id, record);
+  for (const record of Array.isArray(live) ? live : []) byId.set(record.id, record);
+  return [...byId.values()].sort((a, b) => {
+    const classDelta = (CLASS_PRIORITY[a.class] ?? 9) - (CLASS_PRIORITY[b.class] ?? 9);
+    if (classDelta) return classDelta;
+    // A named site is a place a reader can look up; an unnamed one is a
+    // polygon. Between two of the same class, the name earns the pixels.
+    const namedDelta = Number(Boolean(b.named)) - Number(Boolean(a.named));
+    if (namedDelta) return namedDelta;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+/**
+ * Rebuild the cohort for the CURRENT camera, without asking anybody anything.
+ *
+ * Called on every camera settle, whenever the live answer lands, and when the
+ * pack finishes loading. Cheap by construction: one pass over the pack (4 086
+ * points) plus a sort of what survives it.
+ */
+function refreshCohort() {
+  const box = displayBox(state.viewer);
+  state.wideView = state.pack.length > 0 && viewportBox(state.viewer) === null;
+  state.records = mergeInstallationCohort(state.live, recordsInBox(state.pack, box));
+  state.inViewCount = state.records.length;
+  state.recordById = new Map(state.records.map((record) => [record.id, record]));
 }
 
 function clearRendered() {
@@ -369,6 +544,7 @@ function clearRendered() {
   // No marks, no key. `renderRecords` clears then repaints, and reinstates the
   // key from the cohort it just drew.
   state.legend = [];
+  state.legendNote = '';
 }
 
 /**
@@ -416,6 +592,12 @@ function renderRecords({ claimSelection = false } = {}) {
   // The key describes THIS cohort, so it is built from the same array the
   // entities come from rather than re-derived later from `state.records`.
   state.legend = installationLegend(drawn);
+  state.legendNote = installationKeyNote({
+    drawn: drawn.length,
+    inView: state.inViewCount,
+    fromPack: drawn.filter((record) => record.pack).length,
+    packRetrievedAt: state.packRetrievedAt,
+  });
   for (const record of drawn) {
     const color = colorFor(record);
     const surfaceHeightM = installationSurfaceHeightM(record);
@@ -438,9 +620,9 @@ function renderRecords({ claimSelection = false } = {}) {
         width: selected ? SELECTED_GLYPH_PX : glyphPx,
         height: selected ? SELECTED_GLYPH_PX : glyphPx,
         color: selected ? Cesium.Color.WHITE : color,
-        // A glyph big enough to read over a rooftop is a blanket over a whole
-        // département: this rides back down toward the speck the layer drew
-        // before it had shapes, exactly as the shared-mobility fleet does.
+        // A mark big enough to read over a rooftop is a blanket over a whole
+        // département, so it rides back down with range — to a FLOOR, never to
+        // a speck. See GLYPH_SCALE for the measurement that set the floor.
         scaleByDistance: new Cesium.NearFarScalar(
           GLYPH_SCALE.near, GLYPH_SCALE.nearValue,
           GLYPH_SCALE.far, GLYPH_SCALE.farValue,
@@ -491,6 +673,10 @@ function renderRecords({ claimSelection = false } = {}) {
     : null;
   if (selectedEntity) selectEntityContext(selectedEntity);
   else state.selectedId = null;
+  // LAST, because the line above can drop a selection that produced no entity:
+  // a signature taken before it would describe a paint that never happened, and
+  // the next camera settle would skip the repaint that fixes it.
+  state.paintSignature = paintSignature();
 }
 
 /**
@@ -617,7 +803,63 @@ function scheduleLoad() {
   // failure, so the backoff step is kept rather than reset.
   clearUnavailableRetry({ resetBackoff: false });
   clearTimeout(state.timer);
-  state.timer = setTimeout(() => { loadInstallations(); }, REQUEST_DEBOUNCE_MS);
+  state.timer = setTimeout(() => {
+    // Repaint FIRST, from the pack and the answer already in hand: a camera
+    // settle changes which sites are in view, and waiting for Overpass to say
+    // so would leave the previous view's marks on screen for seconds — or for
+    // ever, past the gate where no request is made at all.
+    repaintForView();
+    loadInstallations();
+  }, REQUEST_DEBOUNCE_MS);
+}
+
+/**
+ * Rebuild the cohort for the current camera and repaint IF the paint changed.
+ *
+ * The guard matters: this runs on every camera settle, and `renderRecords`
+ * clears and rebuilds up to 700 entities. A pan that moves no site in or out of
+ * view must cost nothing.
+ */
+function repaintForView() {
+  if (!state.enabled || !state.dataSource) return;
+  refreshCohort();
+  const signature = paintSignature();
+  if (signature === state.paintSignature) return;
+  renderRecords();
+}
+
+/**
+ * What the next paint would put on the globe, as one comparable string.
+ *
+ * Source-tagged (`l`/`p`), because a live record and a pack record can share an
+ * OSM id and draw differently — the live one carries a footprint.
+ */
+function paintSignature() {
+  return `${state.selectedId || ''}|${renderableRecords()
+    .map((record) => `${record.pack ? 'p' : 'l'}${record.id}`).join(',')}`;
+}
+
+/**
+ * Fetch the France pack, once per session, the first time the layer is enabled.
+ *
+ * Never on boot: `?url` keeps the ~470 kB out of the bundle, and this keeps it
+ * off the wire for anyone who never opens the layer. A failure is not fatal and
+ * is not retried — the loader logs it and resolves empty, which leaves the
+ * layer exactly as it behaved before the pack existed.
+ */
+function ensureFrancePack() {
+  if (state.pack.length || state.packLoading) return;
+  state.packLoading = true;
+  loadMilitaryFrancePack().then((pack) => {
+    state.packLoading = false;
+    state.pack = pack.records;
+    state.packRetrievedAt = pack.retrievedAt;
+    if (!state.enabled || !state.dataSource) return;
+    repaintForView();
+    // A wide camera never asks for anything, so nothing else would re-read the
+    // status once the pack arrived and put marks on an empty screen.
+    if (state.records.length && state.status === 'zoom-in') setInstallationStatus('ready', null);
+  });
 }
 
 async function loadInstallations() {
@@ -627,6 +869,12 @@ async function loadInstallations() {
     state.abort?.abort();
     state.abort = null;
     state.loading = false;
+    // The pack answers a view this wide with no request at all, so a camera
+    // past the gate is only "zoom in" where the pack has nothing: outside
+    // France, or before it has finished loading. Guarded, because `scheduleLoad`
+    // has already repainted for this same settle — rebuilding 700 entities
+    // twice per camera stop is the kind of cost that reads as a stutter.
+    repaintForView();
     // The status below passes NULL, not a prompt. `setInstallationStatus`'s
     // second argument is `state.error`, and the row renders a non-empty
     // `error` in its fault slot — so that one argument was the whole of
@@ -638,7 +886,7 @@ async function loadInstallations() {
     // that on the source text, because cancelling the retry is what hands
     // re-entry back to moveEnd. Comments go above the pair, never between it.
     clearUnavailableRetry();
-    setInstallationStatus('zoom-in', null);
+    setInstallationStatus(state.records.length ? 'ready' : 'zoom-in', null);
     return;
   }
   state.abort?.abort();
@@ -674,8 +922,8 @@ async function loadInstallations() {
       lon: record.longitude,
     })));
     if (requestAbort.signal.aborted || state.abort !== requestAbort || !state.enabled) return;
-    state.records = records;
-    state.recordById = new Map(state.records.map((record) => [record.id, record]));
+    state.live = records;
+    refreshCohort();
     state.lastUpdate = Date.now();
     state.stale = payload.status === 'stale';
     // Even the exact-viewport retry can saturate in a dense area. Say so rather
@@ -689,7 +937,10 @@ async function loadInstallations() {
         : (saturated ? 'Too many mapped sites in view to list them all' : null),
     );
     renderRecords();
-    warmInstallationFloors(state.records);
+    // The DRAWN cohort, not the loaded one: with the pack folded in, a wide
+    // view holds thousands of records and only 700 of them are on the globe.
+    // A floor for a mark nobody can see is a DEM request nobody asked for.
+    warmInstallationFloors(renderableRecords());
   } catch (error) {
     if (error?.name === 'AbortError') return;
     setInstallationStatus('unavailable', error?.message || 'Installation context unavailable');
@@ -721,12 +972,16 @@ const militaryInstallationsLayer = {
     state.enabled = true;
     registerPickOwner(LAYER_ID, (id) => state.recordById.has(id));
     state.dataSource.show = true;
+    ensureFrancePack();
     // DataLayerManager invokes update() immediately after enable(), which owns
     // the first fetch. Avoid racing it with a second aborting request here.
   },
   disable() {
     state.enabled = false;
     unregisterPickOwner(LAYER_ID);
+    // The pack SURVIVES a disable — it is a file, it cost one fetch, and
+    // switching the layer back on should not pay for it twice.
+    state.paintSignature = '';
     clearUnavailableRetry();
     clearTimeout(state.timer);
     state.abort?.abort();
@@ -818,11 +1073,17 @@ const militaryInstallationsLayer = {
    * `height`, not ground-clamped surfaces, so they do not drape anything.
    */
   getRowControls() {
-    return { legend: state.legend };
+    return { legend: state.legend, note: state.legendNote };
   },
   getStats() {
     return {
       count: state.records.length,
+      /** The two halves of the cohort, so a harness never has to infer them. */
+      liveCount: state.live.length,
+      packCount: state.pack.length,
+      packRetrievedAt: state.packRetrievedAt,
+      inViewCount: state.inViewCount,
+      wideView: state.wideView,
       lastUpdate: state.lastUpdate,
       stale: state.stale,
       saturated: state.saturated,

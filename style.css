@@ -6483,6 +6483,19 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   padding-left: 7px;
 }
 
+/* A5's disclosure line: what a layer had to leave out of the view, and where
+   its marks came from. Sits under the classes it qualifies, and reads as an
+   aside rather than as another class. */
+.map-legend-note {
+  font-size: 9px;
+  line-height: 1.45;
+  letter-spacing: 0.2px;
+  color: rgba(232, 240, 247, 0.6);
+  border-left: 2px solid rgba(0, 212, 255, 0.28);
+  padding-left: 7px;
+  margin-top: 6px;
+}
+
 .map-legend-group {
   display: flex;
   flex-direction: column;

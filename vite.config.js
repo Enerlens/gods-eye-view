@@ -26137,6 +26137,11 @@ const PRECOMPRESSED_CONTENT_TYPES = Object.freeze({
   '.json': 'application/json; charset=utf-8',
   '.geojson': 'application/json; charset=utf-8',
   '.geojsonl': 'application/json; charset=utf-8',
+  // Newline-delimited JSON — the France military pack. Without this entry the
+  // 474 kB file is the one asset in `dist/` served raw: `precompressibleAsset`
+  // is what the build script AND the preview middleware both consult, so an
+  // extension missing here is not a missing optimisation, it is 5× the bytes.
+  '.jsonl': 'application/x-ndjson; charset=utf-8',
   '.wasm': 'application/wasm',
   '.svg': 'image/svg+xml',
   '.xml': 'application/xml',

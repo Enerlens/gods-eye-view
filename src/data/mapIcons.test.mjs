@@ -7,10 +7,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  mapIconArtwork,
   mapIconGeometry,
   mapIconGlyph,
   MAKI_PATHS,
+  MAP_ICON_BOX,
+  MAP_ICON_DEFAULT_BOX,
   MAP_ICON_HALO_COLOR,
+  MAP_ICON_HALO_RATIO,
   MAP_ICON_HALO_STROKE,
   MAP_ICON_VIEW_BOX,
   TEMAKI_PATHS,
@@ -30,20 +34,41 @@ function everyIcon() {
   ];
 }
 
-test('every vendored path is intact and authored in its own 15-unit box', () => {
-  // Both sets author to `0 0 15 15`. Material Symbols authors to 960. A
-  // coordinate above 15 here would be the signature of artwork rescaled into
-  // the wrong space — the one modification both NOTICE files promise did not
-  // happen, and the reason the artwork is still the artwork that was evaluated.
+test('every vendored path is intact and inside the box it declares', () => {
+  // Most of both sets author to `0 0 15 15`; Temaki is not uniform and
+  // publishes `fighter_jet` in 48. A coordinate above the DECLARED box would be
+  // the signature of artwork rescaled into the wrong space — the one
+  // modification both NOTICE files promise did not happen, and the reason the
+  // artwork is still the artwork that was evaluated.
   for (const [set, name, paths] of everyIcon()) {
     assert.ok(paths.length > 0, `${set}/${name} has no paths`);
+    const box = MAP_ICON_BOX[name] || MAP_ICON_DEFAULT_BOX;
     for (const d of paths) {
       assert.match(d, /^M/, `${set}/${name} should start with a moveto`);
       const coords = [...d.matchAll(/-?\d*\.?\d+/g)].map((m) => Math.abs(Number(m[0])));
       assert.ok(coords.length > 20, `${set}/${name} looks truncated`);
-      assert.ok(Math.max(...coords) <= 15, `${set}/${name} escapes the 15-unit box`);
+      assert.ok(Math.max(...coords) <= box, `${set}/${name} escapes its ${box}-unit box`);
+      // And the box is not padded upward to make room: an icon declared at 48
+      // that never leaves 15 units would be a rescale hiding behind a constant.
+      assert.ok(Math.max(...coords) > box / 2, `${set}/${name} declares a box it does not fill`);
     }
   }
+  // Every declared box belongs to an icon that exists.
+  for (const name of Object.keys(MAP_ICON_BOX)) {
+    assert.ok(MAKI_PATHS[name] || TEMAKI_PATHS[name], `${name} declares a box but is not vendored`);
+  }
+});
+
+test('artwork travels with its box, so a caller cannot guess wrong', () => {
+  // `militarySiteIcons.js` punches these silhouettes into a 96-unit plate, and
+  // the transform it needs is a function of the authoring box. Guessing 15 for
+  // the jet draws it at three times the size of the plate that holds it.
+  assert.deepEqual(mapIconArtwork('temaki', 'fighter_jet'), {
+    geometry: mapIconGeometry('temaki', 'fighter_jet'),
+    box: 48,
+  });
+  assert.equal(mapIconArtwork('maki', 'harbor').box, MAP_ICON_DEFAULT_BOX);
+  assert.equal(mapIconArtwork('maki', 'no-such-icon'), null);
 });
 
 test("Temaki's camera keeps its paths separate, or the lens fills in", () => {
@@ -63,10 +88,17 @@ test('the canvas is padded, so the halo is not clipped at the box edge', () => {
   // viewBox, half the halo would fall outside the canvas and the glyph would
   // have a dark outline on three sides and a bare white edge on the fourth.
   assert.equal(MAP_ICON_VIEW_BOX, '-1 -1 17 17');
-  const pad = 1;
-  assert.ok(MAP_ICON_HALO_STROKE / 2 <= pad, 'the padding must cover half the stroke');
   for (const [set, name] of everyIcon()) {
-    assert.match(svgOf(mapIconGlyph(set, name)), /viewBox="-1 -1 17 17"/);
+    const box = MAP_ICON_BOX[name] || MAP_ICON_DEFAULT_BOX;
+    // The padding is a RATIO of the box, so a 48-unit icon is padded by 3.2 and
+    // lands at the same 15/17 fill as every 15-unit one.
+    const pad = box / MAP_ICON_DEFAULT_BOX;
+    const stroke = box === MAP_ICON_DEFAULT_BOX
+      ? MAP_ICON_HALO_STROKE : MAP_ICON_HALO_RATIO * box;
+    assert.ok(stroke / 2 <= pad, `${name}: the padding must cover half the stroke`);
+    const viewBox = box === MAP_ICON_DEFAULT_BOX
+      ? MAP_ICON_VIEW_BOX : `${-pad} ${-pad} ${box + 2 * pad} ${box + 2 * pad}`;
+    assert.ok(svgOf(mapIconGlyph(set, name)).includes(`viewBox="${viewBox}"`), name);
   }
 });
 
@@ -74,10 +106,10 @@ test('the halo matches Material by ratio, so the two sets read as one renderer',
   // `transitVehicleIcons.js` strokes 110 units in a 960 box. A téléphérique and
   // a bus sit on the same screen in that layer, and a halo that differed
   // between them would read as two different renderers rather than one map.
-  const materialRatio = 110 / 960;
-  const ourRatio = MAP_ICON_HALO_STROKE / 15;
-  assert.ok(Math.abs(ourRatio - materialRatio) < 0.005,
-    `halo ratio ${ourRatio} drifted from Material's ${materialRatio}`);
+  assert.equal(MAP_ICON_HALO_RATIO, 110 / 960);
+  const ourRatio = MAP_ICON_HALO_STROKE / MAP_ICON_DEFAULT_BOX;
+  assert.ok(Math.abs(ourRatio - MAP_ICON_HALO_RATIO) < 0.005,
+    `halo ratio ${ourRatio} drifted from Material's ${MAP_ICON_HALO_RATIO}`);
 });
 
 test('every glyph is tint-safe: white artwork, dark halo, no baked hue', () => {

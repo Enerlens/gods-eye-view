@@ -9,7 +9,10 @@ import {
   installationSurfaceHeightM,
   installationWithinViewport,
 } from './militaryInstallations.js';
-import militaryInstallationsLayer from './militaryInstallations.js';
+import militaryInstallationsLayer, {
+  installationKeyNote,
+  mergeInstallationCohort,
+} from './militaryInstallations.js';
 import {
   _clearMeshFloorCellsForTest,
   cachedGroundFloor,
@@ -29,6 +32,17 @@ import {
   installRenderGovernor,
 } from '../renderGovernor.js';
 import * as Cesium from 'cesium';
+import { installViteAssetStubHooks } from '../../scripts/lib/layerManifestSources.mjs';
+import {
+  _resetMilitaryFrancePackForTest,
+  _setMilitaryFrancePackForTest,
+} from './militaryFrancePack.js';
+
+// The layer fetches its France pack through Vite's `?url`, which plain node
+// refuses to resolve. The stub keeps the specifier importable; the seam below
+// keeps every enable in this file from reaching for it.
+installViteAssetStubHooks();
+_setMilitaryFrancePackForTest([]);
 
 test('cheap installation distance prefilter is local and antimeridian-safe', () => {
   const oneDegree = approximateSurfaceDistanceM(0, 0, 0, 1);
@@ -715,6 +729,7 @@ import { installationRetryDelayMs } from './militaryInstallations.js';
 import fs from 'node:fs';
 import { militarySiteGlyph } from './militarySiteIcons.js';
 import { transitVehicleGlyph } from './transitVehicleIcons.js';
+import { mapIconGeometry } from './mapIcons.js';
 
 const installationsSource = fs.readFileSync(
   new URL('./militaryInstallations.js', import.meta.url), 'utf8');
@@ -739,11 +754,15 @@ test('the zoom prompt travels as guidance, never as an error', () => {
   // fault slot. Passing the zoom prompt there was the whole of "Sites
   // militaires shows Loaded Error": the layer was correctly zoom-gated at a
   // country-wide camera and looked broken for it.
+  //
+  // The call gained a condition when the France pack landed — past the gate the
+  // layer draws the pack and reports READY — but the second argument is the
+  // whole point of this test and it is still null.
   assert.match(installationsSource,
-    /setInstallationStatus\('zoom-in', null\)/,
+    /setInstallationStatus\(state\.records\.length \? 'ready' : 'zoom-in', null\)/,
     'the zoom gate must not write a prompt into state.error');
   assert.doesNotMatch(installationsSource,
-    /setInstallationStatus\('zoom-in', ['"`]/,
+    /'zoom-in',\s*['"`][^)]/,
     'no string may be passed as the error argument of the zoom gate');
   // And the prompt still has somewhere to be seen.
   assert.match(installationsSource,
@@ -759,7 +778,7 @@ test('the retry is wired to every lifecycle edge, not just declared', () => {
     /clearUnavailableRetry\(\);\n\s*setInstallationStatus\(\n?\s*state\.records\.length/,
     'a successful load clears the pending retry and resets the backoff');
   assert.match(installationsSource,
-    /clearUnavailableRetry\(\);\n\s*setInstallationStatus\('zoom-in'/,
+    /clearUnavailableRetry\(\);\n\s*setInstallationStatus\(state\.records\.length \? 'ready' : 'zoom-in'/,
     'zooming out of range cancels the retry — moveEnd owns re-entry there');
   assert.match(installationsSource, /disable\(\) \{[^]*?clearUnavailableRetry\(\);/,
     'disabling the layer cancels the retry');
@@ -828,7 +847,7 @@ test('a late repaint yields to a newer selection from another layer', async () =
 function selectedEntityCount(run) {
   const value = (property) => (property?.getValue?.() ?? property);
   return run.entities().filter((entity) => value(entity.point?.pixelSize) === 13
-    || value(entity.billboard?.width) === 32).length;
+    || value(entity.billboard?.width) === 38).length;
 }
 
 // ── The on-map key ─────────────────────────────────────────────────────────
@@ -888,7 +907,7 @@ test('installation legend swatches are the colours the map actually paints', () 
   ]);
   assert.deepEqual(
     legend.map((entry) => entry.color),
-    ['#5aa9ff', '#48c7d5', '#d9a85d', '#9ca6b0'],
+    ['#6fb8ff', '#4fd2e0', '#e6b268', '#a8bacd'],
   );
   // The rows must READ COLOR_BY_CLASS rather than restate it, or a hue can
   // drift between the map and its own key.
@@ -984,13 +1003,21 @@ test('a site is drawn as its class, and the catch-all weighs less than the rest'
     const land = byName.get('Camp');
 
     assert.match(value(naval.billboard?.image), /^data:image\/svg\+xml;base64,/);
-    assert.equal(naval.point, undefined, 'a silhouette and a dot on one anchor read as two marks');
+    assert.equal(naval.point, undefined, 'a mark and a dot on one anchor read as two marks');
     assert.notEqual(value(land.billboard?.image), value(naval.billboard.image));
 
     // The class that names a subject is drawn larger than the one that only
     // names the family — nine marks in ten are that fourre-tout.
-    assert.equal(value(naval.billboard.width), 24);
-    assert.equal(value(land.billboard.width), 20);
+    assert.equal(value(naval.billboard.width), 28);
+    assert.equal(value(land.billboard.width), 24);
+
+    // F6, and the complaint that rebuilt this pack: the ramp still shrinks the
+    // mark with range, but its FLOOR is a plate a reader can find, not the 10 px
+    // speck the old 0.5 floor produced over the Gironde.
+    const ramp = value(naval.billboard.scaleByDistance);
+    assert.ok(ramp.farValue >= 0.6, `floor ${ramp.farValue} puts the mark back under 18 px`);
+    assert.ok(ramp.far >= 120000, 'the floor must not be reached at city range');
+    assert.ok(ramp.farValue < ramp.nearValue, 'a mark that never shrinks blankets a département');
   } finally {
     run.restore();
   }
@@ -1001,8 +1028,13 @@ test('the key swatch is the same artwork the globe paints', () => {
     const [row] = installationLegend([legendRecord(klass)]);
     // Same builder, one raster size apart: a swatch that were built from its
     // own drawing could show a class the map does not.
-    assert.equal(row.glyph, militarySiteGlyph(klass, { px: 32 }));
+    assert.equal(row.glyph, militarySiteGlyph(klass, { px: 32, key: true }));
     assert.notEqual(row.glyph, militarySiteGlyph(klass));
+    // The key's variant is the map mark MINUS its ring: a CSS mask reads alpha,
+    // and an opaque ring would flatten every class into the same plain dot.
+    const decode = (uri) => Buffer.from(String(uri).split(',')[1], 'base64').toString('utf8');
+    assert.doesNotMatch(decode(row.glyph), /rgba\(0,0,0,0\.86\)/);
+    assert.match(decode(militarySiteGlyph(klass, { px: 32 })), /rgba\(0,0,0,0\.86\)/);
   }
 });
 
@@ -1021,8 +1053,84 @@ test('the silhouettes are distinct artwork, and the borrowed ones are not a seco
   const drawn = ['airfield', 'naval_base', 'range', 'military_land']
     .map((klass) => militarySiteGlyph(klass));
   assert.equal(new Set(drawn).size, 4, 'two classes must never share one silhouette');
-  // Borrowed through the transit pack's own door. A vendored path copied into
+  // Borrowed through the CC0 map pack's own door. A vendored path copied into
   // this layer would pass every other test here and drift from the original.
-  assert.equal(militarySiteGlyph('airfield'), transitVehicleGlyph('air'));
-  assert.equal(militarySiteGlyph('naval_base'), transitVehicleGlyph('ferry'));
+  const decode = (uri) => Buffer.from(String(uri).split(',')[1], 'base64').toString('utf8');
+  assert.ok(decode(militarySiteGlyph('airfield'))
+    .includes(mapIconGeometry('temaki', 'fighter_jet')), 'the air base must punch Temaki\'s jet');
+  assert.ok(decode(militarySiteGlyph('naval_base'))
+    .includes(mapIconGeometry('maki', 'harbor')), 'the naval base must punch Maki\'s anchor');
+  // And never the transit pack's civil vehicles, which is what it punched
+  // before: an airliner names a civil aerodrome, a ferry names a passenger boat.
+  assert.notEqual(militarySiteGlyph('airfield'), transitVehicleGlyph('air'));
+  assert.notEqual(militarySiteGlyph('naval_base'), transitVehicleGlyph('ferry'));
+});
+
+
+// ── The France pack, and what it lets the layer draw past the live gate ──────
+
+test('the live answer wins the merge, and the pack fills the rest of the view', () => {
+  // Same OSM id from both sources. The live record is the one with a footprint
+  // and the one surveyed for THIS view, so it must be the one drawn — a pack
+  // point winning would silently drop a base's outline the moment it loaded.
+  const live = [{ id: 'osm:way:1', class: 'military_land', named: true, footprint: [[0, 0]] }];
+  const pack = [
+    { id: 'osm:way:1', class: 'military_land', named: true, pack: true },
+    { id: 'osm:way:2', class: 'airfield', named: false, pack: true },
+  ];
+  const cohort = mergeInstallationCohort(live, pack);
+  assert.equal(cohort.length, 2, 'one record per OSM id');
+  assert.equal(cohort.find((one) => one.id === 'osm:way:1').pack, undefined);
+  assert.ok(cohort.find((one) => one.id === 'osm:way:1').footprint);
+});
+
+test('the render cap drops the fourre-tout, never the classes that name a subject', () => {
+  // A5, as an order rather than an accident: the cohort used to be cut at 700
+  // in whatever order Overpass answered in, so a région-wide view kept 700
+  // arbitrary marks of which nine in ten said only "military".
+  const cohort = mergeInstallationCohort([], [
+    { id: 'osm:way:9', class: 'military_land', named: true },
+    { id: 'osm:way:8', class: 'range', named: false },
+    { id: 'osm:way:7', class: 'naval_base', named: false },
+    { id: 'osm:way:6', class: 'airfield', named: false },
+    { id: 'osm:way:5', class: 'airfield', named: true },
+  ]);
+  assert.deepEqual(cohort.map((one) => one.class),
+    ['airfield', 'airfield', 'naval_base', 'range', 'military_land']);
+  // Named first inside a class: a name is something a reader can look up.
+  assert.equal(cohort[0].id, 'osm:way:5');
+  // And the order depends on the records alone — never on the camera, or a
+  // mark would come and go as the globe turned (G3).
+  assert.deepEqual(mergeInstallationCohort([], [...cohort].reverse()).map((one) => one.id),
+    cohort.map((one) => one.id));
+});
+
+test('the key declares what the view is not showing, and stays silent otherwise', () => {
+  // A5 wants two things from a layer that clips: the count and the criterion.
+  const clipped = installationKeyNote({
+    drawn: 700, inView: 2400, fromPack: 700, packRetrievedAt: '2026-09-10',
+  });
+  assert.match(clipped, /700 marques sur 2400/);
+  assert.match(clipped, /nommées/, 'the criterion must be stated, not just the count');
+  assert.match(clipped, /2026-09-10/, 'a mark from a file dates from the day of that file');
+  assert.match(clipped, /sans emprise/, 'the pack has no footprints and must say so');
+
+  // Nothing clipped, nothing from the pack: a permanent note would be furniture.
+  assert.equal(installationKeyNote({
+    drawn: 12, inView: 12, fromPack: 0, packRetrievedAt: '2026-09-10',
+  }), '');
+});
+
+test('the pack is fetched on enable, once, and never on boot', () => {
+  // `?url` keeps ~470 kB out of the bundle; a DYNAMIC import keeps even the URL
+  // off the boot path, so a visitor who never opens this layer never pays.
+  const packSource = fs.readFileSync(new URL('./militaryFrancePack.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(packSource, /^import .*military-fr\.jsonl/m,
+    'a static asset import would put the pack in the boot graph');
+  assert.match(packSource, /await import\('\.\/local_data\/military\/military-fr\.jsonl\?url'\)/);
+  assert.match(installationsSource, /enable\(\) \{[^]*?ensureFrancePack\(\);/,
+    'the pack is requested when the layer is switched on');
+  assert.match(installationsSource,
+    /function ensureFrancePack\(\) \{\n\s*if \(state\.pack\.length \|\| state\.packLoading\) return;/,
+    'a second enable must not re-fetch the pack');
 });

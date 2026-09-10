@@ -17,16 +17,22 @@ the same reason `DATA_SOURCES.md` records where every feed comes from — and
 because it lets a reader audit the claims below without cloning the upstream
 repository.
 
-WHAT WAS TAKEN. One glyph, in one module.
+WHAT WAS TAKEN. Two glyphs, held in one module.
 
-`src/data/mapIcons.js` holds the artwork; `src/data/cctv.js` draws it:
+`src/data/mapIcons.js` holds the artwork:
 
-    security_camera — the surveillance-camera billboard.
+    security_camera — the surveillance-camera billboard, drawn by
+                      `src/data/cctv.js`.
+
+    fighter_jet     — `military=airfield`, drawn by
+                      `src/data/militarySiteIcons.js`.
 
 Temaki is the icon set of the OpenStreetMap iD editor and covers subjects no
-interface icon set does; a wall-mounted surveillance camera is one of them.
-Material Symbols has no such glyph, and the drawing it replaced was this
-project's own.
+interface icon set does; a wall-mounted surveillance camera is one of them, and
+so is a combat aircraft. Material Symbols has neither: what `security_camera`
+replaced was this project's own drawing, and what `fighter_jet` replaced was
+Material's `flight` — an airliner, which is the right glyph for the civil
+aerodrome pack next door and the wrong one for an air base.
 
 WHY IT REPLACED THAT DRAWING. Not taste — a colour bug.
 
@@ -39,10 +45,17 @@ layer always intended.
 
 WHAT WAS CHANGED. No coordinate.
 
-Only the `d` path strings are vendored, in Temaki's own `0 0 15 15` space, NOT
-rescaled. Temaki publishes this icon as three sibling paths — a body, a wall
-bracket, and a hood whose lens is a counter-wound subpath — and they are kept
-whole, in order, and are never merged: merging them would fill the lens.
+Only the `d` path strings are vendored, in Temaki's own space, NOT rescaled.
+Temaki is not uniform about that space: `security_camera` is published in
+`0 0 15 15` and `fighter_jet` in `0 0 48 48`. Each box is DECLARED
+(`MAP_ICON_BOX` in `src/data/mapIcons.js`) rather than normalised, because
+rescaling is a redraw and a redraw is no longer the artwork that was evaluated;
+everything downstream — the padded viewBox, the halo width, the transform that
+fits a silhouette into a 96-unit plate — is expressed as a ratio of that box.
+
+Temaki publishes the camera as three sibling paths — a body, a wall bracket, and
+a hood whose lens is a counter-wound subpath — and they are kept whole, in
+order, and are never merged: merging them would fill the lens.
 
 At render time each path is drawn TWICE by this project: once as a wide dark
 stroke (a halo, so the glyph stays readable over pale terrain) and once as a
