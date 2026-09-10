@@ -38,9 +38,12 @@ test('Cockpit has one reset action beside its bottom exit path', () => {
   const actions = html.match(/<div class="global-context-actions"[\s\S]*?<\/div>/);
   assert.ok(actions, 'Contact Context actions are missing');
   assert.ok(
-    actions[0].indexOf('id="cockpit-entry"') < actions[0].indexOf('id="installations-search-btn"'),
-    'Cockpit must precede Search Nearby Sites',
+    actions[0].indexOf('id="cockpit-entry"') < actions[0].indexOf('id="flight-route-btn"'),
+    'Cockpit must precede Show Route',
   );
+  // SEARCH NEARBY SITES was removed with the Google Places path (2026-09-10);
+  // this row must not grow a control back without one being wired.
+  assert.doesNotMatch(actions[0], /id="installations-search-btn"/);
   assert.match(
     css,
     /body\.cockpit-mode #view-switcher \{[\s\S]*?bottom: max\(clamp\(128px, 15vh, 150px\), env\(safe-area-inset-bottom\)\);[\s\S]*?margin-bottom: -95px;/,

@@ -735,8 +735,6 @@ async function main() {
       const originalContextMode = styleManager._contextMode;
       const originalSnapshot = styleManager._contextSessionSnapshot;
       const originalShowToast = styleManager._showToast;
-      const installations = dataManager.layers.get('military-installations')?.module;
-      const originalSearchNearby = installations?.searchNearby;
       try {
         dataManager.setEnabled = async () => false;
         document.getElementById('radio-enable-btn').click();
@@ -1048,43 +1046,6 @@ async function main() {
           toastMessages: unrelatedToastMessages,
         };
 
-        dataManager.setEnabled = async (layerId, shouldEnable) => {
-          if (layerId === 'military-installations' && shouldEnable) return false;
-          return true;
-        };
-        document.getElementById('installations-search-btn').click();
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        const installationFalseMessage = document.getElementById('toast').textContent;
-        const installationFalseReleased = !document.getElementById('installations-search-btn').disabled;
-
-        dataManager.setEnabled = async (layerId, shouldEnable) => {
-          if (layerId === 'military-installations' && shouldEnable) {
-            throw new Error('QA installation enable rejection');
-          }
-          return true;
-        };
-        document.getElementById('installations-search-btn').click();
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        const installationEnableRejectionMessage = document.getElementById('toast').textContent;
-        const installationEnableRejectionReleased = !document.getElementById('installations-search-btn').disabled;
-
-        dataManager.setEnabled = async (layerId, shouldEnable) => {
-          if (layerId === 'military-installations' && shouldEnable) enabled.add(layerId);
-          return true;
-        };
-        if (installations) installations.searchNearby = async () => {
-          throw new Error('QA installation search rejection');
-        };
-        document.getElementById('installations-search-btn').click();
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        const installationRejectionMessage = document.getElementById('toast').textContent;
-        const installationRejectionReleased = !document.getElementById('installations-search-btn').disabled;
-
-        if (installations) installations.searchNearby = async () => false;
-        document.getElementById('installations-search-btn').click();
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        const installationSearchFalseMessage = document.getElementById('toast').textContent;
-        const installationSearchFalseReleased = !document.getElementById('installations-search-btn').disabled;
         await new Promise((resolve) => setTimeout(resolve, 0));
         return {
           semanticFalseMessage,
@@ -1094,14 +1055,6 @@ async function main() {
           directActivationRollbackFailures,
           contextExitFailures,
           unrelatedManagerFailure,
-          installationFalseMessage,
-          installationFalseReleased,
-          installationEnableRejectionMessage,
-          installationEnableRejectionReleased,
-          installationRejectionMessage,
-          installationRejectionReleased,
-          installationSearchFalseMessage,
-          installationSearchFalseReleased,
           unhandled,
         };
       } finally {
@@ -1115,12 +1068,11 @@ async function main() {
         styleManager._contextMode = originalContextMode;
         styleManager._contextSessionSnapshot = originalSnapshot;
         styleManager._showToast = originalShowToast;
-        if (installations) installations.searchNearby = originalSearchNearby;
         window.removeEventListener('unhandledrejection', onUnhandled);
       }
     });
     check(
-      'user-facing chip, real Context entry rollback, and installation Search failures settle safely',
+      'user-facing chip and real Context entry rollback failures settle safely',
       userFacingFailures.semanticFalseMessage === 'Radio could not stop cleanly'
         && userFacingFailures.contextFailures.length === 8
         && userFacingFailures.contextFailures.every((failure) => (
@@ -1176,14 +1128,6 @@ async function main() {
         && userFacingFailures.unrelatedManagerFailure.result === false
         && userFacingFailures.unrelatedManagerFailure.toastMessages.length === 1
         && userFacingFailures.unrelatedManagerFailure.toastMessages[0].includes('qa-unrelated-manager-failure could not start cleanly')
-        && userFacingFailures.installationFalseMessage.includes('could not be refreshed')
-        && userFacingFailures.installationFalseReleased
-        && userFacingFailures.installationEnableRejectionMessage.includes('could not be refreshed')
-        && userFacingFailures.installationEnableRejectionReleased
-        && userFacingFailures.installationRejectionMessage.includes('could not be refreshed')
-        && userFacingFailures.installationRejectionReleased
-        && userFacingFailures.installationSearchFalseMessage.includes('could not be refreshed')
-        && userFacingFailures.installationSearchFalseReleased
         && userFacingFailures.unhandled.length === 0,
       JSON.stringify(userFacingFailures),
     );

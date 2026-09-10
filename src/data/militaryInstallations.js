@@ -18,30 +18,62 @@ import {
 // sequentially so overlapping renders cannot stack requests on the proxy.
 import { warmFireAnchorFloors } from './fireAnchors.js';
 import { normalizeMilitaryInstallations } from './militaryInstallationData.js';
+import { militarySiteGlyph } from './militarySiteIcons.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 
 const LAYER_ID = 'military-installations';
 const REQUEST_DEBOUNCE_MS = 500;
 const MAX_VIEWPORT_DEGREES = 10;
 const MAX_RENDERED = 700;
-const GOOGLE_MILITARY_PLACE_TYPES = new Set(['military_base']);
 const COLOR_BY_CLASS = {
   airfield: '#5aa9ff',
   naval_base: '#48c7d5',
   range: '#d9a85d',
   military_land: '#9ca6b0',
-  places_candidate: '#c58cff',
 };
+
+/**
+ * On-screen size of a silhouette, and of the same silhouette when it is the
+ * selected subject.
+ *
+ * 24 px, not the 14 to 19 px the address-marker layers draw at: a mark that
+ * has to be found before it can be read is a mark that is not doing its job,
+ * and these carry a classification, not a decoration.
+ */
+const GLYPH_PX = 24;
+const SELECTED_GLYPH_PX = 32;
+/**
+ * The catch-all, four pixels down.
+ *
+ * `military_land` takes nine marks in ten and its shield names no subject —
+ * only the family. Drawing it at the size of the three classes that DO name one
+ * would let the class with the least to say cover the map with the most ink.
+ * Size is the one channel left to say "this one says less", now that it is no
+ * longer the only mark without a shape.
+ */
+const CATCH_ALL_GLYPH_PX = 20;
+/**
+ * The distance ramp under that size. Near enough to read a rooftop, the glyph
+ * is drawn slightly over its nominal size; from the top of the layer's own
+ * 10° viewport gate it is back to half, which is roughly the dot it replaced.
+ */
+const GLYPH_SCALE = Object.freeze({ near: 800, nearValue: 1.1, far: 60_000, farValue: 0.5 });
+/** Key swatch raster. Small, and masked by the panel rather than tinted here. */
+const LEGEND_GLYPH_PX = 32;
 
 /**
  * The colour rows of the on-map key, in reading order.
  *
  * D1 makes a key mandatory wherever a mark carries a claim a reader cannot
- * otherwise decode, and this layer spent FIVE hues on classification with no
- * key anywhere: `getRowControls()` was simply never implemented, while 49 other
- * layers publish one. The purple was the expensive omission — it is the only
- * thing on screen separating "OpenStreetMap maps this as military" from
- * "Google returned a place whose name looked like it", and it said so nowhere.
+ * otherwise decode, and this layer classified on hue alone with no key
+ * anywhere: `getRowControls()` was simply never implemented, while 49 other
+ * layers publish one.
+ *
+ * There were FIVE rows once. The fifth was purple, and it stood for a Google
+ * Places text search for the words "military installation" — a NAME match, not
+ * a survey, which is why it needed a row explaining it was not one. That whole
+ * path is gone (2026-09-10): every row here now comes from an OpenStreetMap
+ * tag, and the key no longer has to warn anybody about one of its own classes.
  *
  * The catch-all row goes last among the MAPPED classes because that is what it
  * is, and its blurb has to say so: measured 2026-09-10 on four French
@@ -81,14 +113,6 @@ const LEGEND_CLASSES = Object.freeze([
       + 'fournie — 39 des 44 objets de la rade de Toulon, 68 des 69 de l’ouest '
       + 'parisien. Une pastille grise ne dit donc presque rien de ce qu’elle '
       + 'marque ; la fiche, si.',
-  }),
-  Object.freeze({
-    key: 'places_candidate',
-    label: 'Candidat Google Places',
-    blurb: 'Résultat du bouton SEARCH NEARBY SITES, non vérifié, et rien ici ne '
-      + 'vient d’OpenStreetMap. Google ne publie aucun type militaire '
-      + 'exploitable, donc un nom qui ressemble suffit à poser la pastille : '
-      + 'ce n’est pas une revendication de site militaire.',
   }),
 ]);
 
@@ -138,7 +162,6 @@ const state = {
   moveEndRemove: null,
   clickHandler: null,
   timer: null,
-  googleSearchRequested: false,
   /**
    * The on-map key for the CURRENT paint, rebuilt by `renderRecords` and only
    * there. The panel asks every enabled layer for its controls on each refresh
@@ -152,24 +175,6 @@ const state = {
 
 function colorFor(record) {
   return Cesium.Color.fromCssColorString(COLOR_BY_CLASS[record.class] || '#9ca6b0');
-}
-
-/**
- * Classify a Places text-search result without turning a name match into a
- * mapped military-land claim. Google currently has no documented military
- * Places type, so ordinary results remain visually distinct candidates; the
- * explicit branch is retained for any source response that does carry one.
- * @param {object} place Google Places result.
- * @returns {string|null} Installation class, or null when not authoritative.
- */
-export function classifyGoogleMilitaryPlace(place) {
-  const types = new Set([
-    place?.primaryType,
-    ...(Array.isArray(place?.types) ? place.types : []),
-  ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
-  return [...types].some((type) => GOOGLE_MILITARY_PLACE_TYPES.has(type))
-    ? 'military_land'
-    : 'places_candidate';
 }
 
 /** @param {object} record @returns {string} Human-readable source attribution. */
@@ -188,8 +193,8 @@ export function installationSourceLabel(record) {
  * the loaded set would keep claiming sites that are nowhere on screen — the
  * same lie `airportTierLegend` refuses to tell about a hidden tier.
  *
- * A class with nothing drawn gets no row. The five are a closed set (see
- * CLASS_BY_MILITARY_TAG and `classifyGoogleMilitaryPlace`), and
+ * A class with nothing drawn gets no row. The four are a closed set (see
+ * CLASS_BY_MILITARY_TAG), and
  * `militaryInstallations.test.mjs` holds them closed — a sixth class added
  * upstream would otherwise draw dots with no row to explain them, which is the
  * exact hole this key was written to fill.
@@ -204,8 +209,13 @@ export function installationSourceLabel(record) {
  * leaving the key for what no form says, which is the colour. A second legend
  * in the same panel does not get to answer that differently.
  *
+ * STILL NO SHAPE ROW, now that four classes carry a silhouette. The glyph rides
+ * INSIDE the colour row it belongs to — the swatch is the mark at key size —
+ * so the class is named once, with both of its channels on the same line. A
+ * separate list of shapes would be the same five classes printed twice.
+ *
  * @param {Array<object>} records The records this paint put on the globe.
- * @returns {Array<{label:string,color:string,blurb:string,count:number}>}
+ * @returns {Array<{label:string,color:string,glyph:?string,blurb:string,count:number}>}
  */
 export function installationLegend(records) {
   const drawn = Array.isArray(records) ? records : [];
@@ -223,6 +233,9 @@ export function installationLegend(records) {
     legend.push({
       label: row.label,
       color: COLOR_BY_CLASS[row.key],
+      // The swatch IS the mark, at key size. Built by the same call the globe
+      // makes, so a silhouette cannot drift between the map and its key.
+      glyph: militarySiteGlyph(row.key, { px: LEGEND_GLYPH_PX }) || undefined,
       blurb: row.blurb,
       count,
     });
@@ -411,12 +424,32 @@ function renderRecords({ claimSelection = false } = {}) {
       record.latitude,
       surfaceHeightM,
     );
+    const selected = record.id === state.selectedId;
+    const glyph = militarySiteGlyph(record.class);
+    const glyphPx = record.class === 'military_land' ? CATCH_ALL_GLYPH_PX : GLYPH_PX;
     const entity = state.dataSource.entities.add({
       id: record.id,
       position: displayPosition,
-      point: {
-        pixelSize: record.id === state.selectedId ? 13 : 9,
-        color: record.id === state.selectedId ? Cesium.Color.WHITE : color,
+      // Every class the normalizer emits has a silhouette; the pastille below
+      // is the fallback for a class that arrives without one. The two are
+      // exclusive — a glyph over its own dot reads as two marks on one anchor.
+      billboard: glyph ? {
+        image: glyph,
+        width: selected ? SELECTED_GLYPH_PX : glyphPx,
+        height: selected ? SELECTED_GLYPH_PX : glyphPx,
+        color: selected ? Cesium.Color.WHITE : color,
+        // A glyph big enough to read over a rooftop is a blanket over a whole
+        // département: this rides back down toward the speck the layer drew
+        // before it had shapes, exactly as the shared-mobility fleet does.
+        scaleByDistance: new Cesium.NearFarScalar(
+          GLYPH_SCALE.near, GLYPH_SCALE.nearValue,
+          GLYPH_SCALE.far, GLYPH_SCALE.farValue,
+        ),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      } : undefined,
+      point: glyph ? undefined : {
+        pixelSize: selected ? 13 : 9,
+        color: selected ? Cesium.Color.WHITE : color,
         outlineColor: Cesium.Color.BLACK.withAlpha(0.8),
         outlineWidth: 1,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -439,9 +472,7 @@ function renderRecords({ claimSelection = false } = {}) {
     registerEntityContext(entity, {
       id: record.id,
       layerId: LAYER_ID,
-      layerName: record.kind === 'place_candidate'
-        ? 'Military Site Search Candidates'
-        : 'Mapped Military Installations',
+      layerName: 'Mapped Military Installations',
       source: installationSourceLabel(record),
       label: record.name,
       latitude: record.latitude,
@@ -638,46 +669,6 @@ async function loadInstallations() {
     // was actually asked for so nothing off-screen reaches the map or the
     // "current viewport only" context claim.
     const records = normalized.records.filter((record) => installationWithinViewport(record, box));
-    let placesError = null;
-    if (state.googleSearchRequested) {
-      state.googleSearchRequested = false;
-      const latitude = (box.south + box.north) / 2;
-      const longitude = (box.west + box.east) / 2;
-      const radiusM = Math.min(50000, Math.max(1000, Math.round(Math.max(box.north - box.south, box.east - box.west) * 55_000)));
-      try {
-        const placesResponse = await fetch(`/api/google/text-search?${new URLSearchParams({
-          q: 'military installation', lat: latitude.toFixed(5), lon: longitude.toFixed(5), radiusM: String(radiusM),
-        })}`, { signal: requestAbort.signal });
-        const placesPayload = await placesResponse.json();
-        if (!placesResponse.ok) throw new Error(placesPayload?.error || `Google Places HTTP ${placesResponse.status}`);
-        const seen = new Set(records.map((record) => `${record.name.toLowerCase()}|${record.latitude.toFixed(3)}|${record.longitude.toFixed(3)}`));
-        for (const place of Array.isArray(placesPayload?.places) ? placesPayload.places : []) {
-          if (!place?.id || !place?.name || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) continue;
-          const placeClass = classifyGoogleMilitaryPlace(place);
-          const signature = `${String(place.name).toLowerCase()}|${place.latitude.toFixed(3)}|${place.longitude.toFixed(3)}`;
-          if (seen.has(signature)) continue;
-          seen.add(signature);
-          const retrievedAt = new Date().toISOString();
-          records.push({
-            id: `google:${place.id}`,
-            kind: placeClass === 'military_land' ? 'installation' : 'place_candidate',
-            class: placeClass,
-            name: String(place.name).trim(),
-            latitude: place.latitude,
-            longitude: place.longitude,
-            footprint: null,
-            primaryType: place.primaryType || null,
-            placeTypes: Array.isArray(place.types) ? place.types : [],
-            sources: [{ name: 'Google Maps Places', id: place.id, retrievedAt }],
-            validation: 'unreviewed',
-            retrievedAt,
-          });
-        }
-      } catch (error) {
-        if (error?.name === 'AbortError') return;
-        placesError = 'Google Places search unavailable; showing mapped sites';
-      }
-    }
     await resolveGroundFloorCellsBounded(records.map((record) => ({
       lat: record.latitude,
       lon: record.longitude,
@@ -695,7 +686,7 @@ async function loadInstallations() {
       state.records.length ? (state.stale ? 'stale' : 'ready') : 'empty',
       payload.status === 'stale'
         ? 'Serving cached mapped context'
-        : (saturated ? 'Too many mapped sites in view to list them all' : placesError),
+        : (saturated ? 'Too many mapped sites in view to list them all' : null),
     );
     renderRecords();
     warmInstallationFloors(state.records);
@@ -716,7 +707,7 @@ const militaryInstallationsLayer = {
   id: LAYER_ID,
   name: 'Mapped Installations',
   icon: '⌖',
-  source: 'OpenStreetMap + optional Google Maps Places',
+  source: 'OpenStreetMap',
   updateInterval: 0,
   statsRefreshInterval: 1000,
   init(viewer) {
@@ -746,11 +737,6 @@ const militaryInstallationsLayer = {
     state.selectedId = null;
   },
   update() { return loadInstallations(); },
-  /** Request a one-shot Google Maps Places search around the current map view. */
-  searchNearby() {
-    state.googleSearchRequested = true;
-    return loadInstallations();
-  },
   destroy(viewer) {
     this.disable();
     state.moveEndRemove?.();
@@ -823,8 +809,8 @@ const militaryInstallationsLayer = {
     return true;
   },
   /**
-   * The on-map key. No chips: this layer's one control is the SEARCH NEARBY
-   * SITES button in the panel, and an informational chip would render as a
+   * The on-map key. No chips: this layer has no control left to publish since
+   * the Places search was removed, and an informational chip would render as a
    * button that looks pressable and does nothing.
    *
    * `surfaceFill` stays unset on purpose. That flag mounts the shared drape

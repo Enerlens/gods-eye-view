@@ -222,7 +222,6 @@ let transitFranceLayer = ABSENT_LAYER;
 let sharedMobilityFranceLayer = ABSENT_LAYER;
 let aisLiveVesselsLayer = ABSENT_LAYER;
 let militaryAwarenessLayer = ABSENT_LAYER;
-let militaryInstallationsLayer = ABSENT_LAYER;
 let rocketLaunchesLayer = ABSENT_LAYER;
 
 /**
@@ -248,7 +247,6 @@ function bindCockpitLayers(dataManager) {
   sharedMobilityFranceLayer = bind('shared-mobility-fr');
   aisLiveVesselsLayer = bind('ais-live-vessels');
   militaryAwarenessLayer = bind('military-awareness');
-  militaryInstallationsLayer = bind('military-installations');
   rocketLaunchesLayer = bind('rocket-launches');
   // The order the detection overlay was given at construction, preserved: it
   // decides which register wins a tie between two candidates at the same pixel.
@@ -2516,7 +2514,6 @@ export class StyleManager {
     this._dataManagerBeforeDestroyUnsubscribe = null;
     this._dataManagerVisibilityGuardUnsubscribe = null;
     this._dataManagerVisibilityRequestUnsubscribe = null;
-    this._installationsSearchBtn = document.getElementById('installations-search-btn');
     this._leftPanelStack = document.getElementById('left-panel-stack');
     this._cctvEnableBtn = document.getElementById('cctv-enable-btn');
     this._cctvNearestBtn = document.getElementById('cctv-nearest-btn');
@@ -4800,27 +4797,6 @@ export class StyleManager {
           explicitUserAction: true,
           succeeded: succeeded === true,
         })) this.setPanelCollapsed('global-context-panel', false, { explicit: true });
-      });
-    });
-    this._installationsSearchBtn?.addEventListener('click', () => {
-      if (!this._dataManager?.layers?.has('military-installations')) return;
-      const button = this._installationsSearchBtn;
-      button.disabled = true;
-      void this._runUserFacingContextAction(async (notificationToken) => {
-        const enabled = await this._dataManager.setEnabled('military-installations', true, {
-          origin: 'user',
-          notificationToken,
-        });
-        if (enabled === false || !this._dataManager.isEnabled('military-installations')) return false;
-        const searched = await militaryInstallationsLayer.searchNearby?.();
-        if (searched === false) return false;
-        const stats = militaryInstallationsLayer.getStats?.();
-        this._showToast(stats?.status === 'zoom-in'
-          ? 'Zoom in to search mapped installations'
-          : 'Nearby installations refreshed');
-        return true;
-      }, 'Nearby installations could not be refreshed; try again').finally(() => {
-        button.disabled = false;
       });
     });
   }

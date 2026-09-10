@@ -452,7 +452,7 @@ export const LAYER_MANIFEST = Object.freeze([
     id: 'military-installations',
     name: 'Mapped Installations',
     icon: '⌖',
-    source: 'OpenStreetMap + optional Google Maps Places',
+    source: 'OpenStreetMap',
     capabilities: Object.freeze(['destroy', 'getStats']),
     load: () => import('./militaryInstallations.js').then((module) => module.default),
   }),
