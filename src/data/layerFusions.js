@@ -67,10 +67,35 @@ import { REGISTERED_LAYER_IDS } from './layerState.js';
  * is a control strip, not a second list of names. `title` is the tooltip, and
  * it is where the honest hedge goes.
  *
+ * exists for the MAP KEY rather than for the panel — the primary has no chip
+ * because the row's own toggle is its control. When two or more members of a
+ * and then one sub-block per member, titled by its chip; without this field the
+ * primary's sub-block would be titled with the row's own name, which says
+ * nothing. Measured on « Trafic routier »: four blocks, and the first was
+ * called `Trafic routier` under a heading also called `Trafic routier`.
+ *
+ * It is OPTIONAL, and only the nine fusions that can currently split their key
+ * and the renderer drops a sub-title that would only repeat the row's — so a
+ * fusion whose primary gains a key later degrades to today's rendering rather
+ * than to a wrong name. Add one when that happens.
+ *
  * `optIn: true` means the row's toggle does NOT switch that companion on. It
  * is for a companion whose cost is real and whose value is conditional — the
  * reader asks for it by pressing the chip. Every other companion follows the
  * row, which is the point of the row.
+ *
+ * There are two shapes of "conditional" here and they are worth telling apart.
+ * `comparables-fr` is conditional on the READER: an empty dossier draws nothing
+ * until somebody builds one. `comptages-fr` is conditional on the CAMERA: it
+ * holds Paris and nothing else, so a row toggle pressed anywhere else was
+ * paying for a layer that could not draw. What they share is that the row
+ * cannot know the answer and the chip can ask.
+ *
+ * A companion that fills a HOLE in its primary is never `optIn`, whatever its
+ * geography: `idfm-network` is on this row precisely because Île-de-France
+ * publishes no live vehicle, and making it opt-in would put the capital back to
+ * zero on a row that promises transit. Its territory is declared through
+ * `layerCoverage.js` instead, which dims a control without unplugging it.
  */
 export const LAYER_FUSIONS = Object.freeze([
   // ── 1. Autorisations d'urbanisme ─────────────────────────────────────────
@@ -272,6 +297,13 @@ export const LAYER_FUSIONS = Object.freeze([
   // The same road measured four ways: a modelled ratio, a declared status, an
   // event list and a loop count. Three of the four already share the RRN
   // centreline pack.
+  //
+  // Two of them are territorial opposites and the row now shows it. Over Paris
+  // `road-status-fr` goes quiet — DIRIF publishes neither stations nor status —
+  // and `comptages-fr` is the only control on this globe holding a measured
+  // vehicle count. Everywhere else the pair reads the other way round. Neither
+  // fact was legible on the strip before `layerCoverage.js`: both chips looked
+  // equally alive over a city where exactly one of them had data.
   Object.freeze({
     primary: 'traffic',
     companions: Object.freeze([
@@ -287,8 +319,18 @@ export const LAYER_FUSIONS = Object.freeze([
       }),
       Object.freeze({
         id: 'comptages-fr',
-        chip: 'Comptages',
-        title: 'Comptages par boucles — un COMPTAGE, pas une congestion, et Paris seul',
+        // The territory is IN the label, not only in the tooltip. This chip sits
+        // on a row that works everywhere on Earth, and a bare "Comptages" beside
+        // "État du réseau" and "Événements" reads as the third national feed
+        // rather than as a layer whose entire extent is 12,6 km by 10,0 km.
+        chip: 'Comptages · Paris',
+        // Opt-in: the row toggle used to carry this one, so switching road
+        // traffic on over Tokyo switched on a Paris-only layer, fetched its
+        // chunk, and contributed SEVEN hour chips to a strip of fifteen — all
+        // steering a layer with no payload. Its cost is real and its value is
+        // geographic, which is exactly the case `optIn` was written for.
+        optIn: true,
+        title: 'Comptages routiers de Paris — un COMPTAGE de véhicules, pas une congestion',
       }),
     ]),
   }),

@@ -961,6 +961,48 @@
     <p class="first-run-note" data-first-run-status role="status" aria-live="polite">Tip: the GEV MIC button in the dock lets you talk to the map.</p>
   </aside>
 
+  <!-- What a territorial layer says before it starts. Opens ONLY when the
+       camera is outside that layer's coverage (src/data/layerCoverage.js), so a
+       reader already over Paris never meets it. Copy comes from the coverage
+       table, not from here — this is the frame, not the message. -->
+  <aside id="coverage-briefing" role="dialog" aria-modal="true"
+         aria-labelledby="coverage-briefing-title" aria-describedby="coverage-briefing-body" hidden>
+    <div class="coverage-briefing-scanline" aria-hidden="true"></div>
+    <header class="coverage-briefing-header">
+      <span class="coverage-briefing-kicker">COUVERTURE DE LA COUCHE</span>
+      <span class="coverage-briefing-scope" data-coverage-scope></span>
+    </header>
+    <h2 id="coverage-briefing-title" data-coverage-title></h2>
+    <div id="coverage-briefing-body" class="coverage-briefing-body" data-coverage-body></div>
+    <div class="coverage-briefing-choices">
+      <button type="button" data-coverage-choice="goto" class="coverage-briefing-primary">
+        <!-- `public`, not `travel_explore`: the icon font ships subsetted to the
+             29 glyphs this app draws, and a glyph outside it renders the WORD
+             rather than a box. The globe already means "somewhere else on this
+             planet" here, and against `my_location` below the pair reads as
+             "there" against "here" without costing a font rebuild. -->
+        <span class="material-symbols-outlined" aria-hidden="true">public</span>
+        <span data-coverage-goto-label>Aller à la zone couverte</span>
+      </button>
+      <!-- Kept even though it switches on a layer that will draw nothing here.
+           Somebody arming a layer before they fly is a real intent, and taking
+           the option away would make the card a gate instead of an offer. -->
+      <button type="button" data-coverage-choice="here">
+        <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
+        <span>Activer sans bouger</span>
+      </button>
+    </div>
+    <div class="coverage-briefing-footer">
+      <label class="coverage-briefing-suppress">
+        <input type="checkbox" data-coverage-suppress />
+        <!-- Names the consequence, not just the dismissal: a suppressed card
+             resolves `goto`, so the next press moves the camera. -->
+        <span>Ne plus demander — aller directement</span>
+      </label>
+      <span>ESC pour annuler</span>
+    </div>
+  </aside>
+
   <!-- Provider Settings ("POWER UP"): dev-server only. src/keySetup.js removes
        both nodes when /api/setup/status is absent, which is every build a
        deployment serves and every visitor that is not this machine. -->

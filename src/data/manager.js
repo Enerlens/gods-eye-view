@@ -1,6 +1,13 @@
 import { governorRequestRender } from '../renderGovernor.js';
 import { markDetectionSourcesChanged } from './detection.js';
 import { SURFACE_FILL_DRAPE_NOTE, surfaceFillDrapesBuildings } from './surfaceFillNotice.js';
+import {
+  coverageNoticeFor,
+  coverageSignature,
+  layerCoverageFor,
+  layerCoverageState,
+  layerDarkAreaAt,
+} from './layerCoverage.js';
 function cloneLayerParams(value) {
   if (Array.isArray(value)) return value.map(cloneLayerParams);
   if (value && typeof value === 'object') {
@@ -162,6 +169,19 @@ export class DataLayerManager {
     // Plugged datasets: registered AFTER the seal, by the dataset box, and
     // tracked apart so they can be unplugged without touching the sealed set.
     this._datasetLayerIds = new Set();
+    // WHERE THE CAMERA IS, for the controls that have a territory.
+    //
+    // Pushed in by the shell (`setCoverageView`) rather than read off a viewer
+    // here: resolving a camera rectangle means `viewGate.js`, which means
+    // Cesium, and this module has no Cesium import and is unit-tested without
+    // one. The shell already holds the viewer and already knows when the camera
+    // has settled, so it is the right side of the seam to compute this on.
+    this._coverageView = null;
+    this._coverageSignature = null;
+    // Set by the shell when it has a surface that can brief a reader before a
+    // territorial layer is switched on. Absent — every unit test, every headless
+    // harness — the chip simply toggles, which is what it did before.
+    this._coverageBriefingHandler = null;
   }
 
   register(layerModule) {
@@ -2197,6 +2217,142 @@ export class DataLayerManager {
   }
 
   /**
+   * Tell the panel where the camera is looking, so controls with a territory
+   * can say whether they have anything here.
+   *
+   * REPAINTS ONLY WHEN THE ANSWER CHANGED. This is called on every camera
+   * settle, and the panel is the most expensive DOM in the app to rebuild; a
+   * pan across Paris must not cost one. `coverageSignature` folds every row of
+   * `layerCoverage.js` into a string, so "did any control change territory"
+   * is one string compare.
+   *
+   * @param {?{south:number, west:number, north:number, east:number}} view
+   * @returns {boolean} Whether the change was worth a repaint.
+   */
+  setCoverageView(view) {
+    this._coverageView = view || null;
+    const signature = coverageSignature(this._coverageView);
+    if (signature === this._coverageSignature) return false;
+    // THE SIGNATURE IS COMMITTED ONLY IF THE PANEL ACTUALLY PAINTED.
+    //
+    // `_refreshTogglePanel` declines while the document is hidden and defers to
+    // the visibilitychange pass. Recording the signature anyway would tell the
+    // NEXT call "nothing changed" — so a reader who flew from Tokyo to Paris in
+    // a background tab came back to a strip still composed for Tokyo, with the
+    // Paris chips missing and no event left that would bring them.
+    const painted = this._refreshTogglePanel();
+    if (painted) this._coverageSignature = signature;
+    return painted;
+  }
+
+  /**
+   * Install the surface that briefs a reader before a territorial layer starts.
+   *
+   * `ask` is asked for a DECISION, never told what to do: it resolves `'goto'`
+   * (fly to the layer's territory and switch it on), `'here'` (switch it on
+   * where we stand) or anything else (do nothing). `flyTo` performs the
+   * flight. Both verbs stay on the shell side, which is what lets the flight
+   * reuse the app's own "go to this city" path — the same one a city pill
+   * runs — instead of this module growing a camera of its own.
+   *
+   * @param {?{ask: function(object): (string|Promise<string>), flyTo?: function(string): any}} surface
+   * @returns {void}
+   */
+  setCoverageBriefingHandler(surface) {
+    this._coverageBriefingHandler = typeof surface?.ask === 'function' ? surface : null;
+  }
+
+  /**
+   * A layer's territory relative to the current camera.
+   * @param {string} layerId Registered layer id.
+   * @returns {?('in'|'out'|'dark')} Null when the layer claims no territory.
+   */
+  coverageStateFor(layerId) {
+    return layerCoverageState(layerId, this._coverageView);
+  }
+
+  /**
+   * Whether switching this layer on deserves a card first.
+   *
+   * Three conditions, and dropping any one of them makes the card a nuisance:
+   * the layer has briefing copy at all, the shell can show it, and the camera
+   * is somewhere the layer cannot draw. That last one is what keeps the card
+   * quiet for the reader who is already over Paris and pressed the chip
+   * knowing exactly what they wanted — for them the card would be an
+   * interruption between a click and its result.
+   *
+   * @param {string} layerId Registered layer id.
+   * @returns {boolean}
+   */
+  _shouldBriefCoverage(layerId) {
+    if (!this._coverageBriefingHandler) return false;
+    const entry = layerCoverageFor(layerId);
+    if (!entry?.brief) return false;
+    return this.coverageStateFor(layerId) === 'out';
+  }
+
+  /**
+   * Where switching this layer on should take the camera, if anywhere.
+   *
+   * `dark` deliberately yields nothing. A national layer inside a hole is not
+   * somewhere to fly AWAY from — it draws everywhere else in the country, and
+   * teleporting a reader out of Paris because DIRIF publishes nothing would
+   * answer a question they did not ask.
+   *
+   * @param {string} layerId Registered layer id.
+   * @returns {?string} Preset city id, or null.
+   */
+  _coverageFlightFor(layerId) {
+    if (typeof this._coverageBriefingHandler?.flyTo !== 'function') return null;
+    const entry = layerCoverageFor(layerId);
+    if (!entry?.goto) return null;
+    return this.coverageStateFor(layerId) === 'out' ? entry.goto : null;
+  }
+
+  /**
+   * Run the briefing and act on what the reader chose.
+   *
+   * The layer is enabled BEFORE the flight, not after: every territorial layer
+   * here loads off its own `moveEnd`, so arming it first means the data is in
+   * hand as the camera lands rather than one debounce later.
+   *
+   * @param {string} layerId Registered layer id.
+   * @returns {Promise<void>}
+   */
+  async _runCoverageBriefing(layerId) {
+    const entry = layerCoverageFor(layerId);
+    const surface = this._coverageBriefingHandler;
+    if (!entry || !surface) return;
+    let choice = null;
+    try {
+      choice = await surface.ask({
+        layerId,
+        chip: entry.chip,
+        where: entry.where,
+        goto: entry.goto || null,
+        brief: entry.brief,
+        layerName: this.layers.get(layerId)?.module?.name || layerId,
+      });
+    } catch (error) {
+      // A briefing surface that throws must not swallow the reader's click.
+      // Falling through to the plain toggle is the behaviour they would have
+      // got if the card had never been built.
+      console.warn(`[Data] ${layerId} coverage briefing failed:`, error);
+      choice = 'here';
+    }
+    if (choice !== 'goto' && choice !== 'here') return;
+    await this.setEnabled(layerId, true, { origin: 'user' })
+      .catch((error) => console.warn(`[Data] ${layerId} briefing enable error:`, error));
+    if (choice === 'goto' && entry.goto && typeof surface.flyTo === 'function') {
+      try {
+        await surface.flyTo(entry.goto);
+      } catch (error) {
+        console.warn(`[Data] ${layerId} coverage flight failed:`, error);
+      }
+    }
+  }
+
+  /**
    * Paint the panel: one collapsible group per category when the manager was
    * sealed with a category list, the historical flat list otherwise.
    *
@@ -2375,11 +2531,28 @@ export class DataLayerManager {
     // The chip is a SIBLING of .data-name, not part of it: the voice layer
     // reads that element's textContent back as the layer's spoken name, and
     // "Mix électrique FR" is not what anyone calls it.
-    const scopeChip = layer.tags?.scopeChip
-      ? `<span class="data-scope-chip" title="Couverture : ${layer.tags.scopeChip}">${layer.tags.scopeChip}</span>`
-      : '';
+    // The territory table outranks the taxonomy facet when it has a row. The
+    // facet answers "which country", and for a layer whose whole extent is one
+    // city that answer is technically true and practically a lie: `fraicheur-fr`
+    // is 25 045 Paris trees and it was chipped `FR`, which promises a reader in
+    // Bordeaux something nobody built.
+    const coverageEntry = layerCoverageFor(layer.id);
+    const scopeText = coverageEntry?.chip || layer.tags?.scopeChip || '';
     left.innerHTML = `<span class="data-icon">${layer.icon}</span>`
-      + `<span class="data-name">${this._displayName(layer)}</span>${scopeChip}`;
+      + `<span class="data-name">${this._displayName(layer)}</span>`;
+    // Appended as a NODE rather than interpolated into the markup above,
+    // because unlike the icon and the name this badge has a live state:
+    // `_syncScopeChip` dims it when the camera leaves the layer's territory,
+    // and a string in an innerHTML blob is not something a refresh can reach.
+    if (scopeText) {
+      const badge = document.createElement('span');
+      badge.className = 'data-scope-chip';
+      badge.textContent = scopeText;
+      badge.title = coverageEntry
+        ? `Couverture : ${coverageEntry.where}`
+        : `Couverture : ${scopeText}`;
+      left.appendChild(badge);
+    }
 
     const right = document.createElement('div');
     right.className = 'data-toggle-right';
@@ -2463,7 +2636,24 @@ export class DataLayerManager {
         // applies params to whichever layer published it — the primary, or an
         // enabled companion whose own controls are shown here.
         if (chip.fusionToggle) {
-          this.setEnabled(chip.targetLayerId, !this.isEnabled(chip.targetLayerId), { origin: 'user' })
+          const turningOn = !this.isEnabled(chip.targetLayerId);
+          // Only ON is briefed. Interrupting somebody who is switching a layer
+          // OFF to explain what it was would be the most annoying card in the
+          // app, and they have already seen whatever it had to say.
+          if (turningOn && this._shouldBriefCoverage(chip.targetLayerId)) {
+            void this._runCoverageBriefing(chip.targetLayerId);
+            return;
+          }
+          // The dimmed chip's tooltip ends "cliquer pour y aller", and a
+          // promise made in a tooltip is still a promise. A territorial layer
+          // with no briefing copy keeps it by flying — switched on first, so
+          // its data is in hand as the camera lands.
+          const destination = turningOn ? this._coverageFlightFor(chip.targetLayerId) : null;
+          this.setEnabled(chip.targetLayerId, turningOn, { origin: 'user' })
+            .then(() => {
+              if (!destination) return;
+              return this._coverageBriefingHandler?.flyTo?.(destination);
+            })
             .catch((error) => console.warn(`[Data] ${chip.targetLayerId} chip toggle error:`, error));
           return;
         }
@@ -2680,12 +2870,31 @@ export class DataLayerManager {
     if (this._rowEnabled(layer.id)) {
       for (const companion of companions) {
         const active = this.isEnabled(companion.id);
+        // A control with a territory says so RATHER THAN DISAPPEARING. Hiding
+        // it outside its coverage would make it undiscoverable — you would have
+        // to already know it existed to fly somewhere and find it — so it stays
+        // on the strip, dimmed, carrying the sentence that says where it works.
+        const coverage = this.coverageStateFor(companion.id);
+        const offCoverage = coverage === 'out' || coverage === 'dark';
+        const notice = offCoverage
+          ? coverageNoticeFor(
+            companion.id,
+            coverage,
+            coverage === 'dark' ? layerDarkAreaAt(companion.id, this._coverageView) : null,
+            { clickable: true },
+          )
+          : '';
         chips.push({
           id: `fusion:${companion.id}`,
           label: companion.chip,
-          title: companion.title || '',
+          title: notice
+            ? `${companion.title || companion.chip} — ${notice}`
+            : (companion.title || ''),
           active,
-          state: active ? 'active' : 'idle',
+          // Dimmed, NEVER `disabled`. A disabled button cannot be clicked, and
+          // clicking is exactly how a reader out of coverage asks to be taken
+          // to where the data is.
+          state: offCoverage ? 'offcoverage' : (active ? 'active' : 'idle'),
           fusionToggle: true,
           targetLayerId: companion.id,
           // Two kinds of chip share this strip and they must not READ alike: a
@@ -2700,6 +2909,12 @@ export class DataLayerManager {
       }
       for (const companion of companions) {
         if (!this.isEnabled(companion.id)) continue;
+        // AN OPTION IS NOT A DECLARATION. The companion chip above stays put
+        // because it has something to say; its seven hour chips have nothing —
+        // `Moyenne ouvrée`, `Sem. 08 h` and `W-E 18 h` steer a Paris payload
+        // that does not exist over Tokyo. That was seven of the fifteen
+        // controls on the traffic row, on every view of the planet.
+        if (this.coverageStateFor(companion.id) === 'out') continue;
         const sub = read(companion.id);
         for (const chip of sub?.chips || []) {
           chips.push({
@@ -2781,13 +2996,18 @@ export class DataLayerManager {
     for (const node of stale.values()) node.remove();
   }
 
+  /**
+   * @returns {boolean} Whether the panel was actually repainted. Callers that
+   *   cache "I have already reflected this state" — {@link setCoverageView} —
+   *   must not do so on a pass that declined.
+   */
   _refreshTogglePanel() {
-    if (!this._toggleContainer) return;
+    if (!this._toggleContainer) return false;
     // Skip DOM churn while hidden; visibilitychange (main.js) triggers one
     // refresh on return. (perf wave 2)
     if (typeof document !== 'undefined' && document.hidden) {
       this._panelRefreshPendingOnVisible = true;
-      return;
+      return false;
     }
     // Legend material for the ON-MAP block, gathered in this same pass.
     // `_rowControlsFor` runs a layer-supplied callback, so it is asked ONCE
@@ -2835,6 +3055,8 @@ export class DataLayerManager {
         meta.textContent = this._buildMetaText(layer);
       }
 
+      this._syncScopeChip(row.querySelector('.data-scope-chip'), layer.id);
+
       this._syncRowControls(
         row.querySelector('.data-toggle-controls'),
         layer,
@@ -2854,6 +3076,33 @@ export class DataLayerManager {
         if (section) this._syncCategoryHeader(section, group);
       }
     }
+    return true;
+  }
+
+  /**
+   * Keep a ROW's scope chip honest about the current camera.
+   *
+   * The chip is built once, with the row; only its dimming moves. A layer whose
+   * territory is elsewhere reads as a quiet badge with the reason in its
+   * tooltip, which is the row-level equivalent of what a companion chip does on
+   * the strip — and the reason `fraicheur-fr`, which has a row rather than a
+   * chip, is not left out of this repair.
+   *
+   * @param {HTMLElement|null} node The row's `.data-scope-chip`, when it has one.
+   * @param {string} layerId Registered layer id.
+   * @returns {void}
+   */
+  _syncScopeChip(node, layerId) {
+    if (!node) return;
+    const entry = layerCoverageFor(layerId);
+    if (!entry) return;
+    const state = this.coverageStateFor(layerId);
+    const offCoverage = state === 'out' || state === 'dark';
+    node.classList.toggle('off-coverage', offCoverage);
+    const notice = offCoverage
+      ? coverageNoticeFor(layerId, state, state === 'dark' ? layerDarkAreaAt(layerId, this._coverageView) : null)
+      : '';
+    node.title = notice || `Couverture : ${entry.where}`;
   }
 
   /**

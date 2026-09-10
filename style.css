@@ -6362,6 +6362,46 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   border-left-color: var(--accent);
 }
 
+/* ── A control that is not where its data is ────
+   `layerCoverage.js` gives some layers a territory: `comptages-fr` is 12,6 km
+   by 10,0 km of Paris, `road-status-fr` is national and black over exactly that
+   same city because DIRIF publishes nothing. A chip for one of those over a
+   camera looking somewhere else is not broken and is not disabled — it is a
+   control announcing its own extent, and pressing it is how a reader asks to be
+   taken there.
+
+   So this is a DIM, not a `:disabled`. The three differences from `.active` are
+   deliberate: the ink drops to the dim ramp, the border loses the accent, and
+   the dot goes hollow again even while the layer is on — because "switched on"
+   and "drawing something" are different claims and this is the one place in the
+   panel where they come apart. A dashed border is the mark: nothing else on the
+   strip is dashed, so the state is legible without hue, which is what the NVG
+   and FLIR presets need (they discard hue outright).
+
+   The `:not(:hover)` guard matters. Hover has to keep lifting the chip out of
+   the dim, or a reader mousing along the strip cannot tell a territorial chip
+   from a dead one. */
+.data-toggle-chip.chip-offcoverage:not(:hover):not(:focus-visible) {
+  color: var(--text-dim);
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+  opacity: 0.78;
+}
+
+.data-toggle-chip.chip-offcoverage.chip-fusion:not(:hover):not(:focus-visible)::before {
+  content: '\25CB';
+  opacity: 0.5;
+}
+
+/* The row-level equivalent, for a layer that has a row rather than a chip:
+   `fraicheur-fr` is 25 045 Paris trees and its badge used to read `FR`. It now
+   reads `PARIS`, and it goes quiet when the camera is elsewhere. */
+.data-scope-chip.off-coverage {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
 /* ── Map legend ─────────────────────────────────
    First member of the right rail. It used to be a fixed card in the
    bottom-left corner, switched OFF by a `:has()` rule the moment DATA LAYERS
@@ -11292,4 +11332,217 @@ body.scene-playback-mode #key-setup {
   color: rgba(255, 190, 170, 1);
   border-color: rgba(255, 170, 150, 0.65);
   outline: none;
+}
+
+/* ── Coverage briefing ──────────────────────────
+   Three lines and two buttons, shown once per layer, only when the camera is
+   outside that layer's territory. It deliberately reuses the first-run card's
+   visual language rather than inventing a second dialog idiom: a reader who has
+   seen one modal in this app should recognise the second as the same kind of
+   object, and the only new thing to learn is what it says.
+
+   It is NARROWER than the launcher (26rem against 34), because it holds prose
+   rather than a list of tiles, and a measure past ~65 characters is a measure
+   people skim instead of read — which would defeat a card whose entire job is
+   three sentences. */
+#coverage-briefing {
+  position: fixed;
+  z-index: 178;
+  top: 50%;
+  left: 50%;
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 1.5rem);
+  display: flex;
+  flex-direction: column;
+  padding: 1.05rem;
+  overflow: hidden;
+  color: var(--text-primary);
+  background:
+    linear-gradient(145deg, rgba(10, 27, 37, 0.97), rgba(7, 13, 22, 0.95)),
+    rgba(7, 17, 25, 0.96);
+  border: 1px solid rgba(54, 220, 255, 0.42);
+  border-radius: 0.65rem;
+  box-shadow:
+    0 1.4rem 4.5rem rgba(0, 0, 0, 0.72),
+    0 0 2.5rem rgba(0, 212, 255, 0.09),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+  backdrop-filter: blur(28px) saturate(1.25);
+  -webkit-backdrop-filter: blur(28px) saturate(1.25);
+  opacity: 0;
+  transform: translate(-50%, calc(-50% + 0.8rem)) scale(0.985);
+  transition: opacity 200ms ease, transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none;
+}
+
+/* An author `display` on this id beats the UA's `[hidden] { display: none }`,
+   exactly as it does on the launcher, so the attribute's meaning is restored
+   explicitly or the card sits in the accessibility tree from page parse. */
+#coverage-briefing[hidden] {
+  display: none;
+}
+
+#coverage-briefing.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+}
+
+.coverage-briefing-scanline {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(54, 220, 255, 0.8), transparent);
+  box-shadow: 0 0 1rem rgba(54, 220, 255, 0.45);
+  pointer-events: none;
+}
+
+.coverage-briefing-header,
+.coverage-briefing-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: rgba(171, 210, 220, 0.6);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.1rem;
+  text-transform: uppercase;
+}
+
+.coverage-briefing-kicker { color: rgba(54, 220, 255, 0.86); }
+
+/* The territory, in the same badge idiom the panel row uses for a scope chip —
+   so `PARIS` reads as the same kind of claim in both places. */
+.coverage-briefing-scope {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  border-radius: 3px;
+  background: rgba(0, 212, 255, 0.07);
+  color: rgba(0, 212, 255, 0.72);
+  letter-spacing: 0.08rem;
+}
+
+#coverage-briefing h2 {
+  margin-top: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: clamp(1.05rem, 2vw, 1.4rem);
+  font-weight: 500;
+  letter-spacing: -0.03rem;
+}
+
+.coverage-briefing-body {
+  margin-top: 0.45rem;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(54, 220, 255, 0.45) transparent;
+}
+
+.coverage-briefing-body p {
+  margin: 0 0 0.5rem;
+  color: rgba(215, 231, 235, 0.72);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+/* The first line is the definition and the last is the limit; both carry more
+   weight than the middle one, and the reader who only reads one reads the
+   first. */
+.coverage-briefing-body p:first-child { color: rgba(232, 245, 248, 0.9); }
+.coverage-briefing-body p:last-child { margin-bottom: 0; }
+
+.coverage-briefing-choices {
+  display: grid;
+  gap: 0.42rem;
+  margin-top: 0.9rem;
+}
+
+.coverage-briefing-choices button {
+  display: grid;
+  grid-template-columns: 1.4rem 1fr;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.7rem;
+  color: rgba(225, 244, 248, 0.92);
+  text-align: left;
+  font-size: 0.74rem;
+  background: rgba(29, 69, 81, 0.18);
+  border: 1px solid rgba(100, 200, 220, 0.18);
+  border-radius: 0.42rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.coverage-briefing-choices button:hover,
+.coverage-briefing-choices button:focus-visible {
+  background: rgba(25, 151, 178, 0.16);
+  border-color: rgba(54, 220, 255, 0.62);
+  outline: none;
+  transform: translateX(2px);
+}
+
+.coverage-briefing-choices button[hidden] { display: none; }
+
+/* The recommended answer, because it is the one that produces a map with data
+   on it. Marked with an accent edge rather than a filled button: this is an
+   offer, and a solid primary would read as the only way out of the card. */
+.coverage-briefing-primary {
+  border-left-width: 2px;
+  border-left-color: rgba(54, 220, 255, 0.7);
+}
+
+.coverage-briefing-choices button > .material-symbols-outlined {
+  color: #55dff5;
+  font-size: 1.1rem;
+}
+
+.coverage-briefing-footer { margin-top: 0.75rem; }
+
+.coverage-briefing-suppress {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: rgba(199, 225, 231, 0.66);
+  text-transform: none;
+  font-size: 0.62rem;
+  letter-spacing: 0.02rem;
+  cursor: pointer;
+}
+
+.coverage-briefing-suppress input {
+  width: 0.82rem;
+  height: 0.82rem;
+  margin: 0;
+  accent-color: #36dcff;
+  cursor: pointer;
+}
+
+.coverage-briefing-suppress:hover { color: rgba(225, 244, 248, 0.92); }
+
+/* Same arbitration as the launcher: a surface that claims the screen hides this
+   card too. Unlike the launcher there is no JS half to keep in step — the card
+   is only ever opened by a chip press, and every one of these modes has the
+   panel that holds those chips out of reach. */
+body.ui-clean-view #coverage-briefing,
+body.recording-mode #coverage-briefing,
+body.cockpit-mode #coverage-briefing,
+body.scene-playback-mode #coverage-briefing {
+  display: none;
+}
+
+@media (max-width: 620px) {
+  #coverage-briefing {
+    top: auto;
+    bottom: 5.8rem;
+    padding: 0.85rem;
+    transform: translate(-50%, 0.8rem) scale(0.985);
+  }
+
+  #coverage-briefing.visible { transform: translate(-50%, 0) scale(1); }
+  /* No ESC key on a phone, so the hint that names it goes. */
+  .coverage-briefing-footer > span:last-child { display: none; }
 }

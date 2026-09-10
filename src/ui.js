@@ -8,6 +8,8 @@ import { thermalShader } from './styles/thermal.js';
 import { LOCATIONS, CITY_POIS, GLOBE_VIEW, PILL_CITY_IDS, flyToGlobeView, flyToPresetLocation, flyToPOI, searchAndFlyTo } from './locations.js';
 import { locationMiniStatus } from './locationStatus.js';
 import { interruptCameraMotion } from './cameraVerbs.js';
+import { cameraViewBox } from './data/viewGate.js';
+import { initCoverageBriefing } from './coverageBriefing.js';
 import {
   aircraftTrackingTarget,
   enterCockpitWithTracking,
@@ -2338,6 +2340,10 @@ export class StyleManager {
     this._clearSelectedLayersManagerPromise = null;
     this._clearSelectedLayersHandler = null;
     this._dataManager = null;
+    // Territorial controls: where the camera is, and the card that explains a
+    // layer before it starts. See `_installCoverageWatch`.
+    this._coverageWatchRemover = null;
+    this._coverageBriefing = null;
     this._cctvUnsubscribe = null;
     this._radioUnsubscribe = null;
     this._radioState = null;
@@ -4683,6 +4689,99 @@ export class StyleManager {
         this._syncModels3dFromLayerState(this._layerStateCoordinator?.getDurableState());
       });
     }
+    this._installCoverageWatch();
+  }
+
+  /**
+   * Tell the layer panel where the camera is, and give it a way to brief a
+   * reader before a territorial layer starts.
+   *
+   * WHY THE SHELL AND NOT THE MANAGER. `manager.js` has no Cesium import and is
+   * unit-tested without one; resolving a camera rectangle means `viewGate.js`,
+   * which means Cesium. This side already holds the viewer and already knows
+   * the app's own "go to this city" verb, so both halves of the seam land where
+   * they cost nothing.
+   *
+   * ON `moveEnd`, NOT ON `camera.changed`. Those two are not interchangeable
+   * here: `changed` goes quiet up to 0,8 s before a flight actually settles, so
+   * a panel repainted from it reads the box the camera was PASSING THROUGH.
+   * Every layer in this repo that re-reads a viewport does it on `moveEnd` for
+   * the same reason.
+   * @returns {void}
+   */
+  _installCoverageWatch() {
+    this._coverageWatchRemover?.();
+    this._coverageWatchRemover = null;
+    const manager = this._dataManager;
+    if (!manager || typeof manager.setCoverageView !== 'function') return;
+
+    if (typeof manager.setCoverageBriefingHandler === 'function') {
+      this._coverageBriefing = this._coverageBriefing
+        || initCoverageBriefing(document.getElementById('coverage-briefing'));
+      if (this._coverageBriefing) {
+        manager.setCoverageBriefingHandler({
+          ask: (request) => this._coverageBriefing.ask({
+            ...request,
+            // The card names the destination; the coverage table only knows its
+            // id. `CITY_POIS` is where a place gets a human name in this app.
+            gotoName: request?.goto ? (CITY_POIS[request.goto]?.name || null) : null,
+          }),
+          flyTo: (cityId) => this._flyToCoverageCity(cityId),
+        });
+      }
+    }
+
+    // Seed it before the first camera stop, or every territorial control reads
+    // "unknown" until the reader happens to move.
+    manager.setCoverageView(cameraViewBox(this.viewer));
+    const camera = this.viewer?.camera;
+    if (!camera?.moveEnd?.addEventListener) return;
+    this._coverageWatchRemover = camera.moveEnd.addEventListener(() => {
+      if (this._disposed) return;
+      this._dataManager?.setCoverageView?.(cameraViewBox(this.viewer));
+    });
+  }
+
+  /**
+   * Take the camera to a layer's territory.
+   *
+   * The same landing state a city pill produces — POI row expanded, active
+   * location set, orbit target tracked — so a reader carried here by a card
+   * ends up somewhere the rest of the app recognises, not at a camera pose
+   * nothing else knows about.
+   *
+   * IT IS NOT `_onCityPillClick`. That method's first act is a TOGGLE: pressing
+   * the pill of the city already expanded collapses the POI row and returns
+   * without flying. A reader over Osaka whose panel still had Paris expanded
+   * from earlier would have pressed "Aller à Paris" and watched a list close.
+   * A destination is not a toggle.
+   * @param {string} cityId Preset city id (`src/locations.js`).
+   * @returns {void}
+   */
+  _flyToCoverageCity(cityId) {
+    if (!CITY_POIS[cityId]) return;
+    const isCityChanged = this._activeLocationId && this._activeLocationId !== cityId;
+    // `viewMode: 'overview'` frames the city's own `viewBounds` instead of its
+    // first landmark. That is the difference between arriving at the Eiffel
+    // Tower from 750 m and arriving above the box these layers actually fill —
+    // Paris' bounds are 48,815–48,902 / 2,224–2,470, which is `comptages-fr`'s
+    // coverage almost exactly. A city-wide layer wants the city.
+    const result = this._flyWithTransition(
+      !!isCityChanged,
+      (hooks) => flyToPresetLocation(this.viewer, cityId, { ...hooks, viewMode: 'overview' }),
+    );
+    if (result === false) return;
+    // The POI row opens because the landmarks are the natural next move once
+    // the reader is here — but nothing in it is highlighted, and `_currentPoi`
+    // stays null, because we did not fly to one. This is how the free-text
+    // search path already reports an AREA destination.
+    this._expandPOIRow(cityId);
+    this._setActiveLocation(cityId);
+    this._activePoiIndex = -1;
+    this._updatePoiHighlight();
+    this._currentPoi = null;
+    if (result) this._currentTarget = result.targetPosition;
+    this._updateLocationMiniStatus();
   }
 
   _handleShareTrackingRestoreStatus(result) {
@@ -10439,6 +10538,13 @@ export class StyleManager {
     this._globalStatusNotice = null;
     if (this._globalLoadingStatus) this._globalLoadingStatus.hidden = true;
     this._disposed = true;
+    // Before anything else that can move the camera: an open briefing card is
+    // holding a promise the manager is awaiting, and a document keydown
+    // listener. `destroy()` settles the first and removes the second.
+    this._coverageWatchRemover?.();
+    this._coverageWatchRemover = null;
+    this._coverageBriefing?.destroy();
+    this._coverageBriefing = null;
     // Revoke persistence/hash authority before teardown can emit manager changes.
     this._layerStateCoordinator?.destroy();
     this._layerStateCoordinator = null;
