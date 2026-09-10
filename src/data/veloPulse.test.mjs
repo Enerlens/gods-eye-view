@@ -20,6 +20,8 @@ import veloPulseLayer, {
   _pulseTogglePlayForTest,
   _setPulseStateForTest,
   buildRecords,
+  pulseClick,
+  PULSE_SELECTED_OVERLAY_SOURCE_ID,
   createPulseOverlayEntry,
   resolveMode,
   siteId,
@@ -309,5 +311,42 @@ test('the row says which hour of the week is on screen', () => {
   // And it keeps the two cities apart in what it reports.
   assert.equal(stats.cities.lyon.instrument, 'stock');
   assert.equal(stats.cities.paris.instrument, 'flow');
+  reset();
+});
+
+// ── Whose click is it ───────────────────────────────────────────────────────
+
+test('a click on the map closes the card, even on a photorealistic globe', () => {
+  const host = {
+    entries: new Map(),
+    setEntries(id, list) { host.entries.set(id, list); },
+    setVisible() {},
+    clearSource(id) { host.entries.delete(id); },
+  };
+  const records = new Map(buildRecords(PACK, 16).map((record) => [record.id, record]));
+  const dockId = [...records.keys()][0];
+  _setPulseStateForTest({
+    viewer: fakeViewer(), pack: PACK, records, overlayHost: host, mode: 'now', slot: 16,
+  });
+
+  assert.equal(pulseClick({ id: dockId }), 'select');
+  assert.ok(host.entries.get(PULSE_SELECTED_OVERLAY_SOURCE_ID), 'a card is open to dismiss');
+
+  // THE REGRESSION. A click on the ground over Paris picks the 3D Tiles
+  // feature under the cursor, so the pick is not falsy — it just is not a dock
+  // of ours. The old rule tested `!picked` and therefore never closed anything
+  // anywhere a photorealistic surface was drawn. Measured 2026-09-10: six
+  // probes across the screen, six non-falsy picks.
+  const tile = { primitive: { isCesium3DTileset: true }, content: {}, id: undefined };
+  assert.equal(pulseClick(tile), 'close');
+  assert.equal(host.entries.get(PULSE_SELECTED_OVERLAY_SOURCE_ID), undefined);
+
+  // Another layer's marker closes it too: the card answers "this dock".
+  assert.equal(pulseClick({ id: dockId }), 'select');
+  assert.equal(pulseClick({ id: { id: 'schools-fr:0651234U' } }), 'close');
+  assert.equal(host.entries.get(PULSE_SELECTED_OVERLAY_SOURCE_ID), undefined);
+
+  // And with nothing open, a click on the map is not an action.
+  assert.equal(pulseClick(tile), 'ignore');
   reset();
 });

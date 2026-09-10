@@ -6,6 +6,7 @@ import {
 } from '../overlays/worldOverlay.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { sceneGroundPoint } from './groundPick.js';
+import { isWorldPick } from './pickRegistry.js';
 import { deriveFetchCenter, greatCircleKm } from './trafficBounds.js';
 
 /**
@@ -335,15 +336,42 @@ export function cardFromEntity(entity) {
  * on it, what the state has encumbered it with — the plot IS the subject, and
  * requiring the operator to find the one marker the scan happened to plant is
  * asking them to click the legend instead of the map. So a click that lands on
- * bare globe, or on this layer's OWN wash and outlines, is a question about
+ * the world, or on this layer's OWN wash and outlines, is a question about
  * that spot.
  *
  * A click on ANOTHER layer's object is not. That object is about to open a
  * card of its own, and two cards for one click is how a sibling layer's
  * selection gets silently talked over.
  *
+ * ── `world`, AND WHY IT IS NOT `picked` ANY MORE ─────────────────────────
+ * This function used to take the raw pick and read its PRESENCE: an empty
+ * `scene.pick` meant the reader had clicked the map, because the bare globe is
+ * not a primitive and answers nothing. The photorealistic surface ended that.
+ * Measured 2026-09-10 over Paris at 700 m, six probes across the screen
+ * returned six non-falsy picks — 3D Tiles features, every one — so `!picked`
+ * was false everywhere a reader could click, and BOTH of this rule's map-facing
+ * outcomes went dead with it:
+ *
+ *  • `ground` never fired, so on `urbanisme-gpu`, `bruit-fr` and
+ *    `isochrone-rings` — the three layers that pass a `groundCard` or a
+ *    `groundClick` — clicking the plot did nothing at all. That is the
+ *    feature this paragraph opens by justifying.
+ *  • `dismiss` never fired, so a card on any of the seven layers built on this
+ *    factory could not be closed by clicking the map.
+ *
+ * The caller now decides the question the presence of a pick was standing in
+ * for — "could ANYBODY select this?" — with `pickRegistry.isWorldPick`, which
+ * is true for the empty pick and for a tile feature alike because neither
+ * carries a pick id. A statement about ownership rather than about which
+ * surface happens to be switched on.
+ *
+ * A foreign pick still resolves to `ignore` rather than `dismiss`, unchanged:
+ * that decision is about not talking over a sibling's card, and the
+ * photorealistic globe has nothing to say about it.
+ *
  * @param {object} input
- * @param {*} [input.picked] Raw `scene.pick` result; only its presence matters.
+ * @param {boolean} [input.world] The pick is the map itself — see
+ *   `pickRegistry.isWorldPick`. Nobody can select it.
  * @param {boolean} [input.isCard] The pick is an entity of ours with a card.
  * @param {boolean} [input.isOwn] The pick is an entity of ours, card or not.
  * @param {boolean} [input.answersGround] This layer can answer a bare point.
@@ -351,11 +379,11 @@ export function cardFromEntity(entity) {
  * @returns {'select'|'ground'|'dismiss'|'ignore'}
  */
 export function addressScanClickIntent({
-  picked = null, isCard = false, isOwn = false, answersGround = false, selected = false,
+  world = false, isCard = false, isOwn = false, answersGround = false, selected = false,
 } = {}) {
-  if (picked && isCard) return 'select';
-  if (answersGround && (!picked || isOwn)) return 'ground';
-  if (selected && !picked) return 'dismiss';
+  if (isCard) return 'select';
+  if (answersGround && (world || isOwn)) return 'ground';
+  if (selected && world) return 'dismiss';
   return 'ignore';
 }
 
@@ -731,7 +759,9 @@ export function createAddressScanLayer(config) {
       // Entity-backed primitives hand back the Entity itself as `picked.id`.
       const pickedId = typeof picked?.id === 'string' ? picked.id : picked?.id?.id;
       const intent = addressScanClickIntent({
-        picked,
+        // "Could anybody select this?", not "is there anything there?" — over
+        // the photorealistic globe there is always something there.
+        world: isWorldPick(picked),
         isCard: typeof pickedId === 'string' && _cards.has(pickedId),
         isOwn: typeof pickedId === 'string'
           && Boolean(_dataSource?.entities?.getById?.(pickedId)),
@@ -749,7 +779,7 @@ export function createAddressScanLayer(config) {
         if (openGroundCard(click.position)) return;
         if (handleGroundClick(click.position)) return;
       }
-      if (!picked && _selectedId) clearSelection();
+      if (intent === 'dismiss' || (intent === 'ground' && _selectedId)) clearSelection();
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     document.addEventListener('keydown', onKeyDown);
   }
