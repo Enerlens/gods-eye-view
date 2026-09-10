@@ -17,17 +17,25 @@ the same reason `DATA_SOURCES.md` records where every feed comes from — and
 because it lets a reader audit the claims below without cloning the upstream
 repository.
 
-WHAT WAS TAKEN. One glyph, in one module.
+WHAT WAS TAKEN. Two glyphs, held in one module.
 
-`src/data/mapIcons.js` holds the artwork; `src/data/transitVehicleIcons.js`
-draws it:
+`src/data/mapIcons.js` holds the artwork:
 
-    aerialway — the `aerial` transit class (téléphérique, télécabine).
+    aerialway — the `aerial` transit class (téléphérique, télécabine),
+                drawn by `src/data/transitVehicleIcons.js`.
 
-It replaced Material Symbols' `cable_car`, which is an interface glyph: a boxed
-cabin on stubby legs that reads as a building at the 22 CSS px this layer draws
-at. Maki authors for map labels in a 15-unit box, and its cabin hangs from a
-cable, which is the one feature that says "aerial" rather than "tram".
+    harbor    — `military=naval_base`, drawn by `src/data/militarySiteIcons.js`.
+
+`aerialway` replaced Material Symbols' `cable_car`, which is an interface glyph:
+a boxed cabin on stubby legs that reads as a building at the 22 CSS px that
+layer draws at. Maki authors for map labels in a 15-unit box, and its cabin
+hangs from a cable, which is the one feature that says "aerial" rather than
+"tram".
+
+`harbor` replaced Material Symbols' `directions_boat`, a passenger ferry seen
+head-on. The OSM tag says arsenal, not boat, and the ferry's superstructure did
+not survive being punched into a 16 px plate. An anchor is the sign every
+nautical chart already uses and it is a single compact mass.
 
 WHAT WAS CHANGED. No coordinate.
 

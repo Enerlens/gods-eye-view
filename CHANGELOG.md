@@ -6,6 +6,49 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-10
 
 ### Added
+- **Les sites militaires se voient enfin, et ils se voient de loin.** Sur une
+  capture de la Gironde à 55 km, la couche dessinait quarante pastilles de
+  **9 px** de la même valeur que les champs derrière elles : présentes dans le
+  DOM, absentes de l'image. Deux causes, corrigées ensemble.
+
+  **La marque.** Chaque classe portait une silhouette nue posée sur la photo —
+  le traitement des véhicules, qui sont des objets qu'on suit. Un site est un
+  LIEU sur une photographie de lieux, et il se dispute les mêmes pixels que les
+  toits et les routes. La marque est donc devenue ce que les quatre packs
+  locaux dessinent déjà pour un site au sol : une **pastille** teintée, cerclée
+  de noir, avec la silhouette de la classe **découpée dedans**. Mesuré sur trois
+  fonds réels — forêt, urbain, eau — la silhouette nue devient introuvable sous
+  18 px ; une pastille reste une pastille à 10.
+
+  **Les silhouettes elles-mêmes sont des icônes cartographiques libres**, pas
+  des glyphes d'interface : le chasseur `fighter_jet` de Temaki pour une base
+  aérienne, l'ancre `harbor` de Maki pour une base navale — CC0 toutes les
+  deux, vendorisées dans `mapIcons.js`, une seule copie de chaque tracé dans le
+  dépôt. Elles remplacent un avion de ligne et un ferry empruntés au pack des
+  transports, qui disaient « aviation » et « bateau » là où le tag OSM dit
+  « base aérienne » et « arsenal ».
+
+  **La taille.** 28 px au nominal, 24 pour le fourre-tout, et surtout un plancher
+  de rampe à 0,62 atteint à 140 km au lieu de 0,5 atteint à 60 : la même vue de
+  la Gironde dessine 19 à 24 px, la plus large que la couche charge encore 17.
+
+  **Et la portée.** La couche demandait sa vue à Overpass, plafonnée à 10°. Ce
+  plafond n'a jamais été une politique de zoom : mesuré le 2026-09-10, une boîte
+  de 1,5° répond en 4 s, 5° en 41 s, 7,5° en 50 s même sans géométrie, 10° en
+  84 s — et une sonde navigateur a mesuré la couche **en échec** à 7,7°. La
+  France entière est donc embarquée : **4 086 sites, 474 ko, 63 ko en brotli**,
+  chargés au premier allumage de la couche et jamais autrement. Au-delà du
+  plafond, la carte se dessine depuis ce pack, sans une seule requête ; en
+  dessous, la requête vive reprend la main et **gagne toujours** sur le pack,
+  avec ses emprises. « Zoomez pour charger » ne répond plus à quelqu'un qui
+  recule au-dessus de son propre pays.
+
+  **Ce que la clé dit maintenant** (A5) : combien de marques sur combien dans la
+  vue, quel critère a décidé des sacrifiées — les classes nommées passent avant
+  le fourre-tout, un site nommé avant un site sans nom — et que les marques
+  venues du pack sont un relevé daté, sans emprise.
+
+### Added
 - **Deux puces coupent la couche Véhicules partagés en deux : les vélos, et
   tout le reste.** Une vue de ville tient des vélos, des VAE, des trottinettes,
   des scooters et des voitures partagées dans les mêmes rues, dessinés par la
