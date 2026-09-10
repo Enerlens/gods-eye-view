@@ -20,13 +20,26 @@ const ADDRESS = { lon: 2.3760, lat: 48.8300 };
 /** The height the globe actually draws there, measured in the running app. */
 const PARIS_GROUND_M = 82.4;
 
-/** A globe that answers with one height, and counts how often it was asked. */
+/**
+ * A SCENE whose globe answers with one height, and counts how often it was
+ * asked.
+ *
+ * A scene rather than a bare globe since 2026-09-10: the seating has to choose
+ * between the globe's triangles and a tileset probe, and that choice is a fact
+ * about the scene (`globe.show`), not about the globe. `show: true` is the
+ * globe stack, which is what every assertion below is about — the photoreal
+ * path has its own suite in `renderedSurface.test.mjs`.
+ */
 function fakeGlobe(height, { calls = { n: 0 } } = {}) {
   return {
     calls,
-    getHeight(carto) {
-      calls.n += 1;
-      return typeof height === 'function' ? height(carto) : height;
+    globe: {
+      show: true,
+      calls,
+      getHeight(carto) {
+        calls.n += 1;
+        return typeof height === 'function' ? height(carto) : height;
+      },
     },
   };
 }

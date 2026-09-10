@@ -525,11 +525,16 @@ async function main() {
     check('clicking either mark prints the SAME card',
       viaPictogram?.copy === viaDisc?.copy);
     const merged = String(viaPictogram?.copy || '');
+    // The mode rides on the TITLE beside the name since 2026-09-10; what stays
+    // on the referential line is where the stop is, its fare zone and whether
+    // a reader can roll onto it.
     check('the card carries the referential half',
-      /Bus · Paris 14e · zone 1 · accessible/.test(merged), merged.split('\n')[1]);
+      /· Bus/.test(merged.split('\n')[0])
+        && /Paris 14e · zone 1 · accès de plain-pied/.test(merged),
+      merged.split('\n').slice(0, 2).join(' | '));
     check('and the hourly half, for the band the row is on',
-      /08:00–08:59 — 30 départs\/h/.test(merged),
-      merged.split('\n').find((line) => /départs\/h/.test(line)));
+      /30 par heure ici/.test(merged) && /ce jeudi à 08 h/.test(merged),
+      merged.split('\n').find((line) => /par heure ici/.test(line)));
     check('and does NOT end on a licence line — that lives in the credits',
       !/ODbL|Licence Ouverte/.test(merged),
       merged.split('\n').slice(-1)[0]);
@@ -543,12 +548,13 @@ async function main() {
     const refOnly = String(noProfile?.copy || '');
     check('a referential stop outside the offer asks, then says it is not there',
       noProfile?.probe === 'empty'
-      && /Aucun profil horaire publié/.test(refOnly) && !/départs\/h/.test(refOnly),
+      && /Aucun profil horaire publié/.test(refOnly) && !/par heure ici/.test(refOnly),
       `probe=${noProfile?.probe} · ${refOnly.split('\n').slice(1).join(' | ')}`);
     const offerOnly = String((await cardFor(page, 'idfm-freq:23997'))?.copy || '');
     check('an offer stop outside the referential quotes the offer’s own mode',
-      /Bus · Paris \(75\)/.test(offerOnly) && !/zone 1/.test(offerOnly),
-      offerOnly.split('\n')[1]);
+      /· Bus/.test(offerOnly.split('\n')[0]) && /Paris \(75\)/.test(offerOnly)
+        && !/zone 1/.test(offerOnly),
+      offerOnly.split('\n').slice(0, 2).join(' | '));
     // Back to the stop that has BOTH halves, so the shot is evidence of the
     // merge rather than of one of its edges.
     await cardFor(page, 'idfm:stop:23613');
@@ -625,7 +631,7 @@ async function main() {
     const wideClick = await cardFor(page, 'idfm:stop:23613');
     const wideCard = String(wideClick?.copy || '');
     check('and a click up here BUYS the profile instead of quoting the altitude',
-      wideClick?.probe === 'ok' && /départs\/h/.test(wideCard)
+      wideClick?.probe === 'ok' && /par heure ici/.test(wideCard)
       && !/altitude|approchez/.test(wideCard),
       `probe=${wideClick?.probe} · ${wideCard.split('\n').slice(1).join(' | ')}`);
     // At most one, not exactly one: a probe keeps every profile its box paid

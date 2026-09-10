@@ -326,14 +326,27 @@ export const IDFM_FREQ_MODE_LABELS = Object.freeze({
  */
 export const IDFM_FREQ_LEVELS = Object.freeze([2, 4, 8, 16, 32]);
 
-/** French legend labels, one per level, with the headway they mean. */
+/**
+ * French legend labels, one per level.
+ *
+ * THE LABEL IS THE WAIT, and the rate is gone from it. Rewritten 2026-09-10
+ * after a reader called the key "du charabia". The file publishes a RATE —
+ * departures per hour — and that is the honest unit for the data, but nobody
+ * decides anything on "8 à 16/h". They decide on how long they stand at the
+ * pole. `meanWaitMin` turns one into the other by an arithmetic identity
+ * (30 / rate, the mean wait for a uniform arrival), so nothing is invented:
+ * the same number is simply stated in the unit the reader is in.
+ *
+ * The rate has not disappeared from the product — it is on the stop's own card,
+ * where there is room to give both. A key has room for one.
+ */
 export const IDFM_FREQ_LEVEL_LABELS = Object.freeze([
-  'moins de 2/h — plus de 30 min d’attente',
-  '2 à 4/h — 15 à 30 min',
-  '4 à 8/h — 7 à 15 min',
-  '8 à 16/h — 4 à 7 min',
-  '16 à 32/h — 2 à 4 min',
-  '32/h et plus — moins de 2 min',
+  'plus de 30 min d’attente',
+  'un passage toutes les 15 à 30 min',
+  'un passage toutes les 7 à 15 min',
+  'un passage toutes les 4 à 7 min',
+  'un passage toutes les 2 à 4 min',
+  'un passage toutes les 2 min ou moins',
 ]);
 
 /** Label for the "runs, but not in this band" state. */

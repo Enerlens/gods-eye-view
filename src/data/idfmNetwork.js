@@ -7,6 +7,8 @@ import {
 import { governorRequestRender } from '../renderGovernor.js';
 import {
   ADDRESS_SCAN_MOVE_DEBOUNCE_MS,
+  SEAT_RETRY_BACKOFF,
+  SEAT_RETRY_PASSES,
   SEAT_SETTLE_MS,
   emphasiseAddressMarker,
   renderedGroundM,
@@ -16,6 +18,7 @@ import {
 import { idfmStopGlyphKind } from './addressMarkerIcons.js';
 import { IDFM_MODES } from './idfmFeed.js';
 import { registerPickOwner, resolvePickId, unregisterPickOwner } from './pickRegistry.js';
+import { SURFACE_SAMPLE_BUDGET, seatPointsOnSurface } from './renderedSurface.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { transitStopBadge } from './transitVehicleIcons.js';
 import { greatCircleKm } from './trafficBounds.js';
@@ -45,7 +48,6 @@ import {
   frequencyLevel,
   meanWaitMin,
   operatingSlot,
-  profileDayTotal,
   profilePeak,
   profileRate,
   profileSpan,
@@ -256,6 +258,21 @@ export const IDFM_OVERLAY_SOURCE_OPTIONS = Object.freeze({
 
 const STOPS_URL = '/api/idfm/stops';
 const FREQ_URL = '/api/idfm-frequency/stops';
+/**
+ * The regional roll-up, read for ONE number: how many stops the file publishes
+ * with no coordinate at all.
+ *
+ * That count is a fact about the FILE and not about the box on screen. The
+ * viewport product carries an `unplaced` of its own and it counts something
+ * else — rows dropped inside that box, which is 0 almost everywhere — so
+ * reading it and printing the regional sentence beside it stated a number the
+ * legend then contradicted. Measured 2026-09-10: every viewport tried answered
+ * 0, so the note never appeared at all.
+ *
+ * Fetched once per session on enable, fire-and-forget, and cheap: the whole
+ * regional product is ~5.9 kB gzipped and the proxy caches it on disk.
+ */
+const FREQ_REGION_URL = '/api/idfm-frequency/region';
 
 /**
  * Frequency regime boundary, in degrees of the wider view span, with hysteresis.
@@ -348,15 +365,20 @@ const SILENT_FILL_ALPHA = 0.42;
 const SELECTED_COLOR = '#00ffff';
 const SELECTED_SIZE_PX = 18;
 
-/** Legend copy — one sentence a reader can act on, per state. */
-const LEVEL_BLURBS = Object.freeze([
-  'Moins de deux départs par heure. Une demi-heure d’attente en moyenne, et le service peut être un seul aller-retour.',
-  'Deux à quatre départs par heure : 15 à 30 minutes d’attente moyenne.',
-  'Quatre à huit par heure : 7 à 15 minutes. Le seuil au-dessous duquel on consulte un horaire avant de sortir.',
-  'Huit à seize par heure : 4 à 7 minutes. On descend sans regarder l’heure.',
-  'Seize à trente-deux par heure : 2 à 4 minutes.',
-  'Trente-deux et plus : moins de deux minutes. Le plus fort mesuré dans la tranche 08 h est Gare de Meaux (Dépose) à 70,1 courses.',
-]);
+/**
+ * NO BLURB UNDER A RATE RUNG, and that is the whole edit of 2026-09-10.
+ *
+ * Six sentences used to hang under the six colours, and five of them said the
+ * label again in words: `4 à 8/h — 7 à 15 min` carried « Quatre à huit par
+ * heure : 7 à 15 minutes. » A reader called the result « du charabia » and was
+ * right — the key was mostly its own echo, 692 px of it. The rungs now name
+ * the WAIT ({@link IDFM_FREQ_LEVEL_LABELS}), which is the whole sentence those
+ * blurbs were trying to reach, so there is nothing left for them to add.
+ *
+ * {@link MODE_BLURBS} below stays, and the difference is the point: a mode
+ * blurb says what the thing IS and why its badge is that size, which is not on
+ * its label. A rung blurb only restated the rung.
+ */
 
 /**
  * Legend copy for the MODE regime — one sentence per mode, on what it is and
@@ -401,10 +423,40 @@ export function modeLegend(stops) {
     }));
 }
 
-const SILENT_BLURB = 'Arrêt qui publie bien un profil et n’a aucune course dans cette tranche. '
-  + 'C’est une valeur mesurée, pas une donnée manquante — d’où sa couleur propre et non le gris '
-  + '« non mesuré » du reste de l’application. À 01 h, 397 des 805 arrêts du carré de 4 km sur '
-  + 'Châtelet sont dans ce cas.';
+/**
+ * The one rung that still earns a sentence.
+ *
+ * A reader cannot decode silence from the colour: a dark dot could as easily
+ * mean "no data", and the row directly under it — {@link IDFM_NOT_MEASURED_COLOR}
+ * — is exactly that. So this says the one thing the swatch cannot, and stops.
+ * What went with the old version was a count from a 4 km square over Châtelet
+ * that the reader is not standing in: commentary about the dataset, not about
+ * the map in front of them.
+ */
+const SILENT_BLURB = 'L’arrêt existe et publie ses horaires. À cette heure-ci, il ne dessert rien.';
+
+/**
+ * The stops nobody can draw — and the reason this is NOT a counted row.
+ *
+ * It used to sit in the counted list with a colour swatch beside `549`, under
+ * rows counting what is on screen. A reader read it exactly as the shape
+ * invited: « énormément d'arrêts placés sur la carte dont on n'a pas les
+ * coordonnées ». It is the opposite — these are the only stops that CANNOT be
+ * placed, they are 1,50 % of the file, and none of them is on any map.
+ *
+ * So it is published with `color: null`, which `manager.js` renders as the
+ * deliberate "not drawn here" line: an empty swatch slot, text still aligned
+ * with the coloured rows, and no pastille implying it was mapped. The count
+ * moves INTO the sentence, where it reads as a fact about the file rather than
+ * as a tally of marks in the frame.
+ *
+ * Figures measured against the live proxy on 2026-09-10: 36 502 stops
+ * published, 35 953 placed, 549 without coordinates — 473 Train, 69 Bus,
+ * 7 Tramway — carrying 84 766 of an average Tuesday's 3 071 764 courses.
+ */
+const UNPLACED_BLURB = 'Sans latitude ni longitude dans le fichier : 473 Train, 69 Bus, '
+  + '7 Tramway. 518 se rattachent à une zone d’arrêt, mais 512 de ces zones ont deux quais '
+  + 'ou plus — il n’existe aucun point publié à emprunter. Ils portent 2,8 % des passages.';
 
 /**
  * The chips: seven moments, one panel row.
@@ -476,6 +528,9 @@ let _freqRecords = new Map();
 let _freqByStopId = new Map();
 let _freqPack = null;
 let _freqPackBoxKey = null;
+/** Stops the file publishes with no coordinate, region-wide. See {@link FREQ_REGION_URL}. */
+let _freqUnplaced = null;
+let _freqUnplacedPromise = null;
 let _freqRegime = 'wide';
 let _freqLoading = false;
 let _freqStatus = 'idle';
@@ -507,21 +562,6 @@ export function formatRate(rate) {
   return value < 10
     ? value.toLocaleString('fr-FR', { maximumFractionDigits: 1 })
     : Math.round(value).toLocaleString('fr-FR');
-}
-
-/**
- * The implied wait, in words.
- *
- * Stated as an implication of the published rate and never as a measured
- * headway: the file counts courses in an hour, it does not say when in the hour
- * they run. Under a minute it says so rather than printing `0,7 min`, which
- * reads like a precision nobody has.
- */
-export function waitPhrase(rate) {
-  const minutes = meanWaitMin(rate);
-  if (minutes === null) return null;
-  if (minutes < 1) return 'moins d’une minute d’attente moyenne';
-  return `${minutes.toLocaleString('fr-FR', { maximumFractionDigits: minutes < 10 ? 1 : 0 })} min d’attente moyenne`;
 }
 
 /**
@@ -818,42 +858,120 @@ export function dayGlyphs(profile, day) {
 }
 
 /**
- * The week, band by band, on one line.
+ * The wait, on a clock face rather than as a decimal.
  *
- * Seven numbers for the SELECTED band, which is the comparison the chips cannot
- * make: the map is always today, and the one place the day matters more than
- * the hour is band 25, where the région runs 15 904 courses on a Monday and
- * 31 585 on a Friday.
+ * `2,5 min` is what the arithmetic gives and `2 min 30` is what a person says.
+ * Rounded to the half-minute and never finer: this is a MEAN wait derived from
+ * a count of departures in an hour, not a headway the file publishes, and
+ * printing seconds would claim a precision nobody has.
+ *
+ * It replaces `waitPhrase()`, which said the same number with the caveat glued
+ * to it — « 2,5 min d'attente moyenne ». The caveat is still on the card, once,
+ * on the line that says this is an average week and not a timetable; repeating
+ * it inside the sentence a reader acts on bought nothing and cost the sentence.
+ *
+ * @param {number} rate Departures per hour.
+ * @returns {?string}
  */
-export function weekLine(profile, band) {
-  const slot = clampBand(band);
-  const parts = IDFM_FREQ_DAYS.map((day) => {
-    const rate = profileRate(profile, day, slot);
-    return `${IDFM_FREQ_DAY_LABELS[day].slice(0, 3)} ${formatRate(rate)}`;
-  });
-  return parts.join(' · ');
+export function waitClock(rate) {
+  const minutes = meanWaitMin(rate);
+  if (minutes === null) return null;
+  if (minutes < 1) return 'moins d’une minute';
+  if (minutes >= 60) return 'plus d’une heure';
+  if (minutes >= 10) return `${Math.round(minutes)} min`;
+  const halves = Math.round(minutes * 2) / 2;
+  return Number.isInteger(halves) ? `${halves} min` : `${Math.floor(halves)} min 30`;
 }
 
 /**
- * What the referential says about a stop, on one line.
+ * What the reader is waiting FOR, by mode.
+ *
+ * « Un passage toutes les 2 min » is correct and flat; « un métro toutes les
+ * 2 min » is the same sentence in the reader's own words. `rail` says "train"
+ * rather than "RER & Transilien" — the mode label is right for a header and
+ * wrong inside a sentence.
+ */
+const MODE_VEHICLE = Object.freeze({
+  bus: 'bus',
+  metro: 'métro',
+  rail: 'train',
+  tram: 'tram',
+  funicular: 'passage',
+  cableway: 'passage',
+  unknown: 'passage',
+});
+
+/** `06:00–06:59` → `06 h 00`. The card names a moment, not a bracket. */
+function clockOf(band) {
+  const match = /^(\d{2}):(\d{2})/.exec(String(bandLabel(band)));
+  return match ? `${match[1]} h ${match[2]}` : bandLabel(band);
+}
+
+/** `08:00–08:59` → `08 h`. */
+function hourOf(band) {
+  const match = /^(\d{2})/.exec(String(bandLabel(band)));
+  return match ? `${match[1]} h` : bandLabel(band);
+}
+
+/**
+ * The day whose service at this hour differs MOST from the day on screen.
+ *
+ * This replaces a row of seven numbers — `Lun 12 · Mar 12 · Mer 12 · Jeu 12 ·
+ * Ven 12 · Sam 10 · Dim 5,9` — which answered a question it never asked. The
+ * question is "and on another day?", and the answer worth a line is the day
+ * where it CHANGES, not the five where it does not.
+ *
+ * Generalised rather than hard-coded to the weekend on purpose: the biggest
+ * gap in this dataset is not Saturday, it is FRIDAY NIGHT — band 25 runs
+ * 15 904 courses region-wide on a Monday and 31 585 on a Friday, +98.6 %. A
+ * rule that named « le week-end » would print the smaller finding and hide the
+ * larger one.
+ *
+ * @returns {?{day: string, rate: number}} Null when no day differs enough to
+ *   be worth a line of the card.
+ */
+export function mostDifferentDay(profile, band, shownDay, threshold = 0.2) {
+  const here = profileRate(profile, shownDay, band);
+  if (!(here > 0)) return null;
+  let best = null;
+  for (const day of IDFM_FREQ_DAYS) {
+    if (day === shownDay) continue;
+    const rate = profileRate(profile, day, band);
+    const gap = Math.abs(rate - here) / here;
+    if (gap < threshold) continue;
+    if (!best || gap > best.gap) best = { day, rate, gap };
+  }
+  return best ? { day: best.day, rate: best.rate } : null;
+}
+
+/**
+ * WHERE the stop is, on one line — town, fare zone, step-free access.
+ *
+ * The MODE is no longer on this line: since 2026-09-10 it sits on the title,
+ * beside the name, where a reader looks for what kind of thing they clicked.
  *
  * `null` accessibility is "nobody surveyed it", which is not "not accessible" —
  * and for a reader deciding where to live that distinction is the whole point.
+ * Said in the words a reader uses about a kerb rather than in the vocabulary of
+ * a compliance form: `accessible` was ambiguous about WHAT was accessible.
  *
  * @param {?object} ref Projected `arrets` row.
+ * @param {?object} [freq] Frequency row, whose commune stands in when the
+ *   referential holds no row for this stop.
  * @returns {?string}
  */
-export function networkLine(ref) {
-  if (!ref) return null;
-  return [
-    ref.modeLabel || IDFM_MODES[ref.mode] || null,
-    ref.town,
-    ref.fareZone ? `zone ${ref.fareZone}` : null,
-    ref.accessible === true ? 'accessible'
-      : ref.accessible === 'partial' ? 'partiellement accessible'
-        : ref.accessible === false ? 'non accessible'
-          : 'accessibilité non renseignée',
-  ].filter(Boolean).join(' · ');
+export function networkLine(ref, freq = null) {
+  const where = [];
+  if (ref?.town) where.push(ref.town);
+  else if (freq?.commune) where.push(freq.dept ? `${freq.commune} (${freq.dept})` : freq.commune);
+  if (ref?.fareZone) where.push(`zone ${ref.fareZone}`);
+  if (ref) {
+    where.push(ref.accessible === true ? 'accès de plain-pied'
+      : ref.accessible === 'partial' ? 'accès de plain-pied partiel'
+        : ref.accessible === false ? 'pas d’accès de plain-pied'
+          : 'accessibilité non renseignée');
+  }
+  return where.length ? where.join(' · ') : null;
 }
 
 /**
@@ -862,6 +980,26 @@ export function networkLine(ref) {
  * This is the merge, stated as copy. Every line is either published or an
  * arithmetic identity on a published number, and the last one says which week
  * was drawn: this is a yearly average of a term-time week, not a timetable.
+ *
+ * ── THE CONSEQUENCE FIRST, THE NUMBER AS ITS PROOF ───────────────────────
+ * Rewritten 2026-09-10, to the rule the airport-noise pastilles were rewritten
+ * to a day earlier. What stood here was eleven lines built the other way round
+ * — a rate, then a day total in "courses", then seven day-by-day numbers, then
+ * a count of published time bands. A reader called it « du charabia ». It is
+ * seven lines now, and it opens on how long they stand at the pole.
+ *
+ * Three lines were cut outright and the reasoning is worth keeping:
+ *   - `Total Mardi : 244 courses` measures how big the stop is, which is a
+ *     fact about the operator's day, not about the reader's.
+ *   - `Même tranche : Lun 13 · Mar 13 · …` is seven numbers with no question
+ *     attached. {@link mostDifferentDay} asks the question and answers it in
+ *     one clause.
+ *   - `21 tranches publiées sur 24` is internal accounting. The part a reader
+ *     needs — when the service starts and stops — is already the first/last
+ *     line, and states it in hours rather than in array indices.
+ *
+ * The MODE moves to the title, beside the name, where a reader looks for what
+ * kind of thing they just clicked; {@link networkLine} keeps WHERE it is.
  *
  * ── A CLICK IS ANSWERED, NEVER DEFERRED ──────────────────────────────────
  * There are no altitude excuses on this card any more. It carried two —
@@ -893,45 +1031,62 @@ export function buildStopCard({ ref = null, freq = null } = {}, context = {}) {
   const pack = context.pack || null;
   const probe = context.probe || null;
 
-  const lines = [ref?.name || freq?.name || `Arrêt ${ref?.id || freq?.id}`];
-
-  const where = networkLine(ref);
-  if (where) {
-    lines.push(where);
-  } else if (freq) {
-    // No referential row: the frequency file publishes its own mode and
-    // commune, and they are said as its own rather than borrowed.
-    const own = [IDFM_FREQ_MODE_LABELS[freq.mode] || IDFM_FREQ_MODE_LABELS.unknown];
-    if (freq.commune) own.push(freq.dept ? `${freq.commune} (${freq.dept})` : freq.commune);
-    lines.push(own.join(' · '));
-  }
+  const mode = ref?.mode || freq?.mode || 'unknown';
+  const modeLabel = ref?.modeLabel || IDFM_MODES[ref?.mode]
+    || IDFM_FREQ_MODE_LABELS[freq?.mode] || IDFM_FREQ_MODE_LABELS.unknown;
+  const name = ref?.name || freq?.name || `Arrêt ${ref?.id || freq?.id}`;
+  const dayLabel = IDFM_FREQ_DAY_LABELS[day] || day;
+  const lines = [`${name} · ${modeLabel}`];
 
   if (freq) {
+    // 1. THE CONSEQUENCE. How long you stand there, at the hour on screen.
     const rate = profileRate(freq.profile, day, band);
-    const when = `${IDFM_FREQ_DAY_LABELS[day] || day} ${bandLabel(band)}`;
-    if (rate > 0) lines.push(`${when} — ${formatRate(rate)} départs/h · ${waitPhrase(rate)}`);
-    else lines.push(`${when} — ${IDFM_FREQ_SILENT_LABEL}`);
+    const when = `${dayLabel.toLowerCase()} à ${hourOf(band)}`;
+    const vehicle = MODE_VEHICLE[mode] || MODE_VEHICLE.unknown;
+    lines.push(rate > 0
+      ? `Un ${vehicle} toutes les ${waitClock(rate)} — ce ${when}`
+      : `Rien ne passe ici ce ${when}`);
 
-    const glyphs = dayGlyphs(freq.profile, day);
-    if (glyphs) lines.push(`04 h ${glyphs} 03 h`);
-
+    // 2. THE PROOF, and the shape of the day around it.
     const span = profileSpan(freq.profile, day);
     const peak = profilePeak(freq.profile, day);
-    const shape = [];
-    if (span) shape.push(`premier ${bandLabel(span.first)}`.replace(/–\d{2}:\d{2}$/, ''));
-    if (peak) shape.push(`pointe ${bandLabel(peak.band).replace(/–\d{2}:\d{2}$/, '')} à ${formatRate(peak.rate)}/h`);
-    if (span) shape.push(`dernier ${bandLabel(span.last)}`.replace(/–\d{2}:\d{2}$/, ''));
-    if (shape.length) lines.push(shape.join(' · '));
-
-    lines.push(`Total ${IDFM_FREQ_DAY_LABELS[day] || day} : ${formatRate(profileDayTotal(freq.profile, day))} courses`);
-    lines.push(`Même tranche : ${weekLine(freq.profile, band)}`);
-
-    // A stop that publishes fewer than 24 bands is not truncated: it simply has
-    // no service in the rest of them. Saying so stops the sparkline's flat tail
-    // reading as a gap in the feed.
-    if (typeof freq.bands === 'number' && freq.bands > 0 && freq.bands < 24) {
-      lines.push(`${freq.bands} tranches publiées sur 24 — aucune course dans les autres`);
+    const proof = [];
+    if (rate > 0) {
+      proof.push(peak && peak.band !== band
+        ? `${formatRate(rate)} par heure ici, jusqu’à ${formatRate(peak.rate)} vers ${hourOf(peak.band)}`
+        : `${formatRate(rate)} par heure ici`);
     }
+    if (span) proof.push(`premier ${clockOf(span.first)}, dernier ${clockOf(span.last)}`);
+    if (proof.length) lines.push(proof.join(' · '));
+
+    // 3. THE DAY THAT DIFFERS, if one does.
+    const other = mostDifferentDay(freq.profile, band, day);
+    if (other) {
+      lines.push(other.rate > 0
+        ? `${IDFM_FREQ_DAY_LABELS[other.day]} à la même heure : un toutes les ${waitClock(other.rate)}`
+        : `${IDFM_FREQ_DAY_LABELS[other.day]} à la même heure : rien`);
+    }
+  } else if (probe === 'loading') {
+    lines.push('Lecture de l’offre horaire de cet arrêt…');
+  } else if (probe === 'error') {
+    lines.push('Offre horaire IDFM momentanément indisponible pour cet arrêt');
+  } else {
+    // The one honest absence left, and it is a MEASUREMENT rather than a
+    // ceiling: this stop has no row in the offer file at all. Measured,
+    // 3 053 of the 37 956 referential stops, 8.0 %.
+    lines.push('Aucun profil horaire publié pour cet arrêt dans l’offre IDFM');
+  }
+
+  // 4. WHERE IT IS — town, fare zone, step-free. The mode is on the title.
+  const where = networkLine(ref, freq);
+  if (where) lines.push(where);
+
+  if (freq) {
+    // 5. THE WHOLE DAY, in one line of glyphs.
+    const glyphs = dayGlyphs(freq.profile, day);
+    if (glyphs) lines.push(`04 h ${glyphs} 03 h — la journée entière`);
+
+    // 6. THE CAVEATS THAT ONLY APPEAR WHEN THEY APPLY.
     if (Array.isArray(freq.aliases) && freq.aliases.length) {
       lines.push(`Aussi publié « ${freq.aliases.join(' », « ')} » au même point`);
     }
@@ -943,16 +1098,10 @@ export function buildStopCard({ ref = null, freq = null } = {}, context = {}) {
     if (freq.mode === 'unknown' && !ref) {
       lines.push('Mode non publié par ce jeu de données — non emprunté au référentiel');
     }
-    lines.push(`Offre moyenne, semaine type hors vacances ${pack?.year || IDFM_FREQ_REFERENCE_YEAR}`);
-  } else if (probe === 'loading') {
-    lines.push('Lecture de l’offre horaire de cet arrêt…');
-  } else if (probe === 'error') {
-    lines.push('Offre horaire IDFM momentanément indisponible pour cet arrêt');
-  } else {
-    // The one honest absence left, and it is a MEASUREMENT rather than a
-    // ceiling: this stop has no row in the offer file at all. Measured,
-    // 3 053 of the 37 956 referential stops, 8.0 %.
-    lines.push('Aucun profil horaire publié pour cet arrêt dans l’offre IDFM');
+
+    // 7. WHAT THIS IS. Never a timetable, and it says so in its own words.
+    lines.push(`Moyenne d’une semaine ordinaire ${pack?.year || IDFM_FREQ_REFERENCE_YEAR}, `
+      + 'hors vacances — ce n’est pas un horaire');
   }
 
   return lines.join('\n');
@@ -1238,43 +1387,122 @@ function removeClickHandler() {
   document.removeEventListener('keydown', onKeyDown);
 }
 
-// --- Terrain seating --------------------------------------------------------
+// --- Rendered-surface seating -----------------------------------------------
 
 /**
- * Put every stop on the terrain underneath it.
+ * Put every mark this layer draws on the surface underneath it.
+ *
+ * BOTH KINDS AT ONCE, because they stand on the SAME coordinate: a badge
+ * entity and, under it, a frequency disc. The disc yields wherever a badge
+ * stands, but a hidden disc still has to be in the right place — its badge can
+ * go at any repaint, and a fix that seated one of the two would simply pull
+ * them apart at that moment.
  *
  * The same mechanism the address-scan factory runs, for the same reason: a
  * stop drawn on the ellipsoid stands eighty metres under the pavement it
- * serves, and a vertical error under an oblique camera is a horizontal error
- * on screen that moves with the camera. See `addressScanLayer.js` for the
- * measurement. This layer keeps its own copy of the wiring rather than the
- * logic — its scan is a bounding box, not a radius, so it does not sit on the
- * factory — and the box centre stands in for terrain that has not streamed
- * in yet.
+ * serves, and a vertical error under a camera that is not exactly overhead is
+ * a horizontal error on screen that MOVES as the camera moves. Measured on
+ * this layer, 2026-09-10 over the Latin Quarter with the camera at 420 m: the
+ * marks sat at ellipsoidal 0 while the rendered mesh read 83.5 to 91.6 m under
+ * the same coordinates — 140 px of median error, 272 px at worst, and up to
+ * 269 px of SLIDE across a 250 m pan. That slide is the reported symptom.
  *
- * @returns {number} How many stops moved.
+ * The height is read from whichever surface is ON SCREEN, which is the part
+ * that was missing: `globe.getHeight()` answers `undefined` for every point on
+ * the photoreal stack, where the globe is hidden, so this seating was a silent
+ * no-op on the stack most readers are looking at. `renderedSurface.js` owns
+ * that decision and the budget it costs.
+ *
+ * This layer keeps its own copy of the wiring rather than the logic — its scan
+ * is a bounding box, not a radius, so it does not sit on the factory — and the
+ * box centre stands in for surface that has not streamed in yet. Over this
+ * viewport that one borrowed reading is most of the fix on its own: ~88 m of
+ * error down to ~8 m, for a single probe.
+ *
+ * @returns {number} How many marks moved.
  */
 function seatMarkers(centre = _lastCentre) {
-  const globe = _viewer?.scene?.globe;
-  if (!globe || !_dataSource || _dormant) return 0;
+  const scene = _viewer?.scene;
+  if (!scene?.globe || _dormant) return 0;
   const fallback = centre
-    ? renderedGroundM(globe, Cesium.Math.toRadians(centre.lon), Cesium.Math.toRadians(centre.lat))
+    ? renderedGroundM(scene, Cesium.Math.toRadians(centre.lon), Cesium.Math.toRadians(centre.lat))
     : null;
-  const { moved, pending } = seatEntitiesOnGround(_dataSource.entities.values, globe, fallback);
+  let moved = 0;
+  let pending = 0;
+  if (_dataSource) {
+    const seated = seatEntitiesOnGround(_dataSource.entities.values, scene, fallback);
+    moved += seated.moved;
+    pending += seated.pending;
+  }
+  const discs = seatDiscs(fallback);
+  moved += discs.moved;
+  pending += discs.pending;
   _seatPending = pending > 0;
   if (moved > 0) {
-    // The open card carries a copy of its marker's position, so it has to
-    // follow the marker up rather than stay where the marker used to be.
+    // The open card carries a copy of its mark's position, so it has to
+    // follow the mark up rather than stay where the mark used to be.
     if (_selectedId) repaintSelectedCard();
     governorRequestRender('idfm-network-seat');
   }
   return moved;
 }
 
-/** Re-seat once terrain settles, coalescing the burst of tile-load events. */
-function scheduleSeat() {
+/**
+ * Seat the frequency discs, which are `PointPrimitive`s rather than entities.
+ *
+ * {@link POINT_LIFT_M} was measured against the wrong datum: `fromDegrees(lon,
+ * lat, 2)` is two metres above the ELLIPSOID, so a disc stood some eighty-eight
+ * metres under the pavement it describes and was painted there anyway, depth
+ * testing being disabled. The lift is kept — it is what holds a disc clear of
+ * the tarmac — and simply applied to a measured floor instead of to nothing.
+ *
+ * A disc hidden under a badge is seated too: `show` is not `exists`, and the
+ * moment its badge stops covering it a disc that skipped its turn would be the
+ * only mark in the view standing on the ellipsoid.
+ *
+ * @param {?number} fallbackHeightM Surface under the scan centre, if read.
+ * @returns {{moved: number, pending: number}}
+ */
+function seatDiscs(fallbackHeightM) {
+  const scene = _viewer?.scene;
+  if (!scene || !_points?.length) return { moved: 0, pending: 0 };
+  const { moved, pending } = seatPointsOnSurface(iterateDiscs(), scene, {
+    fallbackHeightM,
+    liftM: POINT_LIFT_M,
+    sampleBudget: SURFACE_SAMPLE_BUDGET,
+  });
+  // A record carries a COPY of its disc's position and the card is anchored on
+  // the record, so the copy follows the disc up rather than staying behind.
+  if (moved > 0) {
+    for (const record of _freqRecords.values()) {
+      if (record.point) record.position = record.point.position;
+    }
+  }
+  return { moved, pending };
+}
+
+/** The collection is index-addressed; the seater wants an iterable. */
+function* iterateDiscs() {
+  for (let i = 0; i < _points.length; i += 1) yield _points.get(i);
+}
+
+/**
+ * Re-seat once the surface settles, coalescing the burst of tile-load events.
+ *
+ * A pass that still owes readings books the next one itself, with a DOUBLING
+ * delay: on the photoreal stack the globe's `tileLoadProgressEvent` never
+ * fires — a hidden globe streams no tiles — and the probe budget seats at most
+ * a couple of dozen marks per pass. A first fixed-interval cut of this loop
+ * (six wake-ups at 250 ms) expired before the mesh had finished streaming and
+ * left the defect whole. See `addressScanLayer.js`, where the same loop and
+ * the same measurement are written out in full.
+ */
+function scheduleSeat(retries = SEAT_RETRY_PASSES, delayMs = SEAT_SETTLE_MS) {
   clearTimeout(_seatTimer);
-  _seatTimer = setTimeout(() => { seatMarkers(); }, SEAT_SETTLE_MS);
+  _seatTimer = setTimeout(() => {
+    seatMarkers();
+    if (_seatPending && retries > 0) scheduleSeat(retries - 1, delayMs * SEAT_RETRY_BACKOFF);
+  }, delayMs);
 }
 
 // --- Frequency discs --------------------------------------------------------
@@ -1319,6 +1547,12 @@ function reconcileDiscs(payload) {
     _freqByStopId.set(String(stop.id), record);
   }
   restyleBadges();
+  // Freshly added discs are on the ellipsoid until somebody reads the ground
+  // for them, and the badges they hide under were seated by the referential
+  // pass. Seating here, and again as the mesh streams, is what keeps the two
+  // marks over one stop from drifting apart.
+  seatMarkers();
+  scheduleSeat();
   governorRequestRender('idfm-network-frequency');
 }
 
@@ -1457,6 +1691,22 @@ async function probeStop(stopId, lat, lon) {
   // BADGE deliberately does not move: one stop wearing a rate while the
   // hundred around it wear their mode would read as a difference in service.
   if (_selectedId && selectionStopId(_selectedId) === stopId) repaintSelectedCard();
+}
+
+/**
+ * Read the region's unplaced total, once.
+ *
+ * Fire-and-forget and never awaited by a draw: the note it feeds is one legend
+ * line, and a reader looking at stops must not wait on it. A failure leaves the
+ * line absent, which is the honest state — an unknown count is not zero.
+ */
+function ensureUnplacedTotal() {
+  if (_freqUnplaced !== null || _freqUnplacedPromise) return;
+  _freqUnplacedPromise = fetchJson(FREQ_REGION_URL, {
+    validate: (body) => Number.isFinite(body?.totals?.unplaced),
+  }).then((payload) => {
+    _freqUnplaced = payload.totals.unplaced;
+  }).catch(() => null).finally(() => { _freqUnplacedPromise = null; });
 }
 
 async function loadFrequency(box, { force = false } = {}) {
@@ -1675,9 +1925,9 @@ function scheduleScan() {
  * The camera stopped: re-seat, and separately consider re-querying.
  *
  * Under the movement threshold `runScan` returns without a request — right,
- * the same box is still on screen — but the terrain LOD beneath those stops
- * may have refined on the way in. Re-seating is a local read; it must not be
- * gated behind a decision about the network.
+ * the same box is still on screen — but the LOD of the surface beneath those
+ * stops may have refined on the way in. Re-seating is a local read; it must
+ * not be gated behind a decision about the network.
  */
 function onCameraSettled() {
   scheduleSeat();
@@ -1839,6 +2089,12 @@ const idfmNetworkLayer = {
         if (queued === 0 || _seatPending) scheduleSeat();
       });
     }
+    // ONE regional read, here rather than inside a viewport load: the count it
+    // carries is a fact about the FILE, true at every altitude, and a reader
+    // who opens the layer already zoomed in — or on a box the proxy answers
+    // from cache — never passes through the code path a load-time call would
+    // sit on. Measured: on two runs out of three the note was simply absent.
+    ensureUnplacedTotal();
     restoreSpriteOrder(_viewer);
     // Adopted before the first fetch, so the viewport is asked for the slot the
     // reader is on rather than for today's clock and then again for the pinned
@@ -1938,7 +2194,7 @@ const idfmNetworkLayer = {
       pinned: _pinnedBand !== null,
       charted: _freqRecords.size,
       edition: _freqPack?.edition ?? null,
-      stopsWithoutCoordinate: _freqPack?.unplaced ?? null,
+      stopsWithoutCoordinate: _freqUnplaced,
     };
     if (_freqPack?.stale) stats.stale = true;
     const label = buildLoadingLabel();
@@ -2010,12 +2266,7 @@ const idfmNetworkLayer = {
     const legend = [];
     counts.forEach((count, level) => {
       if (!count) return;
-      legend.push({
-        label: levelLabel(level),
-        color: levelColor(level),
-        count,
-        blurb: LEVEL_BLURBS[level],
-      });
+      legend.push({ label: levelLabel(level), color: levelColor(level), count });
     });
     legend.push({
       label: IDFM_FREQ_SILENT_LABEL,
@@ -2041,17 +2292,15 @@ const idfmNetworkLayer = {
           + 'son profil : le fichier d’offre est interrogé par arrêt, pas seulement par vue.',
       });
     }
-    // The stops nobody can draw travel with the legend: they publish no
-    // coordinate at all, and they carry 2.76 % of an average Tuesday's courses.
-    if (_freqPack?.unplaced) {
+    // The stops nobody can draw travel with the legend — but NOT as a counted
+    // row. See {@link UNPLACED_BLURB}: here the shape says more than the
+    // sentence, and the old shape said the opposite of the truth.
+    if (_freqUnplaced) {
       legend.push({
-        label: 'sans coordonnée publiée',
-        color: IDFM_FREQ_SILENT_COLOR,
-        count: _freqPack.unplaced,
-        blurb: 'Arrêts sans latitude ni longitude dans le fichier — 473 Train, 69 Bus, 7 Tramway '
-          + 'sur toute la région. 518 se rattachent à une zone d’arrêt du référentiel, mais 512 de '
-          + 'ces zones ont deux quais ou plus : il n’existe pas de point publié à emprunter, donc '
-          + 'ils sont comptés et jamais placés.',
+        label: `${fr(_freqUnplaced)} arrêts sans coordonnée publiée : `
+          + 'sur aucune carte, ici ni ailleurs',
+        color: null,
+        blurb: UNPLACED_BLURB,
       });
     }
     return { chips, legend };
@@ -2104,7 +2353,7 @@ const idfmNetworkLayer = {
 export function _setIdfmNetworkStateForTest({
   viewer, overlayHost, http, now, points = null, pack = null, refStops = null,
   pinnedBand = null, regime = pack ? 'arrets' : 'wide', enabled = true, status = 'ok',
-  dormant = false, count = null,
+  dormant = false, count = null, unplacedTotal = null,
 } = {}) {
   _viewer = viewer || null;
   _overlayHost = overlayHost || DEFAULT_OVERLAY_HOST;
@@ -2120,6 +2369,8 @@ export function _setIdfmNetworkStateForTest({
   _slot = resolveSlot(_pinnedBand, _now(), _pinnedDay);
   _freqPack = pack;
   _freqPackBoxKey = pack ? 'test' : null;
+  _freqUnplaced = unplacedTotal;
+  _freqUnplacedPromise = null;
   _refStops = new Map((refStops || []).map((stop) => [String(stop.id), stop]));
   _freqRecords = new Map();
   _freqByStopId = new Map();
