@@ -221,8 +221,10 @@ test('the readout says the instant, the day, and whether anything is moving', ()
   const readout = () => megafireCursorReadout(clock, megafireClockState(clock));
 
   // Parked on the closing frame — the state the layer opens in. This must NOT
-  // read like a paused run: it is the end of the event.
-  assert.equal(readout(), '■ 1ᵉʳ août 12:44 UTC · fin de l’événement');
+  // read like a paused run, and it must not claim more than the source does:
+  // 12:44 is EFFIS's FINALDATE, the last instant an algorithm saw this ground
+  // burn, and no publisher in this pack dates the fire's extinction.
+  assert.equal(readout(), '■ 1ᵉʳ août 12:44 UTC · dernière détection');
 
   seekMegafireClock(clock, Date.parse('2026-07-26T04:12:00Z'));
   assert.equal(readout(), '❚❚ 26 juil. 04:12 UTC · jour 4 sur 10');
@@ -231,7 +233,9 @@ test('the readout says the instant, the day, and whether anything is moving', ()
   assert.equal(readout(), '▶ 26 juil. 04:12 UTC · jour 4 sur 10');
 
   seekMegafireClock(clock, clock.startMs);
-  assert.equal(readout(), '▶ 22 juil. 11:55 UTC · départ de l’incendie');
+  // Same rule at the other end: 11:55 is EFFIS's FIREDATE, and the fire was
+  // only reported to the COGIC six hours later.
+  assert.equal(readout(), '▶ 22 juil. 11:55 UTC · première détection');
 
   // Every reading carries the instant, so the row and the tooltip can never
   // disagree about where the cursor is.

@@ -223,6 +223,16 @@ export function megafireWindowDays(clock) {
  * to the 1st, which is precisely what a first-time reader does not know. So the
  * line carries the position IN the window as well.
  *
+ * WHAT THE TWO ENDS ARE ALLOWED TO CLAIM. They read `première détection` and
+ * `dernière détection`, not `départ de l'incendie` and `fin de l'événement`,
+ * because neither bound is an event — both are EFFIS's FIREDATE and FINALDATE,
+ * the first and last instants an algorithm saw this ground burn. The fire was
+ * reported to the COGIC six hours AFTER 22 July 11:55, and it was declared
+ * fixed days AFTER 1 August 12:44 by a préfecture communiqué that is prose in a
+ * press release: no dataset, no API, and two different words — "fixé", then
+ * "éteint" — that a peat fire can put weeks apart. Naming a detection after an
+ * event would be the one claim in this layer no reader could go and check.
+ *
  * @param {ReturnType<createMegafireClock>} clock
  * @param {ReturnType<megafireClockState>} state
  * @returns {string} e.g. `▶ 26 juil. 04:12 UTC · jour 4 sur 10`.
@@ -230,8 +240,8 @@ export function megafireWindowDays(clock) {
 export function megafireCursorReadout(clock, state) {
   const instant = megafireCursorLabel(state.cursorMs);
   if (state.playing) return `▶ ${instant} · jour ${state.day} sur ${state.days}`;
-  if (state.atEnd) return `■ ${instant} · fin de l’événement`;
-  if (state.atStart) return `▶ ${instant} · départ de l’incendie`;
+  if (state.atEnd) return `■ ${instant} · dernière détection`;
+  if (state.atStart) return `▶ ${instant} · première détection`;
   return `❚❚ ${instant} · jour ${state.day} sur ${state.days}`;
 }
 

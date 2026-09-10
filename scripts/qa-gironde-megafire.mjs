@@ -492,15 +492,15 @@ async function main() {
     // no way to tell a finished replay from a running one.
     check('le bouton ne reste pas sur PAUSE une fois la lecture finie',
       endedChip?.label === '↺ Rejouer', JSON.stringify(endedChip));
-    check('et la ligne dit que l’événement est terminé',
-      probe.stats.atEnd === true && probe.stats.coverage.includes('fin de l’événement'),
+    check('et la ligne dit qu’on est sur la dernière détection, pas sur une extinction',
+      probe.stats.atEnd === true && probe.stats.coverage.includes('dernière détection'),
       String(probe.stats.coverage));
     const noPassing = await page.evaluate((id) => document
       .querySelectorAll(`[data-layer-id="${id}"] .chip-passing`).length, LAYER_ID);
     check('plus aucune puce ne clignote à l’arrêt', noPassing === 0, String(noPassing));
 
     console.log('\nviii. le feu brûle là où FIRMS a vu quelque chose, et nulle part ailleurs');
-    check('rien ne brûle sur l’image de clôture — le feu est éteint depuis le 1ᵉʳ août',
+    check('rien ne brûle sur l’image de clôture — plus une détection après le 1ᵉʳ août 12:44',
       (probe.stats.fire?.burning ?? 0) === 0 && (probe.stats.fire?.particles ?? 0) === 0,
       JSON.stringify(probe.stats.fire));
     check('et le gouverneur n’est pas tenu par des flammes qui n’existent pas',

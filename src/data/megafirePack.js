@@ -124,8 +124,10 @@ export const MEGAFIRE_M_PER_DEG_LON = 111320 * Math.cos(MEGAFIRE_CENTRE.lat * Ma
 
 /**
  * @constant {string} Fire reported. The activation API's `eventTime`, which is
- * two hours later than EFFIS's first detection (11:55 UTC) — EFFIS sees smoke
+ * six hours later than EFFIS's first detection (11:55 UTC) — EFFIS sees smoke
  * from orbit, the COGIC files a request once it knows it has lost the fire.
+ * That gap is why {@link megafireCursorReadout} calls 11:55 a `première
+ * détection` and not the start of the fire.
  */
 export const MEGAFIRE_EVENT_TIME = '2026-07-22T18:00:00Z';
 
