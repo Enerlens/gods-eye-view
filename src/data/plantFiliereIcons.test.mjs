@@ -10,15 +10,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  PLANT_GLYPH_PUNCH_MIN_PX,
   PLANT_GLYPH_RASTER_PX,
   PLANT_SHAPED_FILIERES,
   _plantPunchesForTest,
   _plantSymbolPathsForTest,
   plantFiliereGlyph,
+  plantMarkGlyph,
+  plantPlateGlyph,
   plantUnknownGlyph,
 } from './plantFiliereIcons.js';
 import { mapIconGeometry } from './mapIcons.js';
-import { FILIERE_ORDER, FILIERE_STYLES, PLANT_PIXEL_MIN } from './edfPowerPlants.js';
+import {
+  FILIERE_ORDER, FILIERE_STYLES, PLANT_PIXEL_MAX, PLANT_PIXEL_MIN, plantPixelSize,
+} from './edfPowerPlants.js';
 
 /** Decode a data URI back to its SVG source. */
 function decode(uri) {
@@ -204,6 +209,37 @@ test('a filière this build has never seen gets a bare plate, not a neighbour’
   assert.match(svg, /fill="#ffffff" mask="url\(#m\)"/);
   assert.equal(svg.split('<g fill="#000000">')[1].split('</g></mask>')[0], '');
   for (const key of FILIERE_ORDER) assert.notEqual(plantFiliereGlyph(key), plate);
+});
+
+test('a mark too small to hold a hole keeps its plate whole', () => {
+  // The punch is the first thing minification destroys: under ~20 px the
+  // silhouette stops being a shape and becomes a stain eating the middle of the
+  // pastille, which costs the plate the coloured area that says the filière.
+  const punched = (uri) => decode(uri).split('<g fill="#000000">')[1].split('</g></mask>')[0];
+  for (const key of FILIERE_ORDER) {
+    assert.equal(punched(plantMarkGlyph(key, PLANT_GLYPH_PUNCH_MIN_PX)),
+      punched(plantFiliereGlyph(key)), 'at the floor the mark is the shaped one');
+    assert.equal(plantMarkGlyph(key, PLANT_GLYPH_PUNCH_MIN_PX - 0.01), plantPlateGlyph(),
+      'below the floor the plate keeps its ink');
+  }
+  // The floor sits INSIDE this layer's own size ramp — above it there would be
+  // no shape channel at all, below it the ramp's floor would never reach it.
+  assert.ok(PLANT_GLYPH_PUNCH_MIN_PX > PLANT_PIXEL_MIN);
+  assert.ok(PLANT_GLYPH_PUNCH_MIN_PX < PLANT_PIXEL_MAX);
+  // Every reactor site keeps its cooling tower: the smallest of the eighteen is
+  // St-Laurent-des-Eaux B, 1 830 MW, which draws at 25.8 px.
+  assert.equal(plantMarkGlyph('nucleaire', plantPixelSize(1_830)), plantFiliereGlyph('nucleaire'));
+  // Grandval, the smallest site in the fleet, is a plate.
+  assert.equal(plantMarkGlyph('hydraulique', plantPixelSize(74.1)), plantPlateGlyph());
+
+  // A size that is not a number must never be read as "big enough to punch",
+  // and a filière with no artwork falls to the plate at every size.
+  assert.equal(plantMarkGlyph('hydraulique', Number.NaN), plantPlateGlyph());
+  assert.equal(plantMarkGlyph('hydraulique', undefined), plantPlateGlyph());
+  assert.equal(plantMarkGlyph('géothermie', PLANT_PIXEL_MAX), plantPlateGlyph());
+  // One plate, shared with the unknown filière — the two are told apart by the
+  // COLOUR the layer multiplies in, so they must not cost two atlas entries.
+  assert.equal(plantPlateGlyph(), plantUnknownGlyph());
 });
 
 test('rasters are cached per filière, per size and per variant', () => {

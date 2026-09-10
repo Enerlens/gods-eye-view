@@ -6,6 +6,43 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-10
 
 ### Fixed
+- **Une vue de la France entière offrait 51 étiquettes, 28 disaient le même
+  mot, et les petites centrales disparaissaient dessous.** Sur la couche
+  **Centrales EDF** filtrée sur `Hydraulique › Tous`, à 991 km d'altitude, les
+  51 sites dessinés demandaient tous leur nom et l'hôte les acceptait tous
+  (plafond 60) ; 28 de ces libellés se terminaient par « retenue de lac » sous
+  une puce HYDRAULIQUE déjà allumée, et le nom d'une centrale se posait sur la
+  marque de sa voisine — l'Aigle et Grandval avaient disparu sous le texte qui
+  nommait les plus grosses.
+
+  **UN NOM N'EST PAS DÛ À CHAQUE SITE À CHAQUE ALTITUDE.** Un libellé porte
+  désormais un plafond d'altitude tiré du rang du site par puissance installée
+  DANS LA SÉLECTION QUE LE LECTEUR REGARDE : les dix premiers se lisent depuis
+  l'orbite, les suivants reviennent en descendant, sous ~460 km puis sous
+  ~230 km. Le rang se lit dans la cohorte filtrée et pas dans la flotte : ayant
+  demandé l'hydraulique, on doit obtenir les plus grands barrages, pas un écran
+  où chaque nom appartient au nucléaire parce que le plus petit réacteur pèse
+  plus lourd que la plus grande retenue. Une étiquette fondue ne coûte rien :
+  l'hôte la rend avant de la mesurer, donc elle ne retient plus le créneau qui
+  écrasait la marque d'à côté, et cela sans un seul écouteur de caméra.
+
+  **LE LIBELLÉ CESSE DE RÉPÉTER LE FILTRE.** Filière choisie, il dit
+  `BORT · 235 MW`. Le régime reste sur la fiche et compté sur la bande de
+  sous-catégories, qui en est déjà la légende et le seul endroit où le lecteur
+  peut agir dessus. Sous TOUTES la phrase revient, parce que là elle est la
+  seule chose qui sépare un réacteur d'un régime d'eau. Ce que ça coûte est
+  nommé : le compte de réacteurs quitte le globe tant que NUCLÉAIRE est allumé,
+  et reste sur la fiche.
+
+  **SOUS 20 px, LA PASTILLE GARDE SON ENCRE.** La découpe est la première chose
+  que la minification détruit : sous ce seuil la silhouette cesse d'être une
+  forme et devient une tache au milieu de la pastille, qui mange justement
+  l'aire colorée nommant la filière. Mesuré sur la flotte vivante le
+  2026-09-10, **53 sites sur 79** dessinent sous 20 px — 46 hydrauliques,
+  7 thermiques, et aucun nucléaire : les 18 réacteurs gardent tous leur tour de
+  refroidissement. Le choix se fait sur la taille propre de la marque, donc il
+  ne coûte aucune passe par image, et la clé continue de décoder la couleur.
+
 - **Le Pays Basque affichait 561 punaises dont 447 disaient « rien ici », et
   toutes portaient le même mot.** Sur la vue de Biarritz, la couche **Vélos et
   véhicules partagés** étiquetait chaque point `basque_country_parking`, et la

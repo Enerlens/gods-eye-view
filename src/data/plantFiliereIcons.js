@@ -30,6 +30,27 @@
  * power station is a PLACE on a photograph of places, competing with roofs,
  * fields and rivers for the same pixels. Marks for places carry a plate.
  *
+ * ── AND WHY THE PUNCH HAS A FLOOR OF ITS OWN ────────────────────────────────
+ *
+ * The plate survives minification; the HOLE IN IT DOES NOT. Under about 20 px
+ * the punched silhouette stops being a shape and becomes a smudge eating the
+ * middle of the pastille — the mark reads as a ring with a stain in it rather
+ * than as a drop, and the stain costs the plate most of the coloured area that
+ * is doing the actual work of saying *hydraulique*. Measured against the real
+ * fleet on 2026-09-10: 53 of 79 sites draw under 20 px, 46 of them hydro, and
+ * every one of the 18 nuclear sites draws at 25.8 px or more.
+ *
+ * So {@link plantMarkGlyph} punches only above {@link PLANT_GLYPH_PUNCH_MIN_PX}
+ * and hands back the FULL plate below it. The two channels do not both vanish:
+ * a small mark still carries its filière in colour, and the key still decodes
+ * the colour. A full plate is also what an unknown filière draws — and the two
+ * cannot be confused, because that one is grey and these are not.
+ *
+ * The decision is made on the mark's OWN pixel side (its capacity), not on the
+ * camera: a site's size ramp is fixed, so this costs one branch per repaint
+ * rather than a per-frame pass, and a mark never swaps artwork under a reader
+ * who is only flying towards it.
+ *
  * ── WHAT IS BORROWED, AND WHY EACH ONE ──────────────────────────────────────
  *
  * Nothing is drawn from scratch. Two vendored sets, three glyphs:
@@ -132,6 +153,17 @@ const MATERIAL_Y_ORIGIN = -960;
  * packs record.
  */
 export const PLANT_GLYPH_RASTER_PX = 88;
+
+/**
+ * On-screen pixel side at or above which the plate is punched.
+ *
+ * See the note on the punch floor in the module header for what is below it
+ * and why. 20 rather than the 18 the sibling pack uses for a BARE silhouette,
+ * because a hole has to survive inside a disc of radius 40/96 — at 18 px the
+ * drop is under 12 px of actual glyph, which is where its highlight crescent
+ * closes up and it stops being water.
+ */
+export const PLANT_GLYPH_PUNCH_MIN_PX = 20;
 
 /**
  * What each filière punches into its plate, and how much of the plate it takes.
@@ -255,25 +287,63 @@ function plate(punch, px, key) {
 }
 
 /**
- * The mark for a filière this module has no silhouette for: the bare plate.
+ * The plate with nothing punched out of it.
  *
- * It is NOT a fourth subject — it is the pastille every place pack in this
- * fleet falls back to, kept for the one case where drawing a shape would be a
- * claim: EDF publishes three filières today, and a fourth appearing in a future
- * republication must arrive as "a station, and we cannot tell you which kind"
- * rather than wearing whichever of the three looked closest.
+ * TWO CALLERS, ONE RASTER, and that is the point rather than an accident: a
+ * filière this module has no silhouette for, and a mark too small to hold a
+ * hole. Both want the same picture — the full pastille — and sharing it keeps
+ * the whole fleet inside one extra atlas entry however the two mix.
  * @param {number} [px=PLANT_GLYPH_RASTER_PX] Raster size.
  * @param {Object} [options]
  * @param {boolean} [options.key=false] Omit the ring, for the masked key swatch.
  * @returns {string} `data:image/svg+xml;base64,…`
  */
-export function plantUnknownGlyph(px = PLANT_GLYPH_RASTER_PX, { key = false } = {}) {
+export function plantPlateGlyph(px = PLANT_GLYPH_RASTER_PX, { key = false } = {}) {
   const cacheKey = `plate@${px}${key ? ':key' : ''}`;
   const cached = _cache.get(cacheKey);
   if (cached) return cached;
   const uri = plate('', px, key);
   _cache.set(cacheKey, uri);
   return uri;
+}
+
+/**
+ * The mark for a filière this module has no silhouette for: the bare plate.
+ *
+ * It is NOT a fourth subject — it is the pastille every place pack in this
+ * fleet falls back to, kept for the one case where drawing a shape would be a
+ * claim: EDF publishes three filières today, and a fourth appearing in a future
+ * republication must arrive as "a station, and we cannot tell you which kind"
+ * rather than wearing whichever of the three looked closest. What separates it
+ * on screen from a small punchless mark is COLOUR: this one is drawn grey.
+ * @param {number} [px=PLANT_GLYPH_RASTER_PX] Raster size.
+ * @param {Object} [options]
+ * @param {boolean} [options.key=false] Omit the ring, for the masked key swatch.
+ * @returns {string} `data:image/svg+xml;base64,…`
+ */
+export function plantUnknownGlyph(px = PLANT_GLYPH_RASTER_PX, { key = false } = {}) {
+  return plantPlateGlyph(px, { key });
+}
+
+/**
+ * The mark one site actually draws, at the size it actually draws at.
+ *
+ * The whole decision in one place: punch the filière's silhouette if the mark
+ * is big enough to hold it, otherwise keep the plate whole — and fall back to
+ * the plate for a filière with no artwork either way. See the module header for
+ * the floor and what it costs.
+ *
+ * @param {string|null|undefined} filiere Filière key, as `edfPlantsFeed` emits it.
+ * @param {number} sizePx The mark's own on-screen side, in CSS pixels.
+ * @param {Object} [options]
+ * @param {number} [options.px=PLANT_GLYPH_RASTER_PX] Raster size.
+ * @returns {string} `data:image/svg+xml;base64,…` — never null.
+ */
+export function plantMarkGlyph(filiere, sizePx, { px = PLANT_GLYPH_RASTER_PX } = {}) {
+  // Written as a negated `>=` so a size that is not a number falls to the
+  // plate: a NaN must never be read as "big enough to punch".
+  if (!(Number(sizePx) >= PLANT_GLYPH_PUNCH_MIN_PX)) return plantPlateGlyph(px);
+  return plantFiliereGlyph(filiere, { px }) || plantPlateGlyph(px);
 }
 
 /** Raw path data, for the tests that pin the vendored geometry. */
