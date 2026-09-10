@@ -289,6 +289,57 @@ export function contextLayerEnableBlockReason({ contextMode, change, layerName =
 }
 
 /**
+ * The globe's own announcement that the operator picked a mission.
+ *
+ * The readout for that mission is painted inside the Context panel's SPACE
+ * MISSIONS view, which the mission layer cannot reach: it is code-split and
+ * loaded on demand, so importing the UI shell that hosts its panel would pull
+ * the whole shell into the layer's chunk. A window event is the seam, and its
+ * name lives here — beside the rest of the Context policy — so the publisher
+ * and the listener cannot drift onto two spellings.
+ */
+export const SPACE_MISSION_SELECTED_EVENT = 'gev:space-mission-selected';
+
+/**
+ * Decide whether a globe pick on a mission may adopt the Space Missions
+ * Context view.
+ *
+ * A pick fills the readout, but the readout lives in a view that is hidden
+ * whenever the mode was never adopted — and "never adopted" is the RESTING
+ * state after a reload or a share restore, because the layer comes back on
+ * with an origin `isExplicitUserIntentOrigin` deliberately refuses. The
+ * missions are drawn, clickable and rostered while the panel still offers
+ * SPACE MISSIONS as though it were not already running.
+ *
+ * What this authorizes is NOT the destructive Space Missions ENTRY. The layer
+ * is already running; re-entering would isolate replay data and clear layers
+ * the operator never asked to lose. It is the same non-destructive adoption
+ * the layer-change funnel already performs for an explicit enable: the mode
+ * follows the layer that is on.
+ *
+ * Two states refuse:
+ *  - an unsettled transaction, whose own settle owns the final mode;
+ *  - another mode holding the panel. Contacts isolates the mission layer off
+ *    on entry, so it cannot be active while a mission is still clickable —
+ *    and should that ever change, one pick must not dismantle a Contacts
+ *    session the operator is working in.
+ *
+ * @param {object} input Current Context and layer state.
+ * @param {string|null} input.contextMode Active Context mode.
+ * @param {boolean} [input.contextModeChanging=false] Whether a Context transaction is in flight.
+ * @param {boolean} [input.missionLayerEnabled=false] Whether Space Missions is enabled.
+ * @returns {boolean} Whether the mode should be adopted now.
+ */
+export function shouldAdoptSpaceMissionsForGlobeSelection({
+  contextMode,
+  contextModeChanging = false,
+  missionLayerEnabled = false,
+} = {}) {
+  if (!missionLayerEnabled || contextModeChanging) return false;
+  return !contextMode;
+}
+
+/**
  * Resolve who owns a cancelled direct Space Missions entry. A newer ON keeps
  * the entry shell reserved for its replacement transaction; every other
  * cancellation must roll back the isolated pre-entry session.

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   cockpitEntryAllowed,
   contextAllowedLayerIds,
@@ -14,9 +15,11 @@ import {
   settleContextModeChange,
   settleContextIntentReplay,
   settleUserFacingContextAction,
+  shouldAdoptSpaceMissionsForGlobeSelection,
   shouldCaptureContextSession,
   shouldDeferContextEntryDuringClear,
   shouldExitContextForLayerChange,
+  SPACE_MISSION_SELECTED_EVENT,
   spaceMissionEntryCancellationDisposition,
 } from './contextModePolicy.js';
 
@@ -586,4 +589,69 @@ test('session bookkeeping ignores programmatic origins, non-visibility events, a
     effectiveContextMode: null,
   }), false);
   assert.equal(snapshot.userAdded.size, 0);
+});
+
+test('a globe pick adopts Space Missions only when no mode holds the panel', () => {
+  // The resting state after a reload or a share restore: the layer came back
+  // on with an origin the entry funnel refuses, so the mode was never
+  // adopted and the view that paints the readout is hidden.
+  assert.equal(shouldAdoptSpaceMissionsForGlobeSelection({
+    contextMode: null,
+    missionLayerEnabled: true,
+  }), true);
+  // Already adopted — the caller only has the collapsed panel left to open.
+  assert.equal(shouldAdoptSpaceMissionsForGlobeSelection({
+    contextMode: 'space-missions',
+    missionLayerEnabled: true,
+  }), false);
+  // Contacts isolates the mission layer off on entry, so this is unreachable
+  // while a mission is clickable — and must stay refused if it ever is not.
+  assert.equal(shouldAdoptSpaceMissionsForGlobeSelection({
+    contextMode: 'flights',
+    missionLayerEnabled: true,
+  }), false);
+  // An unsettled transaction owns the final mode; a pick must not publish one.
+  assert.equal(shouldAdoptSpaceMissionsForGlobeSelection({
+    contextMode: null,
+    contextModeChanging: true,
+    missionLayerEnabled: true,
+  }), false);
+  // A mode whose layer is off would be a mode with nothing behind it.
+  assert.equal(shouldAdoptSpaceMissionsForGlobeSelection({
+    contextMode: null,
+    missionLayerEnabled: false,
+  }), false);
+  assert.equal(shouldAdoptSpaceMissionsForGlobeSelection(), false);
+});
+
+test('the globe pick seam is one name, published by the layer and read by the shell', () => {
+  const layer = readFileSync(new URL('./data/rocketLaunches.js', import.meta.url), 'utf8');
+  const ui = readFileSync(new URL('./ui.js', import.meta.url), 'utf8');
+  // Both sides must reach the name through this module. The mission layer is
+  // code-split and loaded on demand, so it cannot import the shell that hosts
+  // its panel — and a literal on either side is how two spellings drift apart.
+  assert.match(layer, /import \{ SPACE_MISSION_SELECTED_EVENT \} from '\.\.\/contextModePolicy\.js';/);
+  assert.doesNotMatch(layer, /from '\.\.\/ui\.js'/);
+  assert.equal(layer.includes(`'${SPACE_MISSION_SELECTED_EVENT}'`), false);
+  assert.equal(ui.includes(`'${SPACE_MISSION_SELECTED_EVENT}'`), false);
+  assert.match(layer, /window\.dispatchEvent\(new CustomEvent\(SPACE_MISSION_SELECTED_EVENT/);
+  assert.match(ui, /window\.addEventListener\(SPACE_MISSION_SELECTED_EVENT/);
+  assert.match(ui, /window\.removeEventListener\(SPACE_MISSION_SELECTED_EVENT/);
+});
+
+test('only the globe pick publishes a selection — the roster and the restore do not', () => {
+  // Same reason `shouldExpandGlobalContextPanel` refuses a restore: the
+  // reselection `_enableBody` performs on enable must not expand a panel the
+  // operator left collapsed, and every in-panel control is already looking at
+  // the readout it would reveal.
+  const layer = readFileSync(new URL('./data/rocketLaunches.js', import.meta.url), 'utf8');
+  const callSites = [...layer.matchAll(/^\s*publishMissionSelection\(/gm)];
+  assert.equal(callSites.length, 1, `expected one call site, found ${callSites.length}`);
+  const clickHandlerStart = layer.indexOf('_clickHandler.setInputAction(');
+  const clickHandlerEnd = layer.indexOf('Cesium.ScreenSpaceEventType.LEFT_CLICK', clickHandlerStart);
+  assert.ok(clickHandlerStart > 0 && clickHandlerEnd > clickHandlerStart);
+  assert.ok(
+    callSites[0].index > clickHandlerStart && callSites[0].index < clickHandlerEnd,
+    'the only call site must be the globe LEFT_CLICK handler',
+  );
 });

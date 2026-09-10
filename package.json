@@ -47,6 +47,7 @@
     "qa:ign-terrain": "node scripts/qa-ign-terrain.mjs",
     "qa:map-source-tray": "node scripts/qa-map-source-tray.mjs",
     "qa:map-reload": "node scripts/qa-map-reload.mjs",
+    "qa:mission-reveal": "node scripts/qa-mission-reveal.mjs",
     "qa:world-imagery": "node scripts/qa-world-imagery.mjs",
     "qa:world-imagery-cost": "node scripts/qa-world-imagery-cost.mjs",
     "qa:ign-opaque-boxes": "node scripts/qa-ign-opaque-boxes.mjs",

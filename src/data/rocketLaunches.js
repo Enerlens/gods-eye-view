@@ -13,6 +13,7 @@ import {
 } from '../overlays/worldOverlay.js';
 import { pickOverlayLabelId } from './overlayLabelPick.js';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
+import { SPACE_MISSION_SELECTED_EVENT } from '../contextModePolicy.js';
 
 const WINDOW_DAYS = 30;
 const API_URL = '/api/launches';
@@ -1097,6 +1098,22 @@ function refreshSelectedMissionOverlayText() {
   if (!selectedRecord?.liveEventTime) return;
   const nextText = formatMissionEventTime(selectedRecord.liveEventTime());
   if (nextText !== _selectedMissionOverlayTimeText) syncMissionOverlayEntries();
+}
+
+/**
+ * Announce a globe pick so the Context panel can bring the readout on screen.
+ *
+ * Only the globe publishes. The roster, PREV/NEXT and `[data-mission-*]`
+ * controls all run with the readout already in view, and the reselection
+ * `_enableBody` performs is a RESTORE — expanding a panel the operator left
+ * collapsed is exactly what `shouldExpandGlobalContextPanel` refuses.
+ *
+ * @param {string} launchId Picked mission.
+ * @returns {void}
+ */
+function publishMissionSelection(launchId) {
+  if (typeof window === 'undefined' || typeof CustomEvent !== 'function') return;
+  window.dispatchEvent(new CustomEvent(SPACE_MISSION_SELECTED_EVENT, { detail: { launchId } }));
 }
 
 function setSelectedMission(launchId, isolate = true) {
@@ -3456,6 +3473,9 @@ const rocketLaunchesLayer = {
       const launchId = entityLaunchId(entity) || pickedMissionLabelId(movement.position);
       if (!launchId) return;
       setSelectedMission(launchId);
+      // Before the camera leaves: the readout is the answer to the click, and
+      // it must not arrive after the flight it triggered.
+      publishMissionSelection(launchId);
       focusMission(_launches.find((launch) => launch.id === launchId));
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     _moveHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);

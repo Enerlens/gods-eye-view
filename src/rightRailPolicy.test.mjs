@@ -48,7 +48,11 @@ test('desktop Display participates in Tactical exclusivity without changing mobi
 });
 
 test('explicit Contacts, Space Missions, and Cockpit actions expand Global Context after success', () => {
-  for (const action of ['contacts', 'space-missions', 'cockpit']) {
+  // `space-mission-selected` is the globe pick, which is an owner action for
+  // the same reason the three mode entries are: the readout it fills is
+  // painted inside this panel, so a pick that leaves it collapsed answers
+  // into a drawer the operator then has to go find.
+  for (const action of ['contacts', 'space-missions', 'cockpit', 'space-mission-selected']) {
     assert.equal(shouldExpandGlobalContextPanel({
       action,
       explicitUserAction: true,
