@@ -12,6 +12,7 @@
 
 import * as Cesium from 'cesium';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
+import { markViewportRead, releaseCameraSettle, watchCameraSettle } from './cameraSettle.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
@@ -1530,6 +1531,10 @@ async function activateCity(cityId, generation) {
  */
 async function runProximityCheck() {
   if (!_enabled || !_viewer) return;
+  // Whatever this pass concludes — a set of live cities or none at all — it
+  // concludes it about the view the camera is showing right now. See
+  // `cameraSettle.js`: an arrival on any other view has to be read afresh.
+  markViewportRead(_viewer, 'bikeshare');
 
   const generation = ++_proximityGeneration;
   const altitude = getCameraAltitude(_viewer);
@@ -1578,6 +1583,26 @@ function scheduleProximityCheck() {
 function onCameraChanged() {
   if (!_enabled) return;
   scheduleProximityCheck();
+}
+
+/**
+ * The camera has come to REST — run the proximity check for the view it
+ * stopped on.
+ *
+ * `camera.changed` goes quiet before an eased flight lands (measured Paris →
+ * Rouen: last `changed` t=2.5 s, `moveEnd` t=3.3 s), so the check a flight
+ * triggers is run against a camera still in the air: it can activate the
+ * cities near the halfway point and leave the destination's own system dark
+ * until the sixty-second poll. See `cameraSettle.js`, which also holds the
+ * "have we already read this view" short-circuit that keeps a pan to one pass.
+ *
+ * It SUPERSEDES the pending debounce rather than racing it.
+ */
+function onCameraSettled() {
+  if (!_enabled) return;
+  clearTimeout(_cameraDebounceTimer);
+  _cameraDebounceTimer = null;
+  void runProximityCheck();
 }
 
 /**
@@ -1706,6 +1731,8 @@ const bikeshareLayer = {
     if (!_cameraChangedAttached) {
       viewer.camera.changed.addEventListener(onCameraChanged);
       claimCameraSensitivity(viewer, 'bikeshare');
+      // Arrival, as opposed to motion — see `onCameraSettled`.
+      watchCameraSettle(viewer, 'bikeshare', onCameraSettled);
       _cameraChangedAttached = true;
     }
 
@@ -1737,6 +1764,7 @@ const bikeshareLayer = {
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
       releaseCameraSensitivity(viewer, 'bikeshare');
+      releaseCameraSettle(viewer, 'bikeshare');
       _cameraChangedAttached = false;
     }
 
@@ -1854,6 +1882,7 @@ const bikeshareLayer = {
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
       releaseCameraSensitivity(viewer, 'bikeshare');
+      releaseCameraSettle(viewer, 'bikeshare');
       _cameraChangedAttached = false;
     }
     abortAllInFlight();

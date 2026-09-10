@@ -8,6 +8,7 @@ import {
   setMovingResolutionScale,
 } from './globeDetailGovernor.js';
 import { getCameraSensitivityDiagnostics } from './data/cameraSensitivity.js';
+import { getCameraSettleDiagnostics } from './data/cameraSettle.js';
 import { peekShareMapStack } from './sharelink.js';
 import { DataLayerManager } from './data/manager.js';
 import { LAYER_MANIFEST } from './data/layerManifest.js';
@@ -581,6 +582,12 @@ async function init() {
       // them rather than infer them from pixels.
       getGlobeDetailDiagnostics,
       getCameraSensitivityDiagnostics,
+      // Which layers are watching for the camera to come to REST, and the view
+      // each last read. `camera.changed` goes quiet before an eased flight
+      // lands, so this is the only place a harness can see whether a layer
+      // re-read the view it arrived on or is still describing the one it left
+      // — see `cameraSettle.js` and `qa:camera-settle`.
+      getCameraSettleDiagnostics,
       // Which render profile this machine got, WHY it got it, and what its own
       // frames measured — so a harness never has to infer "was this a lite
       // run?" from pixels. (perf plan 2.1)

@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
+import { markViewportRead, releaseCameraSettle, watchCameraSettle } from './cameraSettle.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
@@ -1392,6 +1393,10 @@ function recomputeNational() {
 
 async function loadViewport({ force = false } = {}) {
   if (!_enabled) return;
+  // Whatever this call concludes — records, a zoom-in verdict or a failure —
+  // it concludes it about the view the camera is showing right now. See
+  // `cameraSettle.js`: an arrival on any other view has to be read afresh.
+  markViewportRead(_viewer, DELINQUANCE_FR_LAYER_ID);
   _loading = true;
   _error = null;
   try {
@@ -1453,6 +1458,23 @@ function onCameraChanged() {
 }
 
 /**
+ * The camera has come to REST — read the view it stopped on. `camera.changed`
+ * goes quiet before an eased flight lands, so the load a flight triggers
+ * describes a camera still in the air; `cameraSettle.js` carries the
+ * measurement and the "have we already read this view" short-circuit.
+ *
+ * It SUPERSEDES the pending debounce rather than racing it: on a hand pan
+ * `moveEnd` arrives while that timer is still armed, and letting both run
+ * would ask the same question twice.
+ */
+function onCameraSettled() {
+  if (!_enabled) return;
+  clearTimeout(_cameraDebounceTimer);
+  _cameraDebounceTimer = null;
+  void loadViewport();
+}
+
+/**
  * Loading copy — named for what is being waited on, because "chargement…" over
  * a 40 MB national fold and over one département's outlines are very different
  * waits.
@@ -1508,6 +1530,8 @@ const delinquanceFranceLayer = {
     if (!_cameraChangedAttached) {
       viewer.camera.changed.addEventListener(onCameraChanged);
       claimCameraSensitivity(viewer, DELINQUANCE_FR_LAYER_ID);
+      // Arrival, as opposed to motion — see `onCameraSettled`.
+      watchCameraSettle(viewer, DELINQUANCE_FR_LAYER_ID, onCameraSettled);
       _cameraChangedAttached = true;
     }
     void loadViewport({ force: true });
@@ -1532,6 +1556,7 @@ const delinquanceFranceLayer = {
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
       releaseCameraSensitivity(viewer, DELINQUANCE_FR_LAYER_ID);
+      releaseCameraSettle(viewer, DELINQUANCE_FR_LAYER_ID);
       _cameraChangedAttached = false;
     }
     _loading = false;

@@ -22,6 +22,7 @@ import { queuePlatoons, locateAlongRoad } from './trafficQueue.js';
 import { registerDynamicCredit, TOMTOM_CREDIT } from './dataCredits.js';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
+import { markViewportRead, releaseCameraSettle, watchCameraSettle } from './cameraSettle.js';
 
 /**
  * @file Street Traffic — animated dots along OSM road polylines, colored by
@@ -1171,6 +1172,10 @@ function clampBounds(bounds, tier) {
  */
 function onCameraChanged() {
   if (!_enabled) return;
+  // Whatever this pass decides — a fetch, a skip, or clearing the dots above
+  // the bands — it decides it about the view the camera is showing right now.
+  // See `cameraSettle.js`: an arrival on any other view has to be re-decided.
+  markViewportRead(_viewer, 'traffic');
 
   const alt = getCameraAltitude();
 
@@ -2434,6 +2439,17 @@ const trafficLayer = {
     // whoever enabled second saved the value the first had already lowered.
     viewer.camera.changed.addEventListener(onCameraChanged);
     claimCameraSensitivity(viewer, 'traffic');
+    // Arrival, as opposed to motion. `changed` goes quiet before an eased
+    // flight lands (measured Paris → Rouen: last `changed` t=2.5 s, `moveEnd`
+    // t=3.3 s), so the last decision a flight triggers is taken for a camera
+    // still in the air — and `roadRefetchNeeded` then holds the roads of the
+    // halfway pose over the destination. The kick below only covers the FIRST
+    // load of a session; every flight after it needs this.
+    //
+    // The same pass runs, which is the point: `roadRefetchNeeded` is this
+    // layer's own answer to "are the roads I hold still the right ones", and
+    // nobody ever asked it that about the pose the camera actually reached.
+    watchCameraSettle(viewer, 'traffic', onCameraChanged);
 
     // Kick off initial viewport check
     onCameraChanged();
@@ -2491,6 +2507,7 @@ const trafficLayer = {
     }
 
     viewer.camera.changed.removeEventListener(onCameraChanged);
+    releaseCameraSettle(viewer, 'traffic');
     // Drop the claim so other layers/listeners keep their expected sensitivity.
     // The shared owner set puts the pre-first-claim value back once the LAST
     // claimant releases, so disabling traffic while transit is still on leaves

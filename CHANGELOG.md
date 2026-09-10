@@ -285,6 +285,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   livrés. Le cintre, lui, ne mesure rien, et la légende le dit.
 
 ### Fixed
+- **Arriver quelque part ne suffisait pas : onze couches continuaient de décrire
+  la ville qu'on venait de quitter.** Le correctif du 2026-09-10 sur les
+  transports en commun (#151) avait nommé ce trou sans le boucher ailleurs — il
+  était dans TOUTES les couches par vue, et une seule avait été réparée. Voici
+  les autres : bornes de recharge, véhicules partagés, vélos en libre-service,
+  services publics, écoles, petite enfance, servitudes, antennes ANFR,
+  délinquance, bouées marines et trafic routier.
+
+  **La cause, la même partout.** Une couche par vue se rafraîchit sur
+  `camera.changed`. Cet événement ne se déclenche que tant que le mouvement
+  accumulé dépasse le seuil partagé de 5 %, et la décélération d'un vol adouci
+  passe sous ce seuil bien AVANT l'arrivée : mesuré sur une navigation vocale
+  Paris → Rouen, dernier `changed` à **t = 2,5 s**, `camera.moveEnd` à
+  **t = 3,3 s**. Le seul chargement qu'un vol déclenche est donc émis pour une
+  caméra ENCORE EN MOUVEMENT, et rien ne relisait la vue sur laquelle elle
+  s'arrête. Ce verdict de mi-vol tenait jusqu'au sondage suivant de la couche :
+  quinze secondes pour un flux vivant, **six HEURES** pour les registres. Une
+  couche pouvait ainsi afficher « zoomez pour charger » à quelqu'un déjà posé
+  sur une ville, ou INDISPONIBLE avec l'explication de la ville qu'on venait de
+  quitter — et le seul remède était de l'éteindre puis de la rallumer.
+
+  **Mesuré des deux côtés**, même sonde et deux serveurs voisins, caméra posée
+  sans que `camera.changed` ne se déclenche une seule fois : sur l'arbre
+  d'avant, `irve-fr`, `schools-fr`, `amenities-fr` et `anfr-fr` émettent
+  **zéro** requête après l'arrêt de la caméra ; après, chacune va chercher la
+  vue d'arrivée.
+
+  **Les deux événements, jamais un seul.** `moveEnd` n'arrive pas toujours (vol
+  annulé, viewer démonté en vol, scène qui cesse de peindre), et `changed` ne
+  parle jamais de la pose finale ; ils se couvrent l'un l'autre.
+
+  **Et un déplacement ordinaire ne coûte toujours rien.** `moveEnd` se
+  déclenche à la fin de CHAQUE geste : une couche qui rechargerait à chacun
+  serait la carte qui recharge sans fin. Chaque couche marque la vue qu'elle
+  lit, et un repos sur cette même vue ne demande rien — vérifié couche par
+  couche dans le navigateur, quatre repos sous la précision de comparaison
+  n'émettent aucune requête, sur les onze.
+
 - **Le comptage parisien cessait de s'inviter à Tokyo.** `comptages-fr` dessine
   2 946 arcs de rue parisiens et rien d'autre sur Terre — sa boîte entière fait
   **12,6 km sur 10,0**. C'était un compagnon de la rangée « Trafic routier »
@@ -464,7 +502,6 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   restent tels que le registre les crie (`GIRONDE`, `AUVERGNE-RHONE-ALPES`,
   sans accents), parce que les recasser proprement demanderait de deviner des
   accents que le publieur n'a pas écrits.
-
 - **Les véhicules partagés restent collés au sol quand on déplace la carte.**
   Même panne que les feux actifs la veille, sur une couche où elle se voyait
   bien plus souvent. Un objet était posé à la hauteur 0 — sur l'ellipsoïde
