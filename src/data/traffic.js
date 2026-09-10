@@ -9,7 +9,10 @@ import {
 } from './trafficBounds.js';
 import { fetchFlowForBounds, getFlowSessionStats, resetFlowTileCache } from './flowTiles.js';
 import { matchFlowToRoads } from './flowMatch.js';
-import { flowBucket, flowSpeedScale, flowDensityMult } from './trafficFlowStyle.js';
+import {
+  FLOW_THRESHOLDS, flowBucket, flowSpeedScale, flowDensityMult,
+} from './trafficFlowStyle.js';
+import { CONGESTION_RUNGS } from './congestionLadder.js';
 import { renderFlowRibbons, clearFlowRibbons } from './flowRibbons.js';
 import {
   trafficStyleProfile,
@@ -124,24 +127,51 @@ const FLOW_BUCKET_COLORS = {
  * scans for. Colours are NOT stored here: the key reads `_activeBucketColors`
  * so it follows the preset-aware restyle instead of describing the shipped
  * palette under a shader that has replaced it.
+ *
+ * THE WORDS COME FROM THE SHARED LADDER, and the reason is the fused row.
+ * `road-status-fr` sits under the same panel row, draws the same three inks for
+ * the same three rungs, and used to name them `Fluide` / `Dense` /
+ * `Congestionné` while this layer said `Circulation fluide` / `Circulation
+ * ralentie` / `Circulation bloquée`. Measured at Rouen on 2026-09-10 the key
+ * printed, in one block, `● Circulation fluide 1,0 k` above `● Fluide 27` — one
+ * colour, two names, and no way to see that they answer one question.
+ *
+ * THE BLURB IS THE CUT AND NOTHING ELSE. It used to repeat "Débit mesuré par
+ * TomTom" on each of the three rows — the provenance of the whole block, three
+ * times — and then gesture at the threshold ("très en dessous de la vitesse
+ * libre") without giving it. The provenance moved to the block note, and the
+ * threshold is now printed, derived from {@link FLOW_THRESHOLDS} so it cannot
+ * disagree with the classifier that applies it (C1).
  */
 const FLOW_BUCKET_ORDER = Object.freeze([
   {
     id: 'jam',
-    label: 'Circulation bloquée',
-    blurb: 'Débit mesuré par TomTom, très en dessous de la vitesse libre.',
+    label: CONGESTION_RUNGS.jam.label,
+    blurb: `moins de ${Math.round(FLOW_THRESHOLDS.slow * 100)} % de la vitesse libre`,
   },
   {
     id: 'slow',
-    label: 'Circulation ralentie',
-    blurb: 'Débit mesuré par TomTom, en dessous de la vitesse libre.',
+    label: CONGESTION_RUNGS.slow.label,
+    blurb: `${Math.round(FLOW_THRESHOLDS.slow * 100)} à `
+      + `${Math.round(FLOW_THRESHOLDS.free * 100)} % de la vitesse libre`,
   },
   {
     id: 'free',
-    label: 'Circulation fluide',
-    blurb: 'Débit mesuré par TomTom, à la vitesse libre de la voie.',
+    label: CONGESTION_RUNGS.free.label,
+    blurb: `au moins ${Math.round(FLOW_THRESHOLDS.free * 100)} % de la vitesse libre`,
   },
 ]);
+
+/**
+ * The one sentence this block owes a reader: who says it, and how often.
+ *
+ * E1, and the fused row makes it P0 rather than nice-to-have. Four blocks land
+ * under « Trafic routier » and they run on four different clocks — this one at
+ * 60 s, `road-status-fr` at 60–360 s, `road-events-fr` on an hourly snapshot,
+ * and `comptages-fr` on an ARCHIVED typical week. Until each block named its
+ * own, a reader had no way to tell the last minute from last month.
+ */
+const FLOW_LEGEND_NOTE = 'débit modélisé par TomTom, rafraîchi toutes les 60 s';
 
 // ─── Jam-viz prototype (live mode only — see 2026-07-21 design doc) ────────
 /** @const {number} Max congestion heat-line polylines per render (jam first). */
@@ -2796,24 +2826,23 @@ const trafficLayer = {
       const simulated = Number(buckets.sim) || 0;
       if (simulated) {
         legend.push({
-          label: 'Simulé — aucune mesure sur cette voie',
+          // A1: the row a fallback value owes the reader, and the only one in
+          // this block that keeps a sentence after the note took the rest. The
+          // swatch stays WHITE and un-hatched on purpose — the mark on the globe
+          // is a plain white dot, and a swatch that is the datum has to look
+          // like it. What makes the row honest is the word, not the texture.
+          label: 'Vitesse simulée',
           color: '#ffffff',
           count: simulated,
-          blurb: 'Blanc = pas de débit publié par TomTom : le point bouge, mais '
-            + 'sa vitesse est inventée. « MESURÉ SEUL » les retire.',
+          blurb: 'vitesse inventée, aucune mesure publiée — « MESURÉ SEUL » les retire',
         });
       }
     }
     const closed = _closedRoads || _ribbonCounts.closure;
     if (closed) {
-      legend.push({
-        label: 'Route fermée',
-        color: '#ff3b30',
-        count: closed,
-        blurb: 'Fermeture publiée par TomTom — aucun point n’y circule.',
-      });
+      legend.push({ label: 'Route fermée', color: '#ff3b30', count: closed });
     }
-    return { chips, legend };
+    return { chips, legend, legendNote: FLOW_LEGEND_NOTE };
   },
 };
 

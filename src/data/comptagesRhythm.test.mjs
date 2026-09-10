@@ -32,6 +32,7 @@ import {
   COMPTAGES_MOMENTS,
   COMPTAGES_OCCUPANCY_BANDS,
   COMPTAGES_OCCUPANCY_COLOR,
+  COMPTAGES_RHYTHM_BLURBS,
   COMPTAGES_RHYTHM_CLASSES,
   COMPTAGES_RHYTHM_COLORS,
   COMPTAGES_RHYTHM_LABELS,
@@ -660,4 +661,46 @@ test('a counted arc with no weekday mean is refused on the aggregate, not floore
   assert.deepEqual(comptagesReachableBands(weekendOnly), [0, 1, 2]);
   // Its rhythm cannot be classified — no weekday profile at all.
   assert.equal(comptagesRhythmClass(weekendOnly), 'indetermine');
+});
+
+test('a rhythm blurb states its CUT and can hold no other number', () => {
+  // The rule this test exists for: a number inside a legend sentence is derived
+  // from a frozen constant, or it does not exist.
+  //
+  // These seven strings used to be prose, and each carried a hand-typed tally
+  // of the week it was written against. The pack is rolling, so every one of
+  // them drifted. On the week of 2026-08-31 the key printed `Nocturne 18`
+  // beside "56 arcs sur 1 730", and `Pointe du soir 358` beside "652 arcs — la
+  // classe la plus nombreuse" with `Continu 614` two lines above it. Two
+  // numbers per line for one quantity, and a superlative false against the
+  // tally beside it.
+  //
+  // The assertion is on the CONSTANTS, never on a copied string: whatever the
+  // sentences are reworded to, the only digits they may contain are window
+  // bounds, thresholds, and the 24 hours of the clock.
+  const allowed = new Set([
+    ...Object.values(COMPTAGES_RHYTHM_WINDOWS).flat().map((hour) => String(hour).padStart(2, '0')),
+    String(Math.round(COMPTAGES_RHYTHM_THRESHOLDS.night * 100)),
+    String(COMPTAGES_RHYTHM_THRESHOLDS.weekend).replace('.', ','),
+    String(COMPTAGES_RHYTHM_THRESHOLDS.shoulder).replace('.', ','),
+    String(COMPTAGES_RHYTHM_THRESHOLDS.coverage),
+    '24',
+  ]);
+  for (const rhythm of COMPTAGES_RHYTHM_CLASSES) {
+    const blurb = COMPTAGES_RHYTHM_BLURBS[rhythm];
+    assert.ok(blurb, `${rhythm} has a blurb`);
+    for (const number of blurb.match(/\d+(?:[.,]\d+)?/g) || []) {
+      assert.ok(allowed.has(number), `${rhythm}: "${number}" is not one of the frozen cuts`);
+    }
+  }
+  // And the cut is really READ, not transcribed: moving a threshold has to move
+  // the sentence. `shoulder` is 1.2, and no blurb may spell it any other way.
+  assert.match(
+    COMPTAGES_RHYTHM_BLURBS.plateau,
+    new RegExp(String(COMPTAGES_RHYTHM_THRESHOLDS.shoulder).replace('.', ',')),
+  );
+  assert.match(
+    COMPTAGES_RHYTHM_BLURBS.indetermine,
+    new RegExp(`\\b${COMPTAGES_RHYTHM_THRESHOLDS.coverage}\\b`),
+  );
 });

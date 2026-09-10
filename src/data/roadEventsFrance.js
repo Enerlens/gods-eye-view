@@ -8,6 +8,7 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { pickOverlayLabelId } from './overlayLabelPick.js';
+import { roadEventGlyph, roadEventMaskGlyph } from './roadEventGlyphs.js';
 
 /**
  * Événements routiers (FR) — what the road operators themselves have declared.
@@ -86,44 +87,70 @@ export const ROAD_EVENTS_FR_OVERLAY_COLLISION_CAPACITY = 32;
 const UPDATE_INTERVAL_MS = 300_000;
 
 /**
+ * The one ink every declared event draws in.
+ *
+ * ONE, because the category left the hue channel for the shape channel
+ * (`roadEventGlyphs.js`, rule B5) and a nominal variable does not get two.
+ * What that buys is the whole hue channel back for congestion, which is the
+ * only ORDERED variable on this tarmac and the only one owed a colour scale.
+ *
+ * The value is not a taste. It has to clear every other ink drawn over the same
+ * roads by the three layers this one shares a panel row with, plus
+ * `idfm-network`'s five. Measured in CIE L*a*b*, its closest neighbour among
+ * the twenty-two is ΔE 27.5 (`traffic`'s white simulated dot); the nearest
+ * congestion rung is further still. And it sits at hue 41° — outside the green
+ * sector, so it cannot be read as "clear", which is the same defence
+ * `comptagesRhythm.js` makes for its wheel. A pale sign-cream is also what a
+ * temporary French road sign is, which is the one association worth having.
+ */
+export const ROAD_EVENT_INK = '#ffe9b8';
+
+/**
  * The eight categories, in legend order, with the French the DIRs use.
  *
- * `travaux` keeps the conventional roadworks yellow even though it is two
- * thirds of the feed: recolouring the majority to make the minority pop would
- * be styling against the data. The incident colours are hotter instead.
+ * NO COLOUR FIELD. There were eight hues here and they collided with
+ * everything on the same road, measured on an 8 px swatch: `obstacle` violet at
+ * ΔE 7.3 from `comptages-fr`'s pendulaire, `intemperie` cyan at 9.2 from its
+ * pointe du matin, `deviation` green at 12.6 from the congestion ladder's
+ * `Fluide`, and `accident` at ΔE 0.0 from `traffic`'s `Route fermée` — the same
+ * hex, co-observed in one key at one instant. `symbol` replaces them: the
+ * category is what the mark IS, not what colour it is.
+ *
+ * `priority` stays and is untouched. It orders the draw, the ambient-label
+ * cohort and the legend; none of that is a visual channel.
  */
 export const ROAD_EVENT_CATEGORIES = Object.freeze({
   accident: Object.freeze({
-    id: 'accident', label: 'Accident', color: '#ff3b30', priority: 8,
-    blurb: 'Collision déclarée par l’exploitant',
+    id: 'accident', label: 'Accident', priority: 8,
+    blurb: 'collision déclarée par l’exploitant',
   }),
   bouchon: Object.freeze({
-    id: 'bouchon', label: 'Bouchon', color: '#ff2d95', priority: 7,
-    blurb: 'Trafic anormal constaté',
+    id: 'bouchon', label: 'Bouchon', priority: 7,
+    blurb: 'trafic anormal constaté',
   }),
   fermeture: Object.freeze({
-    id: 'fermeture', label: 'Fermeture', color: '#ff7a1a', priority: 6,
-    blurb: 'Route ou chaussée fermée',
+    id: 'fermeture', label: 'Fermeture', priority: 6,
+    blurb: 'route ou chaussée fermée',
   }),
   obstacle: Object.freeze({
-    id: 'obstacle', label: 'Obstacle', color: '#b06bff', priority: 5,
-    blurb: 'Obstacle, véhicule ou chaussée endommagée',
+    id: 'obstacle', label: 'Obstacle', priority: 5,
+    blurb: 'obstacle, véhicule ou chaussée endommagée',
   }),
   intemperie: Object.freeze({
-    id: 'intemperie', label: 'Intempérie', color: '#4dd0e1', priority: 4,
-    blurb: 'Conditions météo affectant la route',
+    id: 'intemperie', label: 'Intempérie', priority: 4,
+    blurb: 'conditions météo affectant la route',
   }),
   travaux: Object.freeze({
-    id: 'travaux', label: 'Travaux', color: '#ffd60a', priority: 3,
-    blurb: 'Chantier en cours ou programmé',
+    id: 'travaux', label: 'Travaux', priority: 3,
+    blurb: 'chantier en cours ou programmé',
   }),
   restriction: Object.freeze({
-    id: 'restriction', label: 'Restriction', color: '#6ea8fe', priority: 2,
-    blurb: 'Limitation, alternat, voie neutralisée',
+    id: 'restriction', label: 'Restriction', priority: 2,
+    blurb: 'limitation, alternat, voie neutralisée',
   }),
   deviation: Object.freeze({
-    id: 'deviation', label: 'Déviation', color: '#58d68d', priority: 1,
-    blurb: 'Itinéraire de déviation ou bretelle fermée',
+    id: 'deviation', label: 'Déviation', priority: 1,
+    blurb: 'itinéraire de déviation ou bretelle fermée',
   }),
 });
 
@@ -138,9 +165,25 @@ export const ROAD_EVENT_CATEGORIES = Object.freeze({
  * count, the same way the sensor layer's no-data band works.
  */
 export const ROAD_EVENT_UNKNOWN_CATEGORY = Object.freeze({
-  id: 'inconnu', label: 'Non classé', color: '#8a93a6', priority: 0,
-  blurb: 'Type d’événement non reconnu par cette version',
+  id: 'inconnu', label: 'Non classé', priority: 0,
+  blurb: 'code d’événement inconnu de cette version',
 });
+
+/**
+ * The one sentence this block owes a reader: who says it, and how often.
+ *
+ * E1. `road-events-fr` lands on the fused « Trafic routier » row beside three
+ * other clocks — TomTom at 60 s, the DIR states at 60–360 s, and an ARCHIVED
+ * typical week — and until each block named its own, the key was four
+ * different tenses printed as one list.
+ *
+ * `UPDATE_INTERVAL_MS` is the poll, and it is what a reader can act on: the
+ * aggregate upstream is republished hourly, so a shorter poll would not buy a
+ * fresher event. The number is read from the constant so the sentence cannot
+ * outlive a change to it.
+ */
+export const ROAD_EVENT_LEGEND_NOTE = 'publié par Bison Futé et les DIR, relu toutes les '
+  + `${Math.round(UPDATE_INTERVAL_MS / 60_000)} min`;
 
 /**
  * Resolve a served category to its presentation.
@@ -263,15 +306,40 @@ export function roadEventScopeAllows(scopeId, state) {
   return scope.states.includes(String(state));
 }
 
-/** Marker size in pixels, by severity. A safety-related event is one step up. */
-export function roadEventPixelSize(event) {
-  const weight = ROAD_EVENT_SEVERITIES[String(event?.severity)]?.weight ?? 2;
-  const base = 7 + weight * 1.6;
-  const sized = event?.safety ? base + 2 : base;
-  return event?.state === 'planned' ? sized * 0.8 : sized;
+/**
+ * On-screen height of a category mark, in pixels. ONE value, for every event.
+ *
+ * IT USED TO COMPOSE THREE VARIABLES INTO ONE DIAMETER — severity in five
+ * steps, a safety flag worth +2 px, and the planned state worth ×0.8 — and its
+ * twenty reachable combinations packed into 5.6–15.4 px. Fourteen neighbouring
+ * pairs were under 0.75 px apart and four were 0.12 px apart: a PLANNED major
+ * closure and an ACTIVE medium restriction landed on the same size. The key
+ * mentioned none of it, so a channel carried a value nothing decoded (D1), and
+ * `severity` fell back to `medium` when a publisher declared none, so a
+ * measured middling severity and a missing one drew identically (A1).
+ *
+ * Measured on the live national feed of 2026-09-10, 386 situations: `medium`
+ * 312 (81 %), `high` 54, `low` 19, `highest` 1, `lowest` 0. Five perceptual
+ * steps to separate 19 / 312 / 54 / 1 is decoration, not encoding. Severity is
+ * on the card, in words. The mark carries the CATEGORY, as a shape.
+ *
+ * The size is what the shape needs to be a shape: below ~16 px a filled
+ * pictogram over orthophoto is a smudge.
+ * @returns {number} Pixels.
+ */
+export function roadEventPixelSize() {
+  return 18;
 }
 
-/** Stroke width for a segment, by severity. */
+/**
+ * Stroke width for a segment, by severity.
+ *
+ * A SEGMENT is not a mark: it is the length of road the record covers, and its
+ * width is the only way it competes for attention against the flow ribbons
+ * drawn under it. Severity stays here — on a line, three widths ARE readable
+ * because the line is long — and the planned state keeps its one-step step
+ * down, which pairs with the alpha rather than fighting it.
+ */
 export function roadEventStrokeWidth(event) {
   const weight = ROAD_EVENT_SEVERITIES[String(event?.severity)]?.weight ?? 2;
   return (event?.state === 'planned' ? 2 : 3) + weight * 0.9;
@@ -495,7 +563,12 @@ export function roadEventLegend(byCategory) {
     .filter((category) => (byCategory?.[category.id] || 0) > 0)
     .map((category) => ({
       label: category.label,
-      color: category.color,
+      // One ink for every row, and the SHAPE is what differs — because that is
+      // what differs on the map. The panel masks this glyph and paints the ink
+      // through it, so the pastille IS the mark at the key's size rather than a
+      // description of it (the technique `sharedMobilityFrance` established).
+      color: ROAD_EVENT_INK,
+      glyph: roadEventMaskGlyph(category.id),
       blurb: category.blurb,
       count: byCategory[category.id],
     }));
@@ -504,9 +577,16 @@ export function roadEventLegend(byCategory) {
   if (unclassified > 0) {
     rows.push({
       label: ROAD_EVENT_UNKNOWN_CATEGORY.label,
-      color: ROAD_EVENT_UNKNOWN_CATEGORY.color,
+      color: ROAD_EVENT_INK,
       blurb: ROAD_EVENT_UNKNOWN_CATEGORY.blurb,
       count: unclassified,
+      // Not a ninth category: the refusal to name one, and it draws a question
+      // mark on the map. It does NOT take the shared off-scale hatch that
+      // `comptages-fr` and `road-status-fr` give their own "no value" rows —
+      // those two paint a coloured mark with no shape channel, so a hatch is
+      // the only sign available to them. This layer has a shape channel and
+      // uses it, and "the swatch is the mark" outranks "one shared sign".
+      glyph: roadEventMaskGlyph(ROAD_EVENT_UNKNOWN_CATEGORY.id),
     });
   }
   return rows;
@@ -539,7 +619,7 @@ export function createRoadEventOverlayEntry({ id, position, event }) {
     position,
     variant: 'label',
     title: roadEventTitle(event),
-    accent: category.color,
+    accent: ROAD_EVENT_INK,
     // Category outranks severity outranks safety; ties break on id in the
     // selector, so a label cohort is stable between two identical polls.
     priority: category.priority * 1000 + severity * 100 + (event?.safety ? 10 : 0),
@@ -571,7 +651,7 @@ export function createRoadEventSelectedEntry({ id, position, event, nowMs = Date
     priority: Number.MAX_SAFE_INTEGER,
     title: roadEventTitle(event),
     details: roadEventDetails(event, nowMs),
-    accent: roadEventCategory(event?.category).color,
+    accent: ROAD_EVENT_INK,
     interactive: false,
     anchorRadiusPx: 9,
     minAnchorGapPx: 11,
@@ -702,7 +782,7 @@ export function createRoadEventsFranceLayer({
     for (const event of _visible) {
       const category = roadEventCategory(event.category);
       const alpha = roadEventAlpha(event.state);
-      const color = Cesium.Color.fromCssColorString(category.color);
+      const color = Cesium.Color.fromCssColorString(ROAD_EVENT_INK);
       const id = renderId(event.id);
       const anchor = roadEventAnchor(event.geometry);
       if (!anchor) continue;
@@ -727,11 +807,22 @@ export function createRoadEventsFranceLayer({
         _dataSource.entities.add({
           id,
           position,
-          point: {
-            pixelSize: roadEventPixelSize(event),
+          // A BILLBOARD, not a point: the category is a nominal variable and it
+          // now travels on SHAPE (B5), which hands the hue channel back to
+          // congestion — the only ordered variable this tarmac carries, and the
+          // only one owed a colour scale.
+          //
+          // Nine distinct image strings for the whole layer, so Cesium's atlas
+          // holds nine entries however many events are drawn. That is the whole
+          // reason the artwork is a shared data URI and never a per-event
+          // canvas: a canvas costs one atlas entry PER billboard.
+          billboard: {
+            image: roadEventGlyph(category.id),
+            height: roadEventPixelSize(),
+            width: roadEventPixelSize(),
+            // White artwork multiplied by one ink. The alpha is the only thing
+            // that still moves, and it says whether the event has started.
             color: color.withAlpha(alpha),
-            outlineColor: Cesium.Color.BLACK.withAlpha(0.6),
-            outlineWidth: 1,
             // Clamped, not drawn on the ellipsoid: an event on the col du
             // Glandon sits 1 900 m under the terrain otherwise, and appears to
             // slide as the camera pans.
@@ -981,7 +1072,11 @@ export function createRoadEventsFranceLayer({
         title: scope.title,
         params: { scope: scope.id },
       }));
-      return { chips, legend: roadEventLegend(_summary.byCategory) };
+      return {
+        chips,
+        legend: roadEventLegend(_summary.byCategory),
+        legendNote: ROAD_EVENT_LEGEND_NOTE,
+      };
     },
 
     getAnalystRecords(maxCount = 400) {

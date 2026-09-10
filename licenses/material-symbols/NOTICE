@@ -11,7 +11,7 @@ Source: https://github.com/google/material-design-icons
         symbols/web/<name>/materialsymbolsrounded/<name>_fill1_24px.svg
         (Material Symbols Rounded, filled, weight 400)
 
-WHAT WAS TAKEN. Nineteen glyphs, across three modules.
+WHAT WAS TAKEN. Twenty-eight glyphs, across four modules.
 
 `src/data/transitVehicleIcons.js` draws live French transit vehicles by class
 (retrieved 2026-08-31): airport_shuttle, directions_boat, directions_bus,
@@ -46,6 +46,12 @@ its header refusing to conflate a barrage with the usine it feeds, and this
 project draws those structures as their own layer. A drop says water, which is
 the whole of what the filière's name claims.
 
+`src/data/roadEventGlyphs.js` draws declared road events by category (retrieved
+2026-09-10): car_crash, traffic_jam, block, warning, rainy, construction, merge,
+alt_route, question_mark. Nine glyphs, added when the category left the hue
+channel for the shape channel — the eight hues it used to carry collided with
+the congestion scale and the counting layer's rhythm wheel on the same tarmac.
+
 WHAT WAS CHANGED. Nothing, in the artwork.
 
 Only the single `d` path string of each glyph is vendored, verbatim and
@@ -57,7 +63,13 @@ At render time each path is drawn TWICE by this project: once as a wide dark
 stroke (a halo, so the glyph stays readable over pale terrain) and once as a
 white fill (so Cesium's per-billboard colour multiply can tint it — by vehicle
 class in the transit layer, by operator in the shared-mobility one, by filière
-in the EDF fleet). The path geometry itself is untouched.
+in the EDF fleet, by nothing at all in the road-event one, which draws every
+category in a single ink). The path geometry itself is untouched.
+
+`roadEventGlyphs.js` emits each path a THIRD way, for the map key: the same `d`
+string, with no halo and no fill colour, used as a CSS mask so the panel can
+paint the row's own ink through it. That is a use of the geometry, not a
+modification of it.
 
 THE PLATE ITSELF IN `plantFiliereIcons.js` IS NOT GOOGLE'S and carries no claim
 under this notice: the disc, its ring, and the bare version of both drawn for a

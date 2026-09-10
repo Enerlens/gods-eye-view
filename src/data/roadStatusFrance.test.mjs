@@ -23,6 +23,8 @@ import roadStatusFranceLayer, {
   _setRoadStatusStateForTest,
 } from './roadStatusFrance.js';
 import { ROAD_STATUS_LEVELS, ROAD_STATUS_MAX_BOX_DEG } from './datexRoadStatus.js';
+import { CONGESTION_RUNGS } from './congestionLadder.js';
+import { offScaleGlyph } from './offScaleGlyph.js';
 
 /** A viewer stub whose camera reports one view rectangle. */
 function viewerWithView(degrees) {
@@ -156,12 +158,31 @@ test('the legend reads in severity order and omits states with nothing on screen
       },
     },
   });
-  const { legend } = _roadStatusRowControlsForTest();
-  assert.deepEqual(legend.map((row) => row.label), ['Fluide', 'Congestionné', 'Non communiqué']);
+  const { legend, legendNote } = _roadStatusRowControlsForTest();
+  // The WORDS are the shared congestion ladder's, not this module's own: the
+  // fused row prints these rows beside `traffic`'s, in the same three inks, and
+  // two vocabularies under one colour is what the ladder exists to stop.
+  assert.deepEqual(legend.map((row) => row.label), [
+    CONGESTION_RUNGS.free.label, CONGESTION_RUNGS.jam.label, 'Non communiqué',
+  ]);
   assert.deepEqual(legend.map((row) => row.count), [134, 2, 10]);
   assert.equal(legend[0].color, ROAD_STATUS_LEVELS.freeFlow.color);
-  // The one entry a viewer has to be told the meaning of.
-  assert.match(legend[2].blurb, /no traffic-management centre publishes a state/);
+  assert.equal(legend[0].color, CONGESTION_RUNGS.free.color);
+  // One note for the block — provenance and clock — instead of one English
+  // sentence per row. It has to name the cadence: three other clocks share the
+  // fused row this block lands in (E1).
+  assert.match(legendNote, /DIR/);
+  assert.match(legendNote, /60 à 360 s/);
+  for (const row of legend) {
+    assert.equal(/Published by|refreshed every|traffic-management/.test(row.blurb || ''), false,
+      'no English, and no per-row copy of the block note');
+  }
+  // The state nobody publishes is off the ladder, so it is off the disc scale
+  // too: it takes the shared hatch, and no other row may (D3, A1).
+  assert.equal(legend[2].glyph, offScaleGlyph());
+  assert.equal(legend[0].glyph, undefined);
+  assert.equal(legend[1].glyph, undefined);
+  assert.match(legend[2].blurb, /aucun centre ne publie/);
 });
 
 test('the stats surface the coverage numbers rather than burying them', () => {

@@ -67,14 +67,17 @@ import { REGISTERED_LAYER_IDS } from './layerState.js';
  * is a control strip, not a second list of names. `title` is the tooltip, and
  * it is where the honest hedge goes.
  *
+ * `primaryChip` is the same thing for the layer that KEEPS the row, and it
  * exists for the MAP KEY rather than for the panel — the primary has no chip
  * because the row's own toggle is its control. When two or more members of a
+ * fusion publish a legend at once, `_refreshMapLegend` prints the row name once
  * and then one sub-block per member, titled by its chip; without this field the
  * primary's sub-block would be titled with the row's own name, which says
  * nothing. Measured on « Trafic routier »: four blocks, and the first was
  * called `Trafic routier` under a heading also called `Trafic routier`.
  *
  * It is OPTIONAL, and only the nine fusions that can currently split their key
+ * carry one. A missing `primaryChip` falls back to the layer's display name,
  * and the renderer drops a sub-title that would only repeat the row's — so a
  * fusion whose primary gains a key later degrades to today's rendering rather
  * than to a wrong name. Add one when that happens.
@@ -144,6 +147,7 @@ export const LAYER_FUSIONS = Object.freeze([
   // the split". It repeated it anyway, as two rows. It stops here.
   Object.freeze({
     primary: 'schools-fr',
+    primaryChip: 'Écoles et lycées',
     companions: Object.freeze([
       Object.freeze({
         id: 'sup-fr',
@@ -174,6 +178,7 @@ export const LAYER_FUSIONS = Object.freeze([
   // other.
   Object.freeze({
     primary: 'isochrone-fr',
+    primaryChip: 'Anneau',
     companions: Object.freeze([
       Object.freeze({
         id: 'implantation-fr',
@@ -220,6 +225,7 @@ export const LAYER_FUSIONS = Object.freeze([
   // says what is coming, the stations say what is measured.
   Object.freeze({
     primary: 'meteofrance-vigilance',
+    primaryChip: 'Vigilance',
     companions: Object.freeze([
       Object.freeze({
         id: 'meteo-stations-fr',
@@ -237,6 +243,7 @@ export const LAYER_FUSIONS = Object.freeze([
   // plant twice on purpose rather than by accident.
   Object.freeze({
     primary: 'edf-power-plants',
+    primaryChip: 'Registre EDF',
     companions: Object.freeze([
       Object.freeze({
         id: 'rte-generation',
@@ -264,6 +271,7 @@ export const LAYER_FUSIONS = Object.freeze([
   // one card; see `idfmNetwork.js` for what the merge kept and what it dropped.
   Object.freeze({
     primary: 'transit-fr',
+    primaryChip: 'Véhicules en direct',
     companions: Object.freeze([
       Object.freeze({
         id: 'idfm-network',
@@ -279,6 +287,7 @@ export const LAYER_FUSIONS = Object.freeze([
   // reader in Montréal that a layer serving them is French-only.
   Object.freeze({
     primary: 'bikeshare',
+    primaryChip: 'Stations GBFS',
     companions: Object.freeze([
       Object.freeze({
         id: 'shared-mobility-fr',
@@ -306,6 +315,7 @@ export const LAYER_FUSIONS = Object.freeze([
   // equally alive over a city where exactly one of them had data.
   Object.freeze({
     primary: 'traffic',
+    primaryChip: 'Débit mesuré',
     companions: Object.freeze([
       Object.freeze({
         id: 'road-status-fr',
@@ -342,6 +352,7 @@ export const LAYER_FUSIONS = Object.freeze([
   // chip — it lives in that module and nothing here weakens it.
   Object.freeze({
     primary: 'filosofi-fr',
+    primaryChip: 'Revenus',
     companions: Object.freeze([
       Object.freeze({
         id: 'delinquance-fr',
@@ -383,6 +394,7 @@ export const LAYER_FUSIONS = Object.freeze([
   // disposition. It was a second row for the same sky.
   Object.freeze({
     primary: 'flights',
+    primaryChip: 'Civils',
     companions: Object.freeze([
       Object.freeze({
         id: 'military',
@@ -419,6 +431,12 @@ export function validateLayerFusions(
     if (claimed.has(primary)) {
       throw new Error(`Fusion primary is already a companion: ${primary}`);
     }
+    // Optional, but never empty and never a non-string: a blank one would
+    // render as a sub-block with a title bar and no title.
+    if (fusion.primaryChip !== undefined
+        && (typeof fusion.primaryChip !== 'string' || !fusion.primaryChip.trim())) {
+      throw new Error(`Fusion primaryChip must be a non-empty string: ${primary}`);
+    }
     claimed.set(primary, primary);
     const companions = fusion.companions;
     if (!Array.isArray(companions) || companions.length === 0) {
@@ -431,6 +449,9 @@ export function validateLayerFusions(
       if (claimed.has(id)) throw new Error(`Layer claimed by two fusions: ${id}`);
       if (!companion.chip || typeof companion.chip !== 'string') {
         throw new Error(`Fusion companion missing chip label: ${id}`);
+      }
+      if (companion.chip === fusion.primaryChip) {
+        throw new Error(`Fusion companion repeats the primary's chip: ${id}`);
       }
       claimed.set(id, primary);
     }
@@ -471,6 +492,26 @@ export function fusionCompanionsFor(layerId) {
  */
 export function fusedIntoFor(layerId) {
   return PRIMARY_BY_COMPANION.get(layerId) || null;
+}
+
+/**
+ * What to call ONE MEMBER of a fused row — the word the reader pressed.
+ *
+ * This is the map key's tier-2 title. It deliberately returns the CHIP label
+ * and not the layer's taxonomy label, because the chip is the control that put
+ * the block on screen: a reader who pressed `Comptages` should read
+ * `Comptages` back, not `Comptages routiers (Paris)`, which appears nowhere in
+ * the panel.
+ *
+ * @param {string} rowId The fusion's primary — the layer that keeps the row.
+ * @param {string} memberId The primary itself, or one of its companions.
+ * @returns {?string} The chip label, or null when there is none to give.
+ */
+export function fusionMemberChipFor(rowId, memberId) {
+  const fusion = FUSION_BY_PRIMARY.get(rowId);
+  if (!fusion) return null;
+  if (memberId === rowId) return fusion.primaryChip || null;
+  return fusion.companions.find((entry) => entry.id === memberId)?.chip || null;
 }
 
 /**

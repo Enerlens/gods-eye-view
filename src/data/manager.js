@@ -1,6 +1,7 @@
 import { governorRequestRender } from '../renderGovernor.js';
 import { markDetectionSourcesChanged } from './detection.js';
 import { SURFACE_FILL_DRAPE_NOTE, surfaceFillDrapesBuildings } from './surfaceFillNotice.js';
+import { fusionMemberChipFor } from './layerFusions.js';
 import {
   coverageNoticeFor,
   coverageSignature,
@@ -3033,6 +3034,16 @@ export class DataLayerManager {
           // from, printed WITH the key rather than in a panel that ships
           // collapsed. Optional — a layer with nothing to disclose sends none.
           note: typeof controls.note === 'string' ? controls.note.trim() : '',
+          // The block's OWN provenance and CLOCK. A DIFFERENT sentence from
+          // `note`, and deliberately a different slot: that one says what was
+          // left OUT of the classes and sits under them, this one says who
+          // published what IS in them and how often, and frames them from
+          // above. Four blocks land on the fused road row and they run on four
+          // different clocks — E1 is P0, and until this existed a reader had no
+          // way to tell last minute from last month.
+          source: typeof controls.legendNote === 'string' && controls.legendNote.trim()
+            ? controls.legendNote.trim()
+            : null,
         });
       }
 
@@ -3125,9 +3136,88 @@ export class DataLayerManager {
    * strings carry statements the map has to make — "the fill is an absolute
    * count, so the card also gives the rate per 1 000 km²" — and a tooltip puts
    * them out of reach of anyone without a mouse.
+   *
+   * ── TWO TIERS, AND ONLY WHERE THERE IS SOMETHING TO DISAMBIGUATE ──────────
+   *
+   * The key used to have exactly one tier: one enabled layer, one titled block.
+   * The PANEL has had two since the fusion table — one row, several chips — and
+   * the mismatch is what made « Trafic routier » unreadable. Measured in
+   * Île-de-France at 1440×900 on 2026-09-10, one panel row printed THREE blocks
+   * with identical titling (`TRAFIC ROUTIER`, `ÉVÉNEMENTS ROUTIERS`,
+   * `COMPTAGES ROUTIERS` — same weight, same colour, same trailing word), 23
+   * rows, 559 words and 1 256 px of content into a 216 px window. Nothing said
+   * the three were one row, and nothing said they were three different
+   * questions.
+   *
+   * So the key is grouped by PANEL ROW, and a row that has more than one member
+   * on screen prints its name once and then one sub-block per member, indented
+   * behind a rule. The sub-title is the member's CHIP LABEL — the word the
+   * reader pressed — and not its taxonomy label, which for a companion appears
+   * nowhere in the panel.
+   *
+   * A row with ONE member keeps today's rendering exactly: that member's own
+   * name, no tier, no rule. This is deliberate and it is not laziness. `bruit-fr`
+   * alone under the `local-airports` row would otherwise be titled `Aéroports`
+   * over a list of PEB noise bands, which is worse than what it replaced — and
+   * six of the fifteen fusions, plus every unfused layer, are in that case.
+   * Chrome that disambiguates nothing is chrome that costs pixels.
+   *
+   * `legendNote` is the block's own sentence — its provenance and its CLOCK —
+   * printed once under the sub-title instead of once per row. Four blocks land
+   * on the road row and they run on four different clocks; E1 is P0 and the
+   * per-row copies it replaces were, on `road-status-fr`, five English
+   * sentences in an otherwise French key.
+   *
    * @param {Array<{layer: object, entries: Array<object>}>} groups Enabled layers with legends.
    * @returns {void}
    */
+  /**
+   * Fold the per-layer legend groups into the PANEL ROWS they belong to.
+   *
+   * Pure, and exported through `_legendRowsForTest` so the shape can be pinned
+   * without a DOM. Order is the order the groups arrive in — which is
+   * `getAll()` order — with a row taking the position of its FIRST member on
+   * screen. A row whose primary is off and whose companion is on therefore
+   * still lands where that companion would have, rather than jumping.
+   *
+   * @param {Array<{layer: object, entries: Array<object>, note?: string}>} groups
+   * @returns {Array<{rowId: string, title: string, split: boolean, members: Array<object>}>}
+   */
+  _legendRows(groups) {
+    const rows = [];
+    const byRowId = new Map();
+    for (const group of groups) {
+      // `fusedInto` travels on the layer record `getAll()` builds, so the key
+      // reads the same fusion table the panel does rather than a second copy.
+      const rowId = group.layer.fusedInto || group.layer.id;
+      let row = byRowId.get(rowId);
+      if (!row) {
+        // The row's NAME comes from the layer that keeps the row, which may not
+        // be on screen at all — a companion can be enabled by share token
+        // without its primary, and the row still has to be nameable. Last
+        // fallback is the member's own name, which is what a manager sealed
+        // without a taxonomy gets.
+        const title = this._registrationTaxonomy?.get(rowId)?.label
+          || this.layers.get(rowId)?.module?.name
+          || this._displayName(group.layer);
+        row = {
+          rowId, title, split: false, members: [],
+        };
+        byRowId.set(rowId, row);
+        rows.push(row);
+      }
+      row.members.push({
+        layer: group.layer,
+        entries: group.entries,
+        note: group.note || null,
+        source: group.source || null,
+        subtitle: fusionMemberChipFor(rowId, group.layer.id) || this._displayName(group.layer),
+      });
+      row.split = row.members.length > 1;
+    }
+    return rows;
+  }
+
   _refreshMapLegend(groups) {
     // Tolerant of the partial `document` stubs the panel unit tests install:
     // a manager that cannot reach a real DOM simply has no on-map mount point.
@@ -3155,16 +3245,39 @@ export class DataLayerManager {
       note.textContent = SURFACE_FILL_DRAPE_NOTE;
       fragment.appendChild(note);
     }
-    for (const { layer, entries, note } of groups) {
-      const group = document.createElement('div');
-      group.className = 'map-legend-group';
+    for (const row of this._legendRows(groups)) {
+      const rowNode = document.createElement('div');
+      rowNode.className = 'map-legend-row';
+      // Tier 1 exists only when tier 2 does. A single-member row keeps the
+      // member's own name in the one title it has always had.
+      if (row.split) {
+        const rowTitle = document.createElement('div');
+        rowTitle.className = 'map-legend-row-title';
+        rowTitle.textContent = row.title;
+        rowNode.appendChild(rowTitle);
+      }
+      for (const { layer, entries, note, source, subtitle } of row.members) {
+        const group = document.createElement('div');
+        group.className = row.split ? 'map-legend-group is-sub' : 'map-legend-group';
 
-      const title = document.createElement('div');
-      title.className = 'map-legend-layer';
-      title.textContent = this._displayName(layer);
-      group.appendChild(title);
+        // A sub-title that would only repeat the row's says nothing, so it is
+        // dropped rather than printed — the rule and the indent already say
+        // "this belongs to the block above".
+        const heading = row.split ? subtitle : this._displayName(layer);
+        if (heading && heading !== (row.split ? row.title : null)) {
+          const title = document.createElement('div');
+          title.className = 'map-legend-layer';
+          title.textContent = heading;
+          group.appendChild(title);
+        }
+        if (source) {
+          const sourceNode = document.createElement('div');
+          sourceNode.className = 'map-legend-source';
+          sourceNode.textContent = source;
+          group.appendChild(sourceNode);
+        }
 
-      for (const item of entries) {
+        for (const item of entries) {
         const entry = document.createElement('div');
         entry.className = 'map-legend-entry';
 
@@ -3201,16 +3314,20 @@ export class DataLayerManager {
 
         entry.append(swatch, text);
         group.appendChild(entry);
+        }
+        // Under the classes, not above them: the classes are what the key is
+        // FOR, and the disclosure qualifies them. It hangs off the SUB-BLOCK
+        // and never off the row — what one layer had to leave out is not what
+        // its neighbour left out.
+        if (note) {
+          const line = document.createElement('div');
+          line.className = 'map-legend-note';
+          line.textContent = note;
+          group.appendChild(line);
+        }
+        rowNode.appendChild(group);
       }
-      // Under the classes, not above them: the classes are what the key is FOR,
-      // and the disclosure qualifies them.
-      if (note) {
-        const line = document.createElement('div');
-        line.className = 'map-legend-note';
-        line.textContent = note;
-        group.appendChild(line);
-      }
-      fragment.appendChild(group);
+      fragment.appendChild(rowNode);
     }
     list.replaceChildren(fragment);
   }

@@ -259,6 +259,46 @@ export function comptagesFlowBandGlyph(bin) {
   return comptagesStrokeGlyph({ widthPx: COMPTAGES_FLOW_WIDTHS[bin] });
 }
 
+/**
+ * The whole width scale as ONE swatch: a wedge from the thinnest band to the
+ * thickest, drawn at the real pixel widths.
+ *
+ * WHY THE FIVE ROWS BECAME ONE. Each band used to take its own legend row —
+ * five rows, one ink (`COMPTAGES_WIDTH_INK`), five hand-written sentences, and
+ * three of those sentences carried a tally of a week that has since rolled. It
+ * is the graduated rule the buoy key deleted in #141, with the same argument:
+ * a scale nobody has to invert does not need graduations. The ORDER is what the
+ * width carries, an order reads off the marks themselves, and the exact count
+ * is printed on the card of the arc a reader clicks.
+ *
+ * What the row still owes is the DOMAIN — the bottom and the top — and the
+ * caller derives that from {@link COMPTAGES_FLOW_THRESHOLDS} rather than typing
+ * it, so the sentence cannot outlive a re-cut (C1).
+ *
+ * @returns {string} A `data:` URI usable as a CSS mask.
+ */
+export function comptagesFlowScaleGlyph() {
+  const thin = COMPTAGES_FLOW_WIDTHS[0];
+  const thick = COMPTAGES_FLOW_WIDTHS[COMPTAGES_FLOW_WIDTHS.length - 1];
+  // A trapezium, not a triangle: the thin end is a real band and has to keep a
+  // measurable thickness. Zero at the left would draw "no measurement", which
+  // is a different row and a different sign entirely (A1).
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+    + `<path d="M1 ${(8 - thin / 2).toFixed(2)} L15 ${(8 - thick / 2).toFixed(2)} `
+    + `L15 ${(8 + thick / 2).toFixed(2)} L1 ${(8 + thin / 2).toFixed(2)} Z" fill="#000"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * The domain of the width scale, in the unit the loops count.
+ * @returns {string} e.g. `moins de 100 à plus de 1 000 véh/h`.
+ */
+export function comptagesFlowScaleDomain() {
+  const cuts = COMPTAGES_FLOW_THRESHOLDS;
+  const top = cuts[cuts.length - 1].toLocaleString('fr-FR');
+  return `de moins de ${cuts[0]} à plus de ${top}`;
+}
+
 /** Occupancy-only arcs: measured, off the ramp, one flat colour. */
 export const COMPTAGES_OCCUPANCY_COLOR = '#7f93ab';
 export const COMPTAGES_OCCUPANCY_WIDTH = 2.6;
@@ -621,24 +661,61 @@ export const COMPTAGES_RHYTHM_COLORS = Object.freeze({
   indetermine: '#9b9187',
 });
 
-/** One sentence a reader can act on, per class. Counts are the measured week. */
-export const COMPTAGES_RHYTHM_BLURBS = Object.freeze({
-  nocturne: 'Le cœur de nuit (00–04 h) pèse au moins 15 % de la journée ouvrée. '
-    + '56 arcs sur 1 730 : Bd de Strasbourg, Bd de Clichy — trouvés par le profil, pas par une liste de noms.',
-  weekend: 'L’heure moyenne du week-end vaut au moins 1,15 fois celle de la semaine. '
-    + '100 arcs : quai de la Rapée, quai de Bercy, la bretelle A6a. Sur tout le réseau compté, '
-    + 'les heures 00–04 portent 1,60 fois plus de véhicules le week-end qu’en semaine.',
-  pendulaire: 'Les deux fenêtres domicile-travail (06–09 h et 16–19 h) dépassent d’au moins 20 % '
-    + 'le creux de milieu de journée. 367 arcs, dont l’essentiel du périphérique nord.',
-  matinal: 'Seule la fenêtre 06–09 h dépasse le creux de milieu de journée. 150 arcs.',
-  vesperal: 'Seule la fenêtre 16–19 h le dépasse. 652 arcs — la classe la plus nombreuse, '
-    + 'et c’est le fait mesuré : 970 arcs culminent entre 16 et 19 h contre 407 entre 07 et 09 h.',
-  plateau: 'Aucune des deux fenêtres ne se détache : la rue est chargée du matin au soir. '
-    + '369 arcs, dont le périphérique sud (Pont Amont, quai d’Ivry).',
-  indetermine: 'Moins de 20 heures publiées sur 24 pour au moins un des deux types de jour : '
-    + 'le rythme n’est pas calculable. 36 arcs, dont 19 qui comptent en semaine et jamais le week-end. '
-    + 'Ils gardent leur largeur mesurée et perdent seulement la teinte — une classe par défaut serait une invention.',
-});
+/** `[0, 4]` → `00–04 h`, the way the windows are written everywhere else. */
+function windowClock([from, to]) {
+  return `${String(from).padStart(2, '0')}–${String(to).padStart(2, '0')} h`;
+}
+
+/** `1.15` → `1,15`, `1.2` → `1,2`. French decimal, no trailing zero invented. */
+function ratioText(value) {
+  return String(value).replace('.', ',');
+}
+
+/**
+ * What puts an arc in its class — the CUT, and nothing else.
+ *
+ * DERIVED, NEVER TYPED, and that is the whole point of this block. These
+ * strings used to be prose, and each of the seven carried a hand-typed tally
+ * of the week it was written against: `nocturne` said "56 arcs sur 1 730",
+ * `vesperal` said "652 arcs — la classe la plus nombreuse". The pack is
+ * ROLLING (`week.discovered`), so those tallies drifted every Monday. Measured
+ * on the week of 2026-08-31 the legend printed `Nocturne 18` beside "56 arcs",
+ * `Pointe du soir 358` beside "652 arcs — la classe la plus nombreuse", with
+ * `Continu 614` two lines above it: the same line stating two different
+ * numbers for the same thing, and the superlative false against the tally
+ * printed next to it.
+ *
+ * The rule this block now holds: a number inside a legend sentence is derived
+ * from a frozen constant or it does not exist. The counts are already on the
+ * line — `_refreshMapLegend` prints `label · count` — so restating them here
+ * was never information, only an opportunity to disagree. What survives is the
+ * threshold, which C1 requires published and which cannot drift because it is
+ * read from {@link COMPTAGES_RHYTHM_WINDOWS} and
+ * {@link COMPTAGES_RHYTHM_THRESHOLDS} at module load.
+ *
+ * `comptagesRhythm.test.mjs` fails on any digit in these strings that is not
+ * one of those constants, so the prose cannot grow a tally back.
+ */
+export const COMPTAGES_RHYTHM_BLURBS = (() => {
+  const W = COMPTAGES_RHYTHM_WINDOWS;
+  const T = COMPTAGES_RHYTHM_THRESHOLDS;
+  // Written as INEQUALITIES rather than as sentences, and that is not
+  // shorthand for its own sake. A cut is a comparison; `06–09 h ≥ 1,2 × le
+  // creux 10–15 h` states the operator that "dépasse d'au moins 20 % le creux
+  // de milieu de journée" only gestures at, and it fits on one line of the key
+  // instead of two. Measured at 1440×900, the prose form wrapped five of the
+  // seven rows to 40 px; this form keeps all seven at 28.
+  const shoulder = `≥ ${ratioText(T.shoulder)} × le creux ${windowClock(W.midday)}`;
+  return Object.freeze({
+    nocturne: `${windowClock(W.night)} ≥ ${Math.round(T.night * 100)} % du jour ouvré`,
+    weekend: `week-end ≥ ${ratioText(T.weekend)} × semaine`,
+    pendulaire: `${windowClock(W.morning)} et ${windowClock(W.evening)} ${shoulder}`,
+    matinal: `${windowClock(W.morning)} seule ${shoulder}`,
+    vesperal: `${windowClock(W.evening)} seule ${shoulder}`,
+    plateau: `aucune pointe ${shoulder}`,
+    indetermine: `moins de ${T.coverage} h publiées sur ${HOURS}`,
+  });
+})();
 
 /** Highest measured value inside `[from, to]`, or null. */
 function windowMax(profile, [from, to]) {

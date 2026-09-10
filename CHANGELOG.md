@@ -83,6 +83,65 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   la ligne `source` de la couche. Une fiche qu'on ouvre pour savoir ce qui
   dessert sa rue n'est pas une surface d'attribution.
 
+- **La clé du trafic routier passe à deux étages, et cesse de se contredire :
+  23 lignes et 559 mots deviennent 20 et 207.** Une seule ligne du panneau —
+  « Trafic routier », dont le bouton porte quatre couches — imprimait TROIS
+  blocs titrés au même corps, dans la même couleur, tous terminés par le même
+  mot, pour 1 256 px de contenu dans une fenêtre de 216. Rien ne disait que les
+  trois étaient une ligne, ni qu'ils répondaient à trois questions
+  différentes. Mesuré en Île-de-France à 1440×900.
+
+  **Les phrases mentaient, et elles mentaient par construction.** Chaque ligne
+  de rythme imprimait deux comptes pour la même chose : celui de la ligne,
+  calculé, et celui de la phrase, tapé à la main. `Pointe du soir 358` portait
+  « 652 arcs — la classe la plus nombreuse » avec `Continu 614` deux lignes
+  plus haut. Le pack de comptages est glissant, donc les sept tallies dérivaient
+  chaque lundi. Elles sont remplacées par la COUPURE, dérivée des seuils gelés
+  et écrite en inégalité : `06–09 h et 16–19 h ≥ 1,2 × le creux 10–15 h`. Un
+  test refuse désormais tout chiffre qui ne soit pas l'un de ces seuils.
+
+  **Une couleur ne dit plus deux choses.** `traffic` et `road-status-fr`
+  peignaient la congestion avec les mêmes trois hexadécimaux et deux
+  vocabulaires : `● Circulation fluide` au-dessus de `● Fluide`, même vert,
+  co-observé à Rouen. Les deux lisent maintenant leurs mots dans une échelle
+  partagée — Fluide · Ralenti · Bloqué · Impraticable — et chacune publie sa
+  propre coupure, parce que les deux discrétisations ne sont pas la même.
+
+  **Chaque bloc déclare son horloge.** Quatre couches, quatre horloges : TomTom
+  à 60 s, les DIR à 60–360 s, Bison Futé toutes les 5 min, et une SEMAINE TYPE
+  ARCHIVÉE que rien ne distinguait du direct. Une phrase par bloc, à la place
+  des phrases par ligne — dont cinq, sur l'état du réseau, étaient en anglais.
+
+  **L'échelle des cinq bandes de comptage devient une ligne**, comme la règle
+  graduée des bouées avant elle : l'ordre se lit sur les traits, et le compte
+  exact est sur la fiche.
+
+  La sous-division s'applique à toute ligne fusionnée dont deux membres publient
+  une clé — neuf des quinze. Une ligne à un seul membre garde exactement son
+  rendu d'avant : un chrome qui ne lève aucune ambiguïté coûte des pixels pour
+  rien.
+
+- **Un événement routier n'est plus une couleur, c'est un dessin.** Huit
+  teintes de catégorie se battaient avec tout ce qui se dessine sur la même
+  chaussée : `obstacle` violet à ΔE 7,3 du rythme pendulaire, `intempérie` cyan
+  à 9,2 de la pointe du matin, `déviation` vert à 12,6 du `Fluide` de
+  l'échelle, et `accident` à ΔE 0,0 de la `Route fermée` de TomTom — le même
+  hexadécimal, co-observé dans une clé à un instant. La catégorie est une
+  variable NOMINALE : elle part sur la forme, comme le veut la sémiologie, et
+  rend tout le canal teinte à la congestion, seule variable ordonnée du sujet.
+  Neuf pictogrammes Material Symbols, vendorés verbatim, une encre unique, et
+  la pastille de la clé EST la marque de la carte.
+
+  **La gravité quitte la marque, et c'est une mesure.** Le diamètre composait
+  trois variables — gravité, indicateur sécurité, état programmé — en vingt
+  combinaisons entassées entre 5,6 et 15,4 px, dont quatorze paires voisines à
+  moins de 0,75 px et quatre à 0,12 px : une fermeture majeure PROGRAMMÉE et
+  une restriction moyenne EN COURS tombaient au même diamètre, et la clé n'en
+  disait pas un mot. Sur le flux national du 2026-09-10, 312 des 386 situations
+  sont `medium` — qui est aussi la valeur de repli quand personne ne déclare
+  rien. La gravité est sur la fiche, en toutes lettres ; elle continue de
+  moduler l'épaisseur d'un SEGMENT, où trois largeurs se lisent.
+
 ### Added
 - **Chaque filière de centrale porte sa silhouette, et le lecteur choisit
   celle qu'il regarde — puis, seulement alors, la catégorie qu'il veut
