@@ -16,9 +16,15 @@
 // persist across tests in this file, so each test uses distinct coordinates.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import * as Cesium from 'cesium';
 import {
   FIRE_ANCHOR_LIFT_M,
+  FIRE_PROVISIONAL_FILL_KM,
+  FIRE_PROVISIONAL_MAX_CAMERA_M,
+  FIRE_PROVISIONAL_MAX_PROBES,
   fireAnchorHeight,
+  provisionalFireFloor,
+  sampleFireAnchorFloors,
   warmFireAnchorFloors,
   _resetFireAnchorsForTest,
 } from './fireAnchors.js';
@@ -158,4 +164,152 @@ test('warmFireAnchorFloors: proxy failure reports false (re-render chain termina
     assert.ok(calls >= 1);
   });
   assert.equal(fireAnchorHeight(22.501, 32.501), 0, 'anchor stays at 0 until a real floor lands');
+});
+
+// --- Provisional rendered-surface floors -----------------------------------
+//
+// The defect these lock: a detection painted before its DEM cell answers sat
+// at ellipsoid 0 — measured 293 m under the ground it belongs to over the
+// Chiapas fires — where, depth test disabled, it slid across the landscape
+// with every camera move instead of staying on the map.
+
+/** A scene the sampler accepts: low camera over `at`, one visible tileset,
+ *  and a `sampleHeight` under the test's control. Mirrors the double in
+ *  meshFloorSampler.test.mjs — same gates, same shape. */
+function fakeScene(sampleHeight, {
+  at = { lat: 0, lon: 0 }, cameraHeightM = 3000, tilesLoaded = true, show = true,
+} = {}) {
+  const tileset = Object.create(Cesium.Cesium3DTileset.prototype);
+  Object.defineProperty(tileset, 'tilesLoaded', { value: tilesLoaded, configurable: true });
+  Object.defineProperty(tileset, 'show', { value: show, configurable: true });
+  return {
+    sampleHeight,
+    camera: {
+      positionCartographic: {
+        height: cameraHeightM,
+        latitude: Cesium.Math.toRadians(at.lat),
+        longitude: Cesium.Math.toRadians(at.lon),
+      },
+    },
+    primitives: { length: 1, get: () => tileset },
+  };
+}
+
+test('provisional: a cold cell is grounded on the RENDERED surface, not the ellipsoid', () => {
+  _resetFireAnchorsForTest();
+  const fire = { lat: 17.401, lon: -91.71 };
+  assert.equal(fireAnchorHeight(fire.lat, fire.lon), 0, 'nothing sampled yet');
+  const { probes, pending } = sampleFireAnchorFloors(fakeScene(() => 293.2, { at: fire }), [fire]);
+  assert.equal(probes, 1);
+  assert.equal(pending, 0, 'the caller has nothing left to come back for');
+  assert.equal(fireAnchorHeight(fire.lat, fire.lon), 293.2 + FIRE_ANCHOR_LIFT_M);
+});
+
+test('provisional: an implausible sample is refused (the -11 838 m headless read)', () => {
+  _resetFireAnchorsForTest();
+  const fire = { lat: 18.401, lon: -91.71 };
+  sampleFireAnchorFloors(fakeScene(() => -11838.9, { at: fire }), [fire]);
+  assert.equal(provisionalFireFloor(fire.lat, fire.lon), null);
+  assert.equal(fireAnchorHeight(fire.lat, fire.lon), 0, 'junk never becomes an anchor');
+});
+
+test('provisional: nothing loaded under the probe leaves the anchor alone', () => {
+  _resetFireAnchorsForTest();
+  const fire = { lat: 19.401, lon: -91.71 };
+  sampleFireAnchorFloors(fakeScene(() => undefined, { at: fire }), [fire]);
+  assert.equal(fireAnchorHeight(fire.lat, fire.lon), 0);
+});
+
+test('provisional: no probes at all above the camera ceiling', () => {
+  _resetFireAnchorsForTest();
+  const fire = { lat: 20.401, lon: -91.71 };
+  let probed = 0;
+  const scene = fakeScene(() => { probed += 1; return 300; }, {
+    at: fire, cameraHeightM: FIRE_PROVISIONAL_MAX_CAMERA_M + 1,
+  });
+  assert.deepEqual(sampleFireAnchorFloors(scene, [fire]), { probes: 0, pending: 0 });
+  assert.equal(probed, 0, 'a high camera sees coarse tiles everywhere — do not read them');
+  assert.equal(fireAnchorHeight(fire.lat, fire.lon), 0);
+});
+
+test('provisional: the probe budget is capped, and the rest borrow the nearest read', () => {
+  _resetFireAnchorsForTest();
+  const origin = { lat: 21.401, lon: -91.71 };
+  // 60 distinct ~111 m cells in one complex — more cells than probes.
+  const fires = [];
+  for (let i = 0; i < 60; i += 1) fires.push({ lat: origin.lat + i * 0.001, lon: origin.lon });
+  let probed = 0;
+  const scene = fakeScene(() => { probed += 1; return 700; }, { at: origin });
+  const spent = sampleFireAnchorFloors(scene, fires).probes;
+  assert.equal(spent, FIRE_PROVISIONAL_MAX_PROBES, 'the budget is spent, not exceeded');
+  assert.equal(probed, FIRE_PROVISIONAL_MAX_PROBES);
+  for (const fire of fires) {
+    assert.equal(fireAnchorHeight(fire.lat, fire.lon), 700 + FIRE_ANCHOR_LIFT_M,
+      'every detection in the complex is on the ground, budget or no budget');
+  }
+});
+
+test('provisional: a cell too far from any read stays at 0 rather than borrowing', () => {
+  _resetFireAnchorsForTest();
+  const near = { lat: 22.401, lon: -91.71 };
+  const far = { lat: near.lat + (FIRE_PROVISIONAL_FILL_KM + 10) / 111.32, lon: near.lon };
+  // Only the near cell answers; the far one is out of every probe's reach.
+  const scene = fakeScene((carto) => (
+    Math.abs(Cesium.Math.toDegrees(carto.latitude) - near.lat) < 0.0005 ? 700 : undefined
+  ), { at: near });
+  sampleFireAnchorFloors(scene, [near, far]);
+  assert.equal(fireAnchorHeight(near.lat, near.lon), 700 + FIRE_ANCHOR_LIFT_M);
+  assert.equal(fireAnchorHeight(far.lat, far.lon), 0, 'a hillside 35 km away is not this one');
+});
+
+test('provisional: the DEM outranks it and evicts it when it lands', () => {
+  _resetFireAnchorsForTest();
+  setMeshFloorPreferred(true);
+  const fire = { lat: 23.401, lon: -91.71 };
+  const scene = fakeScene(() => 700, { at: fire });
+  sampleFireAnchorFloors(scene, [fire]);
+  assert.equal(fireAnchorHeight(fire.lat, fire.lon), 700 + FIRE_ANCHOR_LIFT_M);
+  reportMeshFloorCell(23.401, -91.71, 688);
+  assert.equal(fireAnchorHeight(fire.lat, fire.lon), 688 + FIRE_ANCHOR_LIFT_M,
+    'the shared floor is the authority the moment it exists');
+  sampleFireAnchorFloors(scene, [fire]);
+  assert.equal(provisionalFireFloor(fire.lat, fire.lon), null, 'and the stand-in is dropped');
+});
+
+test('provisional: a mid-stream read is re-probed once the tiles drain, then left alone', () => {
+  _resetFireAnchorsForTest();
+  const fire = { lat: 24.401, lon: -91.71 };
+  let probed = 0;
+  const midStream = fakeScene(() => { probed += 1; return 120; }, { at: fire, tilesLoaded: false });
+  const first = sampleFireAnchorFloors(midStream, [fire]);
+  assert.equal(fireAnchorHeight(fire.lat, fire.lon), 120 + FIRE_ANCHOR_LIFT_M,
+    'a coarse read still beats the ellipsoid by two orders of magnitude');
+  assert.equal(first.pending, 1, 'and a real read is still owed — grounded is not grounded well');
+  const drained = fakeScene(() => { probed += 1; return 700; }, { at: fire, tilesLoaded: true });
+  assert.equal(sampleFireAnchorFloors(drained, [fire]).pending, 0, 'and then nothing is owed');
+  assert.equal(probed, 2, 'the better conditions are taken');
+  assert.equal(fireAnchorHeight(fire.lat, fire.lon), 700 + FIRE_ANCHOR_LIFT_M);
+  sampleFireAnchorFloors(drained, [fire]);
+  assert.equal(probed, 2, 'and nothing is re-read for nothing');
+});
+
+test('provisional: a probe that finds nothing is reported, and not repeated for nothing', () => {
+  _resetFireAnchorsForTest();
+  const fire = { lat: 25.401, lon: -91.71 };
+  let probed = 0;
+  const scene = fakeScene(() => { probed += 1; return undefined; }, { at: fire });
+  const first = sampleFireAnchorFloors(scene, [fire]);
+  assert.deepEqual(first, { probes: 1, pending: 1 },
+    'the caller is told to come back once the tiles land');
+  const second = sampleFireAnchorFloors(scene, [fire]);
+  assert.deepEqual(second, { probes: 0, pending: 1 },
+    'the same miss under the same conditions is not paid for twice');
+  assert.equal(probed, 1);
+});
+
+test('provisional: a scene that cannot be sampled still reports what it owes', () => {
+  _resetFireAnchorsForTest();
+  const fire = { lat: 26.401, lon: -91.71 };
+  assert.deepEqual(sampleFireAnchorFloors(undefined, [fire]), { probes: 0, pending: 1 });
+  assert.deepEqual(sampleFireAnchorFloors({}, [fire]), { probes: 0, pending: 1 });
 });

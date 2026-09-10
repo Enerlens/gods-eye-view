@@ -3,7 +3,7 @@
 // Pure function — no viewer/DOM needed; imported directly.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { heatNormalized, heatScore, mapAnalystRecord } from './firmsHeatmap.js';
+import { anchorRetryDelayMs, heatNormalized, heatScore, mapAnalystRecord } from './firmsHeatmap.js';
 
 const FULL_FIRE = {
   index: 7,
@@ -122,4 +122,25 @@ test('the peak fire power in a cell is not inflated by latitude', () => {
   const equator = heatScore({ latCell: 0, lonCell: 0, count: 0, intensity: 0, night: 0, maxFrp: 100 }, 1);
   const sixty = heatScore({ latCell: 59.5, lonCell: 0, count: 0, intensity: 0, night: 0, maxFrp: 100 }, 1);
   assert.equal(equator, sixty);
+});
+
+// The deferred re-render for detections whose ground had not streamed yet.
+// The doubling is about a tile stream (measured 8.7 s and 11.7 s cold in
+// headless runs); the
+// cap is about the render governor — a parked camera over ground with no
+// photoreal coverage must not be woken forever.
+
+test('anchor retry: the wait doubles and then stops asking', () => {
+  assert.equal(anchorRetryDelayMs(0), 1200);
+  assert.equal(anchorRetryDelayMs(1), 2400);
+  assert.equal(anchorRetryDelayMs(2), 4800);
+  assert.equal(anchorRetryDelayMs(4), 19200);
+  assert.equal(anchorRetryDelayMs(5), null, 'the budget is five tries, ~37 s in total');
+  assert.equal(anchorRetryDelayMs(99), null);
+});
+
+test('anchor retry: a nonsense attempt count schedules nothing at all', () => {
+  for (const attempt of [-1, 1.5, NaN, undefined, null, '0']) {
+    assert.equal(anchorRetryDelayMs(attempt), null, `attempt=${String(attempt)}`);
+  }
 });
