@@ -9721,14 +9721,25 @@ async function bruitForeground(job) {
  *
  * @param {'peb'|'pgs'} kind
  * @param {object} feature Coarse feature to refine.
+ * @param {?number} [deadline] `Date.now()` past which this pass gives up. A
+ *   finite value also means THIS IS THE FOREGROUND PASS — a client is blocked
+ *   on it — and so it must not yield to the foreground: it IS the foreground,
+ *   and `bruitRefineYield` would wait on the gate this pass is holding.
  * @returns {Promise<?object>} Fine GeoJSON geometry.
  */
-async function bruitRefineFeature(kind, feature) {
+async function bruitRefineFeature(kind, feature, deadline = null) {
   const key = bruitFeatureKey(feature);
   if (key === null) return null;
   for (const seed of bruitRefineSeeds(feature.geometry)) {
-    // Wait out any scan a client is blocked on before spending a slot.
-    await bruitRefineYield();
+    if (deadline === null) {
+      // Wait out any scan a client is blocked on before spending a slot.
+      await bruitRefineYield();
+    } else if (Date.now() >= deadline) {
+      // Out of budget mid-band. The band stays coarse and says so, and the
+      // aerodrome is left needing a pass rather than marked as tried — see
+      // `bruitRefineAerodrome`.
+      return null;
+    }
     const answer = await fetchBruitJson(buildBruitProbeUrl(kind, seed, BRUIT_PROBE_PIXEL_DEG));
     // `null` is the service refusing, and it is NOT a miss on this seed: trying
     // the next one would spend the whole budget on an outage. Give the band up
@@ -9757,9 +9768,12 @@ async function bruitRefineYield() {
  * no longer the cached one would resurrect the outlines it replaced.
  *
  * @param {string} oaci
+ * @param {?number} [deadline] `Date.now()` past which to stop, for the
+ *   foreground pass. Null is the background worker, which has all the time
+ *   there is.
  * @returns {Promise<boolean>} Whether the entry is now fully refined.
  */
-async function bruitRefineAerodrome(oaci) {
+async function bruitRefineAerodrome(oaci, deadline = null) {
   const held = _bruitZones.get(oaci);
   if (!bruitNeedsRefine(held)) return true;
   const refined = { peb: null, pgs: null };
@@ -9770,9 +9784,12 @@ async function bruitRefineAerodrome(oaci) {
     if (!features.length) continue;
     const geometries = new Map();
     for (const feature of features) {
-      const geometry = await bruitRefineFeature(kind, feature);
+      const geometry = await bruitRefineFeature(kind, feature, deadline);
       if (geometry) geometries.set(bruitFeatureKey(feature), geometry);
     }
+    // PARTIAL WORK IS STILL MERGED. The bands the budget reached are stamped
+    // fine and the rest stay coarse, so a truncated pass is progress the next
+    // one does not repeat rather than an all-or-nothing throw.
     const next = refineBruitCollection(collection, geometries);
     coarse += next.coarse;
     refined[kind] = next;
@@ -9781,6 +9798,14 @@ async function bruitRefineAerodrome(oaci) {
   // Replaced under us while we waited — the refinement describes a collection
   // that is no longer cached, so it is dropped rather than merged.
   if (current !== held) return false;
+  // A PASS THE BUDGET CUT SHORT IS NOT A PASS THE SERVICE REFUSED, and only the
+  // second one earns the cooldown. `triedAt` is what `bruitNeedsRefine` reads to
+  // leave an aerodrome alone for ten minutes; stamping it here would freeze the
+  // half-refined plan of the airport the reader is looking at RIGHT NOW for ten
+  // minutes, which is the exact opposite of what running the pass in front of
+  // them was for. Left as it was, the aerodrome is still `needsRefine`, so the
+  // background worker picks it up the moment this request lets go of the gate.
+  const truncated = deadline !== null && Date.now() >= deadline;
   _bruitZones.set(oaci, {
     at: held.at,
     peb: refined.peb ?? held.peb,
@@ -9790,10 +9815,102 @@ async function bruitRefineAerodrome(oaci) {
     // into a delay instead of a month of facets — but not on the very next
     // scan; see `BRUIT_REFINE_RETRY_MS`.
     refined: coarse === 0,
-    triedAt: Date.now(),
+    triedAt: truncated ? (held.triedAt ?? null) : Date.now(),
   });
   scheduleBruitZonesWrite();
   return coarse === 0;
+}
+
+/**
+ * How long a request may spend refining before it answers with what it has.
+ *
+ * 4 000 ms, and it is bounded from BOTH sides by a measurement rather than
+ * picked for feel.
+ *
+ * The floor is one aerodrome. Measured on a cold cache, the twelve aerodromes
+ * around Paris cost 85 probes and ~9.5 s at {@link BRUIT_AREA_CONCURRENCY} —
+ * about 0.8 s each — so any budget over a second guarantees that the aerodrome
+ * the camera is centred on, which `arretesWithin` returns first, is fine on the
+ * FIRST paint. That is the whole feature: below 30 km a reader is looking at
+ * one airport, and it is that one's outline that must not arrive faceted.
+ *
+ * The ceiling is `BRUIT_REFINE_POLL_MS` in `bruitFrance.js` — five seconds. A
+ * budget past it would mean a truncated pass is still running when the layer
+ * polls for the result of the last one, and the polls would stack on a single
+ * settled camera. Under it, each poll finds the previous pass finished and
+ * spends its own budget on the aerodromes still coarse, so a cold Paris basin
+ * converges in a few polls instead of one long hang.
+ *
+ * IT BOUNDS THE SECOND PASS, NOT THE REQUEST. The discovery probes run first
+ * and are not on this clock. Measured 2026-09-10 at Roissy, radius 25 km,
+ * 18 aerodromes and 72 bands, from an empty `zones.json`:
+ *
+ *   no `fine`     2,66 s      0 of 72 bands fine, 18 aerodromes queued
+ *   `fine=1`      6,64 s     27 of 72 bands fine on the FIRST payload
+ *   `fine=1`      0,08 s     72 of 72, once the background pass has landed
+ *
+ * and on that first fine payload LFPG's own four zones come back at 110, 247,
+ * 381 and 664 vertices — the probe scale's numbers, on the aerodrome the camera
+ * is centred on. The four seconds buy exactly that, and the rest of the basin
+ * sharpens behind the answer as it always did.
+ *
+ * WHAT IT COSTS IN THE WORST CASE is those four seconds ONCE per aerodrome per
+ * month: the per-aerodrome zone cache is on disk with a 30-day TTL, and the
+ * register gained 8 arrêtés in six years. Every later view of the same ground —
+ * this reader's or anyone else's on this server — is answered fine in 80 ms.
+ */
+const BRUIT_FINE_FOREGROUND_BUDGET_MS = 4_000;
+
+/**
+ * The widest overview that is worth waiting for, in km.
+ *
+ * 25 — the first rung of the client's radius ladder, which is what every
+ * altitude from 12 km to 35.7 km maps to. Past it the wait stops buying
+ * anything visible: at a 50 km radius the screen is about 140 km across and the
+ * median band is 1.9 km wide, so the difference between 37 vertices and 381 is
+ * under a pixel, while the pass costs the same four seconds and the answer is a
+ * separate cache entry for as long as it is held.
+ *
+ * A CAP AND NOT A VALIDATION, for the same reason `BRUIT_AREA_MAX_RADIUS_KM`
+ * is: a `fine=1` arriving with a 200 km radius is a client that has drifted
+ * from this file, and the right answer to it is the overview it would have got
+ * anyway rather than a 400.
+ */
+const BRUIT_FINE_MAX_RADIUS_KM = 25;
+
+/**
+ * Play the second pass in FRONT of the reader, nearest aerodrome first.
+ *
+ * Holds the foreground gate for the whole run, which does two things at once:
+ * the background worker stands aside instead of racing this pass for one of the
+ * three slots the service tolerates, and — because a finite `deadline` is what
+ * tells {@link bruitRefineFeature} not to yield — this pass does not wait on
+ * the gate it is itself holding.
+ *
+ * @param {Array<{oaci: string, failed: boolean, pending: boolean}>} probes
+ *   In `arretesWithin` order, which is nearest to the centre of the view first.
+ * @returns {Promise<void>}
+ */
+async function bruitRefineNow(probes) {
+  const deadline = Date.now() + BRUIT_FINE_FOREGROUND_BUDGET_MS;
+  await bruitForeground(async () => {
+    for (const probe of probes) {
+      if (Date.now() >= deadline) break;
+      if (probe.failed || !probe.pending) continue;
+      // Taken off the background queue for the duration: the worker is blocked
+      // on the gate anyway, and leaving it queued would have it re-run a pass
+      // that just finished the moment this request returns.
+      _bruitRefineQueue.delete(probe.oaci);
+      try {
+        await bruitRefineAerodrome(probe.oaci, deadline);
+      } catch (error) {
+        console.warn(`[Bruit Proxy] foreground refine ${probe.oaci}:`, error?.message || error);
+      }
+      // Put back whatever this pass did not finish, so `bruitDrainRefineQueue`
+      // carries it on behind the answer.
+      if (bruitNeedsRefine(_bruitZones.get(probe.oaci))) _bruitRefineQueue.set(probe.oaci, true);
+    }
+  });
 }
 
 /**
@@ -9921,9 +10038,11 @@ async function bruitMapLimited(items, limit, job) {
  *
  * @param {{lat: number, lon: number}} centre
  * @param {number} radiusKm
+ * @param {boolean} [fine] Whether to play the second pass before answering
+ *   rather than behind the answer — see {@link bruitRefineNow}.
  * @returns {Promise<object|null>}
  */
-async function buildBruitArea(centre, radiusKm) {
+async function buildBruitArea(centre, radiusKm, fine = false) {
   const index = await ensureBruitIndex().catch((err) => {
     console.warn('[Bruit Proxy] arrêté index:', err?.message || err);
     return null;
@@ -9938,12 +10057,25 @@ async function buildBruitArea(centre, radiusKm) {
   const { selected, candidates, dropped } = arretesWithin(
     register.airports, centre.lat, centre.lon, radiusKm, BRUIT_AREA_MAX_AERODROMES,
   );
-  const probes = await bruitMapLimited(
+  const coarse = await bruitMapLimited(
     selected, BRUIT_AREA_CONCURRENCY, (airport) => bruitAerodromeZones(airport),
   );
+  // Every aerodrome refusing is an outage, not an empty region. Decided on the
+  // DISCOVERY pass, before any refinement: a request that has nothing to draw
+  // must not spend four seconds sharpening it.
+  if (selected.length > 0 && coarse.every((probe) => probe.failed)) return null;
+  if (fine) await bruitRefineNow(coarse);
+  // RE-READ, because `bruitRefineNow` writes into the zone cache and the probe
+  // results above are the collections as they were BEFORE it ran. Building the
+  // payload from those would spend the four seconds and then serve the coarse
+  // outlines anyway. Index alignment with `selected` is preserved, which is
+  // what `probed` below relies on.
+  const probes = fine ? coarse.map((probe) => {
+    const held = probe.failed ? null : _bruitZones.get(probe.oaci);
+    if (!held) return probe;
+    return { ...probe, peb: held.peb, pgs: held.pgs, pending: bruitNeedsRefine(held) };
+  }) : coarse;
   const answered = probes.filter((probe) => !probe.failed);
-  // Every aerodrome refusing is an outage, not an empty region.
-  if (selected.length > 0 && answered.length === 0) return null;
   const missing = probes.length - answered.length;
   // Started AFTER the probes, so a cold overview's twelve foreground calls are
   // already in flight and the refiner finds the gate shut rather than racing
@@ -9975,6 +10107,12 @@ async function buildBruitArea(centre, radiusKm) {
     // state where a band could not be refined at all. What is on screen in that
     // state is still reported honestly, by `coarseBands`.
     refining: answered.filter((probe) => probe.pending === true).length,
+    // Whether the second pass was played in FRONT of this answer. Not a claim
+    // that every band is fine — the budget can run out — which is why the card
+    // reads each band's own scale for that. It says only which sentence a
+    // coarse band deserves: inside a foreground pass it is work still going on,
+    // and above the ceiling it is a descent the reader has not made.
+    fine: fine === true,
     source: BRUIT_SOURCE,
     register: {
       count: register.count,
@@ -10015,6 +10153,25 @@ function bruitAreaRadius(searchParams) {
   const km = Number(raw);
   if (!Number.isFinite(km) || km <= 0) throw new Error('km must be a positive number of kilometres');
   return Math.min(km, BRUIT_AREA_MAX_RADIUS_KM);
+}
+
+/**
+ * Whether this request asked for — and may have — the second pass in front of
+ * it.
+ *
+ * The client sends `fine=1` below its own 30 km ceiling; the proxy grants it
+ * only at the first rung of the radius ladder, so the two constants can drift
+ * apart without a request past {@link BRUIT_FINE_MAX_RADIUS_KM} ever spending
+ * the budget. Anything other than `1` is read as absent rather than refused:
+ * this parameter buys latency, not correctness, and a 400 over a typo would
+ * blank a layer that had a perfectly good coarse answer to give.
+ *
+ * @param {URLSearchParams} searchParams
+ * @param {number} radiusKm Already parsed and clamped.
+ * @returns {boolean}
+ */
+function bruitWantsFine(searchParams, radiusKm) {
+  return searchParams.get('fine') === '1' && radiusKm <= BRUIT_FINE_MAX_RADIUS_KM;
 }
 
 /**
@@ -10088,12 +10245,22 @@ function bruitFranceProxy() {
       const radiusKm = bruitAreaRadius(url.searchParams);
       if (radiusKm !== null) {
         const centre = bruitAreaCentre(point);
+        const fine = bruitWantsFine(url.searchParams, radiusKm);
         return {
           // The radius is in the key: the same centre read at 40 km and at
           // 200 km are two different answers with two different aerodrome
           // lists, and sharing an entry would serve one for the other.
-          key: addressCacheKey('bruit-fr-area', centre, radiusKm),
-          load: () => buildBruitArea(centre, radiusKm),
+          //
+          // AND SO IS `fine`, for a reason the six-hour shelf life makes sharp.
+          // A coarse overview cached under a shared key would be handed to the
+          // request that asked to wait for the fine one, and — because a
+          // complete coarse answer reports `refining: 0` once the background
+          // pass has closed its aerodromes out — it would be held for six hours
+          // rather than the three seconds a provisional one gets. The reader
+          // under 30 km would then see facets until the entry expired, and no
+          // amount of polling would move it.
+          key: addressCacheKey('bruit-fr-area', centre, radiusKm, fine ? 'fine' : 'coarse'),
+          load: () => buildBruitArea(centre, radiusKm, fine),
         };
       }
       return {

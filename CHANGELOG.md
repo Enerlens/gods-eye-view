@@ -29,6 +29,59 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   contour) sont supprimées, et la clé de rendu redevient la seule classe de
   longueur — les suffixes `+rw` / `+fp`, qui n'existaient que pour permettre au
   comptage de distinguer les deux marques dans une seule case, partent avec.
+- **Sous 30 km, les zones de bruit des aéroports arrivent déjà au tracé fin.**
+  Le plan d'exposition au bruit est un jeu d'anneaux emboîtés, et au-dessus de
+  12 km la couche cesse de demander « qu'y a-t-il sous ce point ? » pour
+  demander « quels plans y a-t-il dans ce cadre ? » — une sonde par aérodrome,
+  à une échelle cent fois plus large, la seule assez large pour que les zones B,
+  C et D reviennent entières. Cette échelle est aussi celle à laquelle le
+  service généralise le contour : la zone D de Roissy repart avec 37 sommets
+  pour 65,8 km, un anneau à facettes visibles. Une seconde passe rattrape ça en
+  refetchant chaque bande au 1:39 757 — et elle tournait **derrière** la
+  réponse, donc le cadre où l'on descend justement pour regarder un aéroport
+  s'affichait large puis se redessinait quelques secondes plus tard sous le
+  lecteur.
+
+  **Sous 30 km cette passe est maintenant jouée devant lui**, aérodrome le plus
+  proche d'abord : la réponse part déjà au 1:39 757. Au-dessus, rien ne change —
+  à 100 km la bande médiane fait 1,9 km pour un écran de 140, et l'écart entre
+  37 sommets et 381 n'est plus visible par personne pour le même prix.
+
+  **Ce n'est pas le plafond du mode ponctuel qui a bougé, et c'est délibéré.**
+  La sonde ponctuelle doit sa finesse à un tampon de 11 m au sol, et ce tampon
+  est exactement la raison pour laquelle elle ne renvoie qu'un anneau sur
+  quatre : mesuré sur 25 aérodromes, 37 bandes distinctes au fin contre 88 au
+  large, et neuf terrains — dont Toussus, Coulommiers et Pontoise — ne
+  répondent rien du tout à l'échelle fine. Monter le mode ponctuel à 30 km
+  aurait acheté un contour net en perdant les zones B, C et D en chemin.
+
+  **L'attente est bornée à 4 s**, au-dessus des ~0,8 s que coûte un aérodrome à
+  froid — donc celui que la caméra vise est toujours fin au premier affichage —
+  et sous les 5 s du sondage d'affinage de la couche, pour qu'une passe
+  tronquée ne s'empile jamais sur celui qui la suit. Ce que le budget n'a pas
+  atteint reste large, le dit, et repart en tâche de fond ; une passe coupée
+  par le budget ne pose pas `triedAt`, sinon le plan à moitié affiné de
+  l'aéroport sous la caméra serait gelé pour dix minutes. Le coût est payé une
+  fois par aérodrome et par mois : le cache disque des zones tient 30 jours,
+  contre un registre qui a gagné 8 arrêtés en six ans.
+
+  **Mesuré le 2026-09-10 à Roissy**, rayon 25 km, 18 aérodromes et 72 bandes,
+  cache de zones vide : **2,66 s et 0 bande fine sur 72 sans le drapeau, 6,64 s
+  et 27 sur 72 avec, 0,08 s et 72 sur 72 une fois la passe de fond arrivée**. Et
+  sur cette première réponse fine, les quatre zones de LFPG reviennent à 110,
+  247, 381 et 664 sommets — les chiffres de l'échelle fine, sur l'aérodrome que
+  la caméra vise.
+
+  **La fiche cesse d'envoyer le lecteur chercher ce qu'il a déjà.** La phrase
+  « descendez sous 12 km pour la version fine » se lisait sur le MODE ; elle se
+  lit maintenant sur la BANDE cliquée, qui porte l'échelle à laquelle son propre
+  contour a été récupéré. Une bande déjà affinée affiche l'arrêté à la place ;
+  une bande encore large dans une passe de premier plan dit que l'affinage
+  n'est pas fini plutôt que de proposer une descente que le lecteur a déjà
+  faite ; et la version large hors de cette tranche nomme 30 km. Le piège au
+  passage : `Number(null) <= 39757` vaut `true`, donc l'écriture évidente de ce
+  test aurait qualifié de « fine » la seule bande certaine d'être à facettes —
+  celle qu'aucune passe n'a jamais touchée.
 
 - **La pastille `DENSE` de la couche Satellites s'appelle `STARLINK`, et la
   classe qu'elle allume aussi.** `DENSE` nommait la MANIÈRE dont le catalogue

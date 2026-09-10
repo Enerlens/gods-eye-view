@@ -11,6 +11,7 @@ import {
   PGS_ZONE_LABELS,
   PGS_ZONE_ORDER,
   bandText,
+  bruitBandIsFine,
 } from './bruitFeed.js';
 import { pointInPolygons } from './ringGeometry.js';
 import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
@@ -144,6 +145,25 @@ import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
  *     was tested against a point, and drawing that as "you are not standing in
  *     it" would be an answer to a question nobody asked.
  *
+ * The overview then has two TEMPOS, and only the tempo differs — the question,
+ * the probes and the bands are identical:
+ *
+ *   Below {@link BRUIT_FINE_OVERVIEW_CEILING_M} the second pass runs IN FRONT
+ *     of the reader. `fine=1` goes out with the request and the payload comes
+ *     back already at 1:{@link BRUIT_PROBE_SCALE_DENOMINATOR}, so the frame a
+ *     reader dezooms to in order to see one airport's plan is sharp on its
+ *     first paint instead of arriving faceted and redrawing under them.
+ *   Above it, the pass stays in the BACKGROUND exactly as it was: coarse first,
+ *     sharpened band by band, {@link scheduleBruitRefinePoll} coming back for
+ *     it. Four seconds of wait buys nothing at 100 km, where the median band is
+ *     1.9 km wide against a 140 km screen.
+ *
+ * NEITHER TEMPO IS A PROMISE. The foreground pass is bounded by a wall-clock
+ * budget the proxy owns, so a cold Paris basin under 30 km can still answer
+ * with some bands coarse and the rest queued — which is why every sentence
+ * about sharpness on a card is read off the BAND (`bruitBandIsFine`) and never
+ * off the altitude.
+ *
  * ── DRAWN AT A STATED GENERALISATION, AND THE OVERVIEW EARNS THE FINE ONE ───
  * The outline the service returns is generalised to the requested rendering
  * scale — 1:39,757 for a point probe, 1:3,975,696 for an overview, a hundred
@@ -160,9 +180,12 @@ import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
  * became 7,287. The proxy owns that pass and its measurements; see the second-
  * pass header beside `bruitAerodromeZones` in `vite.config.js`.
  *
- * IT IS A BACKGROUND PASS, so the overview is drawn coarse first and sharpens
- * under the reader a few seconds later — nine and a half seconds of refinement
- * is not a camera settle. {@link scheduleBruitRefinePoll} is how this layer
+ * IT IS A BACKGROUND PASS ABOVE {@link BRUIT_FINE_OVERVIEW_CEILING_M}, so the
+ * overview is drawn coarse first and sharpens under the reader a few seconds
+ * later — nine and a half seconds of refinement across the Paris basin is not a
+ * camera settle. Under that altitude the same pass is played in front of the
+ * reader instead, against a budget that keeps the wait a wait rather than a
+ * hang. {@link scheduleBruitRefinePoll} is how this layer
  * comes back for it, and {@link bruitCommonCaveats} is why a half-refined view
  * still cannot overclaim: every band carries the scale its own outline was
  * fetched at, the card prints the COARSEST of them, and it names how many are
@@ -856,8 +879,21 @@ export function bruitGroundCard({ lon, lat, payload }) {
       // The sentence that stops a coloured pixel from passing for a legal
       // limit. At 1:3,975,696 a hundred metres of boundary is well under one
       // vertex, so near an edge this answer is a guess.
-      area
-        ? 'lu sur le contour d’ensemble : près d’une limite, descendez sous 12 km pour la version fine'
+      //
+      // READ OFF THE BAND THAT WAS CLICKED, not off the mode. An overview under
+      // {@link BRUIT_FINE_OVERVIEW_CEILING_M} arrives already refined, and
+      // printing "descendez pour la version fine" over a shape that IS the fine
+      // version would send a reader down for something they already have. The
+      // band carries the scale its own outline was fetched at — that is what
+      // `refineBruitCollection` stamps — so the card asks the shape rather than
+      // the camera. The `fine` flag then only chooses the WORDING of the
+      // remaining case: a coarse band inside a foreground pass is one the
+      // budget did not reach and the background is still working on, which is a
+      // wait, while a coarse band above the ceiling is a descent.
+      area && !bruitBandIsFine(lead)
+        ? (payload?.fine === true
+          ? 'contour encore large ici — l’affinage n’a pas fini : près d’une limite, attendez-le'
+          : `lu sur le contour d’ensemble : près d’une limite, descendez sous ${BRUIT_FINE_OVERVIEW_CEILING_M / 1000} km pour la version fine`)
         : (lead.documentUrl ? `arrêté : ${lead.documentUrl}` : null),
     ], payload),
   };
@@ -1105,6 +1141,40 @@ export const ADDRESS_SCAN_CEILING_M = 12_000;
 export const BRUIT_OVERVIEW_CEILING_M = 250_000;
 
 /**
+ * Where the overview stops WAITING for the fine outline and starts sharpening
+ * behind the reader.
+ *
+ * 30 km, and it is a third boundary rather than a move of the first one. The
+ * obvious way to put a fine outline under a camera at 20 km is to raise
+ * {@link ADDRESS_SCAN_CEILING_M}, and it is the wrong way: the point scan owes
+ * its sharpness to a probe pinned at 1e-4°/px, whose buffer is 11 m of ground,
+ * and that buffer is exactly what makes it return ONE ring of a plan that has
+ * four. Measured over a 25-aerodrome sample on 2026-09-02, distinct bands
+ * returned: 37 at the probe scale against 88 at the overview's, and nine
+ * aerodromes — Toussus, Chavenay and Le Plessis among them — answer NOTHING at
+ * the fine scale at all. Extending the point mode to 30 km would buy a sharp
+ * outline by dropping zones B, C and D on the way up.
+ *
+ * So the question stays the overview's — one probe per aerodrome, every band —
+ * and what changes below this altitude is WHEN the second pass runs. Under
+ * 30 km the proxy plays it in front of the reader and the payload arrives
+ * already at 1:{@link BRUIT_PROBE_SCALE_DENOMINATOR}; above it the pass stays
+ * in the background, exactly as before, and the outline sharpens a few seconds
+ * later. Both are bounded: see `BRUIT_FINE_FOREGROUND_BUDGET_MS` in
+ * `vite.config.js`, which is what stops a cold Paris basin from turning a
+ * camera settle into a nine-second hang.
+ *
+ * 30 km is where the WAIT stops paying. The ground half-diagonal under a
+ * default Cesium frustum is 0.7 × the altitude, so the view is about 42 km
+ * across here — one aerodrome's plan and its neighbours, which is the frame a
+ * reader dezooms to. At 60 km it is 84 km across, the median band (1.9 km
+ * wide) is under a fiftieth of it, and the difference between 37 vertices and
+ * 381 is no longer a difference anybody can see — while the pass costs the
+ * same four seconds.
+ */
+export const BRUIT_FINE_OVERVIEW_CEILING_M = 30_000;
+
+/**
  * Radius the overview asks for, in km, from the camera's altitude.
  *
  * `tan 30° = 0.577` is the ground half-width under a default Cesium frustum;
@@ -1132,10 +1202,17 @@ export function bruitAreaRadiusKm(altitudeM) {
 /**
  * The extra query parameters that choose the mode.
  *
- * `km` present is the overview; absent is the point scan. Nothing else changes
- * — same route, same shell — and because the shared shell rescans whenever the
- * query string changes, crossing {@link ADDRESS_SCAN_CEILING_M} in either
- * direction re-asks the question by itself.
+ * `km` present is the overview; absent is the point scan. `fine` on top of it
+ * asks the proxy to run the second pass BEFORE it answers rather than behind
+ * the answer. Nothing else changes — same route, same shell — and because the
+ * shared shell rescans whenever the query string changes, crossing
+ * {@link ADDRESS_SCAN_CEILING_M} or {@link BRUIT_FINE_OVERVIEW_CEILING_M} in
+ * either direction re-asks the question by itself.
+ *
+ * `fine` is a REQUEST AND NOT AN INSTRUCTION: the proxy honours it only at the
+ * first rung of the radius ladder and only within its own budget, so an answer
+ * that carries it can still hold a coarse band. That is why the card reads each
+ * band's own `scaleDenominator` rather than this flag.
  *
  * @param {{altitudeM: number}} point
  * @returns {Record<string, string>}
@@ -1143,7 +1220,9 @@ export function bruitAreaRadiusKm(altitudeM) {
 export function bruitScanParams(point) {
   const altitudeM = Number(point?.altitudeM);
   if (!Number.isFinite(altitudeM) || altitudeM <= ADDRESS_SCAN_CEILING_M) return {};
-  return { km: String(bruitAreaRadiusKm(altitudeM)) };
+  const params = { km: String(bruitAreaRadiusKm(altitudeM)) };
+  if (altitudeM <= BRUIT_FINE_OVERVIEW_CEILING_M) params.fine = '1';
+  return params;
 }
 
 /**
@@ -1544,6 +1623,12 @@ export function summarizeBruit(payload) {
       refining: payload?.refining ?? 0,
       refinedBands: payload?.refinedBands ?? 0,
       coarseBands: payload?.coarseBands ?? 0,
+      // WHICH TEMPO produced this answer, and it is the only way to tell the
+      // two overviews apart from the outside: they draw the same bands from the
+      // same probes, and differ in whether the second pass ran before the
+      // payload or behind it. Not a claim that every band is fine — that is
+      // `coarseBands` — which is why `qa-bruit-overview.mjs` reads both.
+      fine: payload?.fine === true,
       available: payload?.available ?? null,
     };
   }

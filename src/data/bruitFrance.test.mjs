@@ -30,6 +30,7 @@ import {
 import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
 import bruitFranceLayer, {
   ADDRESS_SCAN_CEILING_M,
+  BRUIT_FINE_OVERVIEW_CEILING_M,
   BRUIT_OVERVIEW_CEILING_M,
   BRUIT_FILL_ALPHA,
   BRUIT_ARRETE_UNDER_MARKER_KM,
@@ -610,7 +611,11 @@ test('the zoom prompt is GUIDANCE, and never an error', () => {
   const dormant = norm(bruitGuidanceLabel({ dormant: true }));
   assert.ok(dormant.includes('250 km'), dormant);
   assert.equal(ADDRESS_SCAN_CEILING_M, 12_000);
+  assert.equal(BRUIT_FINE_OVERVIEW_CEILING_M, 30_000);
   assert.equal(BRUIT_OVERVIEW_CEILING_M, 250_000);
+  // The three are ordered, and the dormancy prompt names only the last of them.
+  assert.ok(ADDRESS_SCAN_CEILING_M < BRUIT_FINE_OVERVIEW_CEILING_M);
+  assert.ok(BRUIT_FINE_OVERVIEW_CEILING_M < BRUIT_OVERVIEW_CEILING_M);
   assert.ok(norm(bruitGuidanceLabel({ lastUpdate: 1, zonesHere: 0, nearestKm: 39.4 }))
     .includes('le plus proche est à 39,4 km'));
   assert.equal(bruitGuidanceLabel({ lastUpdate: 1, zonesHere: 1 }), null);
@@ -692,9 +697,22 @@ test('the mode is chosen by altitude, and the ladder it asks on is coarse on pur
   // Above it: the radius rides in the query, which is what makes the shared
   // shell rescan as the camera crosses the boundary — it compares the QUERY,
   // not just the centre.
-  assert.deepEqual(bruitScanParams({ altitudeM: 12_001 }), { km: '25' });
+  assert.deepEqual(bruitScanParams({ altitudeM: 12_001 }), { km: '25', fine: '1' });
   assert.deepEqual(bruitScanParams({ altitudeM: 100_000 }), { km: '75' });
   assert.deepEqual(bruitScanParams({ altitudeM: BRUIT_OVERVIEW_CEILING_M }), { km: '175' });
+  // THE SECOND CEILING, and it is a tempo and not a question: `fine` asks the
+  // proxy to play the refinement in front of the reader, and it rides in the
+  // same query string, so crossing 30 km rescans by itself exactly as crossing
+  // 12 km does.
+  assert.deepEqual(bruitScanParams({ altitudeM: BRUIT_FINE_OVERVIEW_CEILING_M }),
+    { km: '25', fine: '1' }, 'the ceiling itself still waits for the fine outline');
+  assert.deepEqual(bruitScanParams({ altitudeM: BRUIT_FINE_OVERVIEW_CEILING_M + 1 }),
+    { km: '25' }, 'one metre above it, the same radius and no wait');
+  // The radius ladder does NOT carry this boundary — every altitude from 12 km
+  // to 35.7 km asks for 25 km — which is why the flag is its own parameter
+  // rather than something the proxy could have inferred from `km`.
+  assert.equal(bruitAreaRadiusKm(BRUIT_FINE_OVERVIEW_CEILING_M),
+    bruitAreaRadiusKm(BRUIT_FINE_OVERVIEW_CEILING_M + 1));
   // A 25 km ladder, because the radius is part of the proxy's cache key: a
   // continuously varying one mints a fresh entry on every turn of the wheel.
   assert.equal(bruitAreaRadiusKm(40_000), 50);
@@ -866,14 +884,50 @@ test('an overview ground card says it was read off a generalised outline', () =>
   assert.ok(card.title.includes('LFPG'), card.title);
   // A hundred metres of boundary is well under one vertex at 1:3,975,696, so
   // near an edge this answer is a guess — and it says so rather than letting a
-  // coloured pixel pass for a legal limit.
-  assert.ok(card.details.some((line) => /descendez sous 12 km/.test(line)), JSON.stringify(card.details));
+  // coloured pixel pass for a legal limit. The altitude it names is the one
+  // that would fix it: under 30 km the proxy waits for the fine outline.
+  assert.ok(card.details.some((line) => /descendez sous 30 km/.test(line)), JSON.stringify(card.details));
   assert.ok(card.details.some((line) => line.includes('1:3 975 696'.replace(/ /g, ' '))
     || /1:3\s?975\s?696/.test(line)));
   // The point-mode card says no such thing: its outline is a hundred times
   // finer and the sentence would be noise.
   const point = bruitGroundCard({ ...LFPZ_POINT, payload: LFPZ });
-  assert.equal(point.details.some((line) => /descendez sous 12 km/.test(line)), false);
+  assert.equal(point.details.some((line) => /descendez sous/.test(line)), false);
+});
+
+test('the sharpness sentence is read off the BAND, never off the mode', () => {
+  const cdg = AREA.aerodromes.find((entry) => entry.oaci === 'LFPG');
+  const anchor = cdg.bands.find((band) => band.zone === 'C').anchor;
+  const at = (payload) => bruitGroundCard({ lon: anchor.lon, lat: anchor.lat, payload });
+
+  // AN UNSTAMPED BAND IS A COARSE BAND — `Number(null) <= 39757` is true, which
+  // is exactly the trap `bruitBandIsFine` exists to close. The AREA fixture's
+  // bands carry no scale at all, and the card must still say so.
+  assert.equal(AREA.peb[0].scaleDenominator, null);
+  assert.ok(at(AREA).details.some((line) => /descendez sous 30 km/.test(line)));
+
+  // A band the second pass has reached IS the fine version, and the card owes
+  // the reader the arrêté rather than an instruction to go and get what they
+  // already have. This is the whole point of the 30 km tempo: below it, the
+  // overview arrives like this on its first paint.
+  const stamp = (payload, scale) => ({
+    ...payload,
+    fine: true,
+    peb: payload.peb.map((band) => ({ ...band, scaleDenominator: scale })),
+  });
+  const refined = at(stamp(AREA, BRUIT_PROBE_SCALE_DENOMINATOR)).details;
+  assert.equal(refined.some((line) => /descendez sous|affinage/.test(line)), false,
+    JSON.stringify(refined));
+  assert.ok(refined.some((line) => /arrêté : http/.test(line)), JSON.stringify(refined));
+
+  // THE BUDGET CAN RUN OUT. A coarse band inside a foreground pass is work
+  // still going on, not an altitude the reader is at the wrong side of —
+  // telling someone already at 20 km to descend under 30 km is an instruction
+  // they cannot follow.
+  const truncated = at(stamp(AREA, BRUIT_AREA_SCALE_DENOMINATOR)).details;
+  assert.equal(truncated.some((line) => /descendez sous/.test(line)), false,
+    JSON.stringify(truncated));
+  assert.ok(truncated.some((line) => /affinage n’a pas fini/.test(line)), JSON.stringify(truncated));
 });
 
 test('a card is six lines, so the caveat is placed rather than pushed', () => {
