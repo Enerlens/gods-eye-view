@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ARC_APEX_MAX_M, ARC_APEX_MIN_M, greatCircleArc } from './greatCircleArc.js';
+import {
+  ARC_APEX_MAX_M,
+  ARC_APEX_MIN_M,
+  greatCircleArc,
+  greatCircleDistanceM,
+  greatCircleWaypoint,
+} from './greatCircleArc.js';
 
 test('the great-circle arc touches down exactly on both endpoints', () => {
   const from = [2.60, 46.60];
@@ -49,4 +55,49 @@ test('the apex clamp is a parameter, so a domestic hop does not bow like a borde
   // `samples: 49` puts a vertex exactly on the apex; the even default straddles it.
   assert.equal(Math.round(apexOf(greatCircleArc([2.55, 49.01], [2.36, 48.73], { samples: 49 }))), ARC_APEX_MIN_M);
   assert.equal(Math.round(apexOf(greatCircleArc([2.55, 49.01], [-118.41, 33.94], { samples: 49 }))), ARC_APEX_MAX_M);
+});
+
+// ── Distance and waypoint ───────────────────────────────────────────────────
+
+test('the distance agrees with the arc that will be drawn from it', () => {
+  // The two must share a formula: a caller that measures a chord one way and
+  // draws it another gets an arrow whose head lands off its own tip.
+  const from = [7.42, 47.45];
+  const to = [8.23, 46.80];
+  const metres = greatCircleDistanceM(from, to);
+  assert.ok(Math.abs(metres - 94_000) < 2_000, `${Math.round(metres)} m`);
+  assert.equal(greatCircleDistanceM(from, from), 0);
+  assert.equal(greatCircleDistanceM(null, to), 0);
+  assert.equal(greatCircleDistanceM(from, [Number.NaN, 3]), 0);
+});
+
+test('a waypoint lands at the measured distance, on the same great circle', () => {
+  const from = [2.60, 46.60];
+  const to = [-3.70, 40.42];
+  const total = greatCircleDistanceM(from, to);
+  const half = greatCircleWaypoint(from, to, total / 2);
+  assert.ok(Math.abs(greatCircleDistanceM(from, half) - total / 2) < 1);
+  assert.ok(Math.abs(greatCircleDistanceM(half, to) - total / 2) < 1);
+  // And it IS the arc's own midpoint, not a lon/lat average.
+  const arc = greatCircleArc(from, to, { samples: 3 });
+  assert.ok(Math.abs(arc[3] - half[0]) < 1e-9 && Math.abs(arc[4] - half[1]) < 1e-9);
+});
+
+test('a waypoint is allowed to overshoot, because a fixed-length glyph must', () => {
+  // Switzerland is 94 km from the French border and a border-flow arrow is
+  // 170 km long. It has to keep pointing at Bern, not stop short of it.
+  const from = [7.42, 47.45];
+  const to = [8.23, 46.80];
+  const beyond = greatCircleWaypoint(from, to, 170_000);
+  assert.ok(greatCircleDistanceM(from, beyond) > greatCircleDistanceM(from, to));
+  // Still on the same great circle: the three points stay collinear on the
+  // sphere, so from → to → beyond adds up.
+  const detour = greatCircleDistanceM(from, to) + greatCircleDistanceM(to, beyond);
+  assert.ok(Math.abs(detour - greatCircleDistanceM(from, beyond)) < 1, `${detour}`);
+});
+
+test('a waypoint with no great circle to walk answers the point itself', () => {
+  assert.deepEqual(greatCircleWaypoint([3, 47], [3, 47], 50_000), [3, 47]);
+  assert.equal(greatCircleWaypoint(null, [3, 47], 1), null);
+  assert.equal(greatCircleWaypoint([3, 47], [4, 48], Number.NaN), null);
 });

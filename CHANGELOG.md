@@ -174,12 +174,56 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   7,71 E / 44,07 N, Suisse 7,42 E / 47,45 N, Allemagne + Belgique 6,47 E /
   49,46 N. Que ces cinq points tombent près d'interconnexions réelles est une
   **conséquence, pas une affirmation** : `ech_comm_*` est un solde commercial
-  entre deux zones de marché et ne porte aucun tracé. La corde raccourcissant,
-  le trait s'affine (10 px au lieu de 15) et le cintre s'aplatit (20 km au lieu
-  de 60), sans quoi la liaison suisse devenait un arceau de croquet de 94 km de
-  portée.
+  entre deux zones de marché et ne porte aucun tracé.
+
+- **Et la flèche devient un volume : elle était « quasi illisible ».** Les arcs
+  frontaliers étaient un trait effilé de 3 à 10 PIXELS D'ÉCRAN. Pour 366 MW
+  venus d'Espagne, cela faisait 3,85 px, à côté d'un prisme de 78 km. Une
+  largeur d'écran se bat d'ailleurs contre le reste de la couche, qui mesure en
+  mètres : en zoomant, chaque prisme grandissait et le flux restait un cheveu.
+
+  Le fût est désormais un **tube de rayon terrestre**, 9 à 22 km, calé sur
+  |MW| et saturé aux mêmes 3 000 MW. Mesuré à l'altitude des captures
+  (1 300 km, ≈1,21 km par pixel) : 366 MW font 21 km de large, soit **17 px**
+  au lieu de 3,85 ; un flux saturé fait 44 km, **36 px** ; et sa pointe 84 km,
+  **69 px**. Corps translucide et arête vive, comme les prismes — c'est la
+  forme demandée. La section est un polygone régulier et non un ruban : Cesium
+  balaie la section sur un repère de Frenet, donc une bande plate se couche à
+  l'horizontale et disparaît dès que la caméra passe à l'oblique.
+
+  **Le sens se lit à la pointe** : un cône presque opaque de 1,9 fois le rayon
+  du fût, là où le fût ne l'est pas — l'extrémité la plus vive est celle où le
+  courant arrive. Le fût s'arrête une longueur de pointe avant, sinon le cône
+  est avalé par le volume qu'il termine, et l'ensemble est soulevé de
+  1,25 rayon au-dessus du sol : un cintre sinusoïdal vaut zéro aux deux bouts
+  et enterrait la moitié basse du tube exactement là où le lecteur regarde.
+
+  **Et la longueur a cessé d'être une variable.** Accrochée au point de
+  référence du marché, elle valait 94 km vers la Suisse contre 411 vers
+  l'Italie : un rapport de 4 pour 1 que l'œil lit, que la donnée n'a jamais
+  écrit, et qui noyait l'épaisseur qui, elle, dit tout. Le point lointain est
+  maintenant un CAP et non une destination — le glyphe court sur
+  `clamp(corde, 170 km, 340 km)` vers son marché, et chacun des cinq finit
+  toujours À L'INTÉRIEUR du marché qu'il nomme, vérifié contre les contours
+  livrés. Le cintre, lui, ne mesure rien, et la légende le dit.
 
 ### Fixed
+- **Une région que le flux n'a pas publiée disparaissait sans que rien ne le
+  dise.** éCO2mix publie région par région, et une région qui n'a pas émis dans
+  la fenêtre n'est tout simplement pas dans la réponse. Le 2026-09-10 à 15:04Z,
+  c'était la Normandie : la carte dessinait douze prismes et **deux** emprises
+  hachurées, et la légende annonçait « non publié 1 ». 11 + 1 ne fait pas 13, et
+  il a fallu que le lecteur le remarque à l'œil.
+
+  Tous les compteurs de la couche partaient des LIGNES REÇUES, or une région
+  absente n'a pas de ligne. Ils partent maintenant des **treize régions
+  connues**, ce qui range les trois causes d'absence — la Corse, jamais
+  publiée ; une valeur nulle ; une région tombée du flux — sous un seul compte,
+  exactement comme elles partagent une seule marque. Et l'emprise hachurée
+  porte désormais son **nom** sur le globe : « Normandie · SOLDE NON PUBLIÉ ».
+  Une forme grise anonyme, c'est ce qui obligeait à identifier la région
+  manquante en suivant le littoral.
+
 - **L'URL de recette ne peut plus être en retard sur `main`.** Le 2026-09-10 à
   15 h 25, `gev.enerlens.com` servait une branche coupée à la #152 : la #153
   (bus de Normandie projetés sur leur ligne) et la #154 (silhouettes des sites

@@ -5,7 +5,11 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
-import { ARC_SAMPLES, greatCircleArc } from './greatCircleArc.js';
+import {
+  greatCircleArc,
+  greatCircleDistanceM,
+  greatCircleWaypoint,
+} from './greatCircleArc.js';
 import {
   dissolveRings,
   flattenRing,
@@ -58,10 +62,10 @@ import {
  *    structural fact about the French grid, and the prism is what makes it one
  *    image instead of a table.
  *
- * 2. **The five border flows**, as arcs whose direction is the direction the
- *    power is going. They are a flow map: magnitude in stroke width, direction
- *    in an arrow head, and each one now runs between the FRENCH FRONTIER and
- *    the neighbouring market rather than out of the middle of the country.
+ * 2. **The five border flows**, as VOLUMES whose direction is the direction
+ *    the power is going: a translucent tube whose radius is the megawatts,
+ *    ending in a near-opaque cone. Each one leaves the FRENCH FRONTIER rather
+ *    than the middle of the country. See the flow section below.
  *
  * 3. **The five neighbouring market areas**, as OUTLINES. Never filled — see
  *    the honesty rules below.
@@ -188,6 +192,58 @@ import {
  * wants to compare two heights looks at the volumes, which no longer merge.
  * The legend says both in French.
  *
+ * ── The flow is a volume, and its length is not a variable ─────────────────
+ *
+ * The border flows were a Cesium `PolylineArrowMaterialProperty` — a tapering
+ * stroke whose width ramped from 3 to 10 SCREEN PIXELS. The first reader's
+ * verdict was « quasi illisible […] vraiment quelque chose de ridicule », and
+ * the arithmetic agrees: 366 MW from Spain came out at 3.85 px, next to a
+ * 78 km prism. Two things were wrong with it and only one was the size.
+ *
+ * • **A screen width fights the rest of the layer.** Everything else here is
+ *   measured in metres, so zooming in grew every prism and left the flow a
+ *   hairline. The shaft is now a tube of WORLD radius, 9 km to 22 km, ramped
+ *   by |MW| and saturating at the same 3 000 MW the stroke used. Measured at
+ *   the 1 300 km altitude of the screenshots (≈1.21 km/px): 366 MW is 21 km
+ *   across, 17 px; a saturated border is 44 km, 36 px; and its cone is 84 km,
+ *   69 px. Against 3.85 px.
+ *
+ * • **Length was a variable nobody wrote.** Anchored on the market's reference
+ *   point, the glyph was 94 km to Switzerland and 411 km to Italy — a 4:1
+ *   ratio the reader can see, that says nothing, and that swamps the thickness
+ *   which says everything (A3). The far end is now a BEARING and not a
+ *   destination: the glyph runs `clamp(chord, 170 km, 340 km)` along the great
+ *   circle toward the market. Thickness is the only thing that varies, and the
+ *   legend says the length means nothing. The band is checked, not guessed —
+ *   170 km is three heads of the widest tube, so no border collapses into a
+ *   lozenge, and every one of the five still ENDS INSIDE the market it names,
+ *   which is asserted against the bundled outlines.
+ *
+ * The shape borrows the prism's grammar because that is what the reader asked
+ * for — « cette forme un peu transparente et épaisse que tu as déjà pu créer »
+ * — and because it is the same argument: a translucent body carries the colour
+ * and a near-opaque edge carries the silhouette. The cross-section is a
+ * REGULAR polygon, not a ribbon: Cesium sweeps the section along a Frenet
+ * frame, so a flat band lies horizontal and disappears the moment the camera
+ * drops to an oblique.
+ *
+ * The **cone** is where the sense lives. It is 1.9× the shaft radius and
+ * nearly opaque where the shaft is not, so the brightest end of the mark is
+ * the end the power arrives at — direction by contrast rather than by a 12 px
+ * arrowhead. The shaft stops one head-length short so the cone is not
+ * swallowed by the volume it terminates, and the whole glyph is lifted
+ * `1.25 × radius` clear of the ground, because a sine bow is zero at both ends
+ * and would bury the tube's lower half at exactly the two places a reader
+ * looks: the frontier, and the market.
+ *
+ * **The bow measures nothing.** It rises 20–55 km, which is inside the prism
+ * ruler's own amplitude, and F7(b) would normally forbid that. It is admitted
+ * for one reason and it is stated in the legend: the arc is not vertical
+ * anywhere a prism stands — it leaves the frontier and goes abroad — and it is
+ * a TUBE, not a plateau on a footprint. Two different signs, two different
+ * places. If a flow ever has to cross France, this is the paragraph that has
+ * to be revisited first.
+ *
  * ── The neighbours are delimited, and never filled ──────────────────────────
  *
  * `ech_comm_espagne` is 500 MW and a country name. Until now the country
@@ -278,6 +334,17 @@ import {
  *   the height is read against. `surfaceFill` is consequently false: no
  *   thematic hue climbs a façade here any more (F4).
  *
+ * • **An unmeasured région is NAMED, not just striped.** Three things put a
+ *   région in that state — Corse, which is never published; a published null;
+ *   and a région the feed drops for a poll, which happens because éCO2mix
+ *   publishes per-région and keeps the newest row each has. All three get the
+ *   same mark, so all three get the same count, and that count is taken from
+ *   the THIRTEEN known régions rather than from the rows the payload carried.
+ *   Counting the rows is what let Normandie vanish on the 2026-09-10 15:04Z
+ *   poll: twelve prisms, two striped shapes, and a legend that said « non
+ *   publié 1 ». The label is the other half — an anonymous grey shape made the
+ *   reader work out which région was missing from the coastline.
+ *
  * • **A zero flow is drawn as nothing.** A border at 0 MW is not a thin arc,
  *   it is no arc — the same "absence is not a colour" rule the Vigilance layer
  *   established for level vert.
@@ -297,9 +364,10 @@ import {
  *   That those five land where real interconnections land is a consequence and
  *   NOT a claim: `ech_comm_*` is a commercial nomination between two market
  *   areas and carries no routing at all. The frontier point is a geometric
- *   fact about a border, the far point is a reference point inside a country,
- *   and neither is a converter station. `ech_comm_allemagne_belgique` is one
- *   field for two countries and stays one arc, labelled with both.
+ *   fact about a border, the far end is a BEARING toward a reference point
+ *   inside a country, and neither is a converter station.
+ *   `ech_comm_allemagne_belgique` is one field for two countries and stays one
+ *   arc, labelled with both.
  *
  * • **Commercial ≠ physical.** The five commercial balances do not sum to
  *   `ech_physiques` (measured: −2 893 against −3 633 MW). The arcs show the
@@ -322,7 +390,7 @@ const MARKET_AREAS_URL = new URL(
 
 /** Shared world-overlay source id (matches the layer id). */
 export const ENERGY_OVERLAY_SOURCE_ID = 'france-energy';
-/** Bounded label cohort offered to the shared overlay host: 12 regions + 5 borders. */
+/** Bounded label cohort offered to the shared overlay host: 13 régions + 5 borders. */
 export const ENERGY_OVERLAY_COHORT_LIMIT = 20;
 /** Shared ambient-label paint budget, matching the sibling French sources. */
 export const ENERGY_OVERLAY_COLLISION_CAPACITY = 18;
@@ -361,6 +429,41 @@ export const REGION_DEPARTEMENTS = Object.freeze({
 
 /** Régions the upstream dataset does not cover — never given a prism. See header. */
 export const UNCOVERED_REGIONS = Object.freeze(['94']);
+
+/**
+ * Région INSEE code → its name, for the régions the payload does NOT carry.
+ *
+ * Every measured région is named by éCO2mix itself and this table is never
+ * consulted for it. It exists for the two cases where the upstream says
+ * nothing at all and the map still has to: Corse, permanently, and any région
+ * the feed drops for a poll. Before it existed, a dropped région was drawn
+ * striped and left ANONYMOUS — the first reader hit exactly that and had to
+ * ask, « pourquoi j'ai l'impression qu'une des régions n'est pas dessinée, on
+ * n'a pas l'information, c'est ça ? ». The answer was yes, and a map that
+ * needs a reader to guess it is the A1 fault this layer is built to avoid.
+ *
+ * 2016 boundaries, matching `code_insee_region` and {@link REGION_DEPARTEMENTS}.
+ */
+export const REGION_NAMES = Object.freeze({
+  11: 'Île-de-France',
+  24: 'Centre-Val de Loire',
+  27: 'Bourgogne-Franche-Comté',
+  28: 'Normandie',
+  32: 'Hauts-de-France',
+  44: 'Grand Est',
+  52: 'Pays de la Loire',
+  53: 'Bretagne',
+  75: 'Nouvelle-Aquitaine',
+  76: 'Occitanie',
+  84: 'Auvergne-Rhône-Alpes',
+  // Straight apostrophe, against this repo's own prose habit, because these
+  // strings are DATA and not prose: éCO2mix spells it `d'Azur`, and a région
+  // that changed its apostrophe the moment the feed dropped it would be one
+  // more thing for a reader to wonder about. Pinned by test.
+  93: "Provence-Alpes-Côte d'Azur",
+  94: 'Corse',
+});
+
 
 /**
  * The balance palette — three NOMINAL classes, no ramp between them.
@@ -460,19 +563,61 @@ export const BORDER_ANCHORS = Object.freeze({
   allemagne_belgique: Object.freeze([7.20, 50.40]),
 });
 
-/** Arc stroke width in pixels, ramped by |MW| up to the saturation flow. */
-const ARC_WIDTH_MIN_PX = 3;
 /**
- * Down from 15 px when the arcs moved to the frontier.
+ * The border flow is a VOLUME, in metres, and no longer a stroke in pixels.
  *
- * The chord they span went from ~700 km (Berry → Bern) to 94 km, and a 15 px
- * stroke on a 54 px arc is not a flow, it is a lozenge: Cesium's arrow
- * material sizes the head against the WIDTH, so the head eats a short line
- * whole and the direction stops reading. 10 px keeps the head proportionate at
- * the shortest chord the five borders produce.
+ * The pixel stroke is what the first reader called « quasi illisible […]
+ * vraiment quelque chose de ridicule », and the arithmetic backs them up:
+ * 366 MW from Spain came out at 3.85 px of a tapering line, against a 78 km
+ * prism beside it. A screen width also fights the rest of the layer, which
+ * measures in metres — zoom in and every prism grows while the flow stays a
+ * hairline.
+ *
+ * So the shaft is a tube of world radius, ramped by |MW| and saturating with
+ * the same 3 000 MW the old stroke used. Measured at the 1 300 km altitude the
+ * screenshots were taken from (≈1.21 km per pixel): 366 MW is a 21 km tube,
+ * 17 px across, and a saturated border is 44 km, 36 px — against 3.85 px
+ * before. The head is wider still, at {@link ARC_HEAD_RADIUS_FACTOR}.
  */
-const ARC_WIDTH_MAX_PX = 10;
+const ARC_RADIUS_MIN_M = 9_000;
+const ARC_RADIUS_MAX_M = 22_000;
 const ARC_SATURATION_MW = 3000;
+/** Cross-section of the shaft. A regular polygon, so it is as thick from every angle. */
+const ARC_SHAPE_SIDES = 8;
+/**
+ * The head, as multiples of the shaft radius.
+ *
+ * A cone, and a deliberately fat one: the reader asked that « la direction et
+ * le sens du flux se voient également bien », and a head only slightly wider
+ * than its shaft is a taper, not an arrow. At 1.9 the widest border reaches
+ * 84 km across — 69 px at national altitude — and the length keeps it under a
+ * third of the shortest glyph.
+ */
+const ARC_HEAD_RADIUS_FACTOR = 1.9;
+const ARC_HEAD_LENGTH_FACTOR = 2.6;
+/**
+ * The prism's own grammar, applied to the flow: a translucent body carrying
+ * the colour, a near-opaque edge carrying the silhouette. Same reason as
+ * `PRISM_BODY_ALPHA` — a volume composited over imagery and over other volumes
+ * needs its outline to survive what its fill cannot.
+ *
+ * The HEAD is the exception and it is the point: it is nearly opaque where the
+ * shaft is not, so the brightest end of the mark is the end the power is going
+ * to. That is the sense, carried by contrast rather than by a 12 px glyph.
+ */
+const ARC_BODY_ALPHA = 0.42;
+const ARC_EDGE_ALPHA = 0.9;
+const ARC_HEAD_ALPHA = 0.88;
+/**
+ * How far the flow rides above the ground, as a multiple of the shaft radius.
+ *
+ * A bow that touches down at both ends buries the lower half of a 22 km tube
+ * in the terrain at exactly the two places a reader looks — the frontier and
+ * the market. The whole glyph is lifted instead, so it clears the Alps at its
+ * lowest and still reads as a flow ABOVE the border rather than a pipeline in
+ * it.
+ */
+const ARC_CLEARANCE_FACTOR = 1.25;
 /**
  * Apex floor for a border arc, down from the shared 60 km default.
  *
@@ -481,6 +626,21 @@ const ARC_SATURATION_MW = 3000;
  * near {@link ARC_APEX_RATIO} on every one of the five.
  */
 const ARC_APEX_MIN_M = 20_000;
+/**
+ * The glyph's LENGTH, clamped — and length carries no data.
+ *
+ * Left free, it was pure geography: 94 km to Switzerland against 411 km to
+ * Italy, so the Italian flow looked four times the Swiss one before thickness
+ * said anything at all. That is a variable the reader can see and the data
+ * never wrote (A3). Clamping it to a narrow band leaves thickness as the only
+ * thing that varies, and the legend says the length means nothing.
+ *
+ * The band is not arbitrary either: 170 km is three heads of the widest tube,
+ * so no border can collapse into a lozenge, and 340 km keeps every glyph
+ * ending INSIDE the market it names — checked for all five.
+ */
+const ARC_LENGTH_MIN_M = 170_000;
+const ARC_LENGTH_MAX_M = 340_000;
 
 /**
  * The true perimeter of a région, drawn on the ground under its prism.
@@ -687,6 +847,37 @@ export function marketOutlineStyles(arcs) {
 }
 
 /**
+ * The régions carrying NO published balance this refresh.
+ *
+ * Three causes, one answer. Corse is never in the payload; a région can carry
+ * a null `ech_physiques`; and a région can be dropped from the payload
+ * outright, which is what happened to Normandie on the 2026-09-10 15:04Z poll
+ * — éCO2mix régional publishes per-région and a région that has not reported
+ * inside the window simply is not there.
+ *
+ * The third case is the one that used to escape every counter in this module,
+ * because every one of them counted rows in `records` and a dropped région has
+ * no row. The legend therefore said « non publié 1 » under a map showing TWO
+ * unpainted régions, and 11 + 1 did not make 13. Counting from the KNOWN set
+ * instead of from the payload is what makes the three causes impossible to
+ * tell apart in the arithmetic — which is correct, because the mark does not
+ * tell them apart either.
+ *
+ * @param {Array<object>|null|undefined} records From {@link buildRegionRecords}.
+ * @returns {Array<{code:string, name:string}>} Ordered by INSEE code.
+ */
+export function unmeasuredRegions(records) {
+  const measured = new Set();
+  for (const record of Array.isArray(records) ? records : []) {
+    if (Number.isFinite(record?.netPhysical)) measured.add(String(record.code));
+  }
+  return Object.keys(REGION_DEPARTEMENTS)
+    .filter((code) => !measured.has(code))
+    .sort()
+    .map((code) => ({ code, name: REGION_NAMES[code] || code }));
+}
+
+/**
  * Format megawatts the way a French control-room readout would: thin-space
  * grouping, no decimals, sign carried by the verb rather than a minus.
  * @param {number|null|undefined} mw
@@ -884,9 +1075,37 @@ export function buildBorderArcs(exchanges, frontier = null) {
     const importing = mw > 0;
     const style = importing ? BALANCE_STYLES.importer : BALANCE_STYLES.exporter;
     const home = frontier?.get?.(key) || BORDER_ANCHORS.france;
-    const from = importing ? anchor : home;
-    const to = importing ? home : anchor;
+
+    // The far end is a BEARING, not a destination: the glyph is a fixed-length
+    // flow leaving the border toward its market, and its length says nothing.
+    const lengthM = Math.min(
+      ARC_LENGTH_MAX_M,
+      Math.max(ARC_LENGTH_MIN_M, greatCircleDistanceM(home, anchor)),
+    );
+    const outer = greatCircleWaypoint(home, anchor, lengthM) || anchor;
+    const from = importing ? outer : home;
+    const to = importing ? home : outer;
+
     const magnitude = Math.min(Math.abs(mw), ARC_SATURATION_MW) / ARC_SATURATION_MW;
+    const radiusM = ARC_RADIUS_MIN_M + (ARC_RADIUS_MAX_M - ARC_RADIUS_MIN_M) * magnitude;
+    const headLengthM = radiusM * ARC_HEAD_LENGTH_FACTOR;
+    const path = greatCircleArc(from, to, { apexMinM: ARC_APEX_MIN_M });
+    // Lift the whole glyph clear of the ground. The sine bow is zero at both
+    // ends, which would bury the lower half of the tube exactly where a reader
+    // looks: on the frontier, and on the market.
+    const clearanceM = radiusM * ARC_CLEARANCE_FACTOR;
+    for (let i = 2; i < path.length; i += 3) path[i] += clearanceM;
+
+    // Split the path: the tube stops where the cone starts, or the cone is
+    // swallowed by the volume it is supposed to terminate.
+    const samples = path.length / 3;
+    const perSampleM = lengthM / (samples - 1);
+    const dropped = Math.min(
+      samples - 2,
+      Math.max(1, Math.round(headLengthM / perSampleM)),
+    );
+    const shaft = path.slice(0, (samples - dropped) * 3);
+
     arcs.push({
       key,
       label: String(exchange?.label ?? '').trim() || key,
@@ -896,11 +1115,21 @@ export function buildBorderArcs(exchanges, frontier = null) {
       // Recorded so a test — and an analyst — can tell an arc that left the
       // frontier from one that fell back to the centre of the country.
       fromFrontier: Boolean(frontier?.get?.(key)),
-      width: ARC_WIDTH_MIN_PX + (ARC_WIDTH_MAX_PX - ARC_WIDTH_MIN_PX) * magnitude,
-      positions: greatCircleArc(from, to, { apexMinM: ARC_APEX_MIN_M }),
-      // Midpoint of the sampled arc, which is also its apex — where a label
-      // sits clear of both countries.
-      anchorIndex: Math.floor(ARC_SAMPLES / 2),
+      lengthM,
+      radiusM,
+      headRadiusM: radiusM * ARC_HEAD_RADIUS_FACTOR,
+      headLengthM,
+      positions: shaft,
+      // The cone: its TIP is where the power arrives, and `base` is the last
+      // point of the shaft, so the direction is one subtraction away and the
+      // layer never has to re-derive a bearing on the ellipsoid.
+      head: {
+        tip: [path.at(-3), path.at(-2), path.at(-1)],
+        base: [shaft.at(-3), shaft.at(-2), shaft.at(-1)],
+      },
+      // Midpoint of the SHAFT, near the apex — where a label sits clear of
+      // both the frontier and the market.
+      anchorIndex: Math.floor((samples - dropped) / 2),
     });
   }
   return arcs;
@@ -1073,7 +1302,7 @@ function fr(value) {
  * @param {Array<object>} records From {@link buildRegionRecords}.
  * @returns {Array<{label:string,color:?string,blurb?:string,count?:number,glyph?:string}>}
  */
-export function energyPrismLegend(records, marketCount = 0) {
+export function energyPrismLegend(records, { markets = 0, borders = 0 } = {}) {
   const list = Array.isArray(records) ? records : [];
   if (!list.length) return [];
   const scale = ENERGY_PRISM_SCALE;
@@ -1082,13 +1311,15 @@ export function energyPrismLegend(records, marketCount = 0) {
     value: Number.isFinite(record?.netPhysical) ? Math.abs(record.netPhysical) : null,
     ratio: Number.isFinite(record?.netPhysical) ? record.netPhysical : null,
   })), scale);
-  // Corse is not in `records` at all — it is filtered out of the join — so its
-  // deliberate absence has to be added back here, or the legend would count
-  // twelve régions and quietly forget the thirteenth. `noValue` and `noRatio`
-  // are the same régions in this layer (both halves come from the one
-  // `ech_physiques` field), so the row is labelled after the height, which is
-  // the variable a reader misses first.
-  const unpublished = tally.noValue + UNCOVERED_REGIONS.length;
+  // Counted from the KNOWN régions, not from the rows the payload happened to
+  // carry. `tally.noValue` sees a région with a null figure and is blind to a
+  // région the feed dropped, which is how the legend came to say « non publié
+  // 1 » under a map with two unpainted régions — see `unmeasuredRegions`.
+  // `noValue` and `noRatio` are the same régions in this layer (both halves
+  // come from the one `ech_physiques` field), so the row is labelled after the
+  // height, which is the variable a reader misses first.
+  const missing = unmeasuredRegions(list);
+  const unpublished = missing.length;
 
   const entries = [{
     label: `Hauteur — ${scale.heightLabel}`,
@@ -1164,10 +1395,31 @@ export function energyPrismLegend(records, marketCount = 0) {
     color: PRISM_NO_RATIO_COLOR,
     glyph: PRISM_NO_RATIO_GLYPH,
     count: unpublished,
-    blurb: 'Emprise à plat et hachurée, jamais un prisme court : éCO2mix régional ne publie pas '
-      + 'la Corse, qui tient son propre réseau. Un motif et non une teinte — sur un globe '
-      + 'photoréaliste il n’existe aucune couleur neutre.',
+    // NAMED, not just counted. A striped shape with no label is exactly what
+    // sent the first reader looking for the missing région by hand.
+    blurb: `${missing.map((region) => region.name).join(', ')} — emprise à plat et hachurée, `
+      + 'jamais un prisme court. La Corse tient son propre réseau et n’est jamais publiée ; '
+      + 'une autre région dans cette liste est une région qu’éCO2mix n’a pas publiée sur ce '
+      + 'relevé. Un motif et non une teinte — sur un globe photoréaliste il n’existe aucune '
+      + 'couleur neutre.',
   });
+
+  // D1 for the flow, which had no row at all while it was a hairline and needs
+  // one now that it is the loudest mark on the map. Not a colour key — the
+  // flows take the two classes already listed above.
+  if (Number.isFinite(borders) && borders > 0) {
+    entries.push({
+      label: 'Flux — échange commercial aux frontières',
+      color: null,
+      blurb: `L’ÉPAISSEUR du tube est la puissance échangée, saturée à `
+        + `${fr(ARC_SATURATION_MW)} MW : c’est la seule chose qui varie. Sa LONGUEUR ne dit `
+        + `rien — elle est fixe, sans quoi la géographie ferait passer un flux suisse pour `
+        + `quatre fois moins qu’un flux italien. Le cône opaque marque l’ARRIVÉE : le sens se `
+        + `lit à l’extrémité la plus vive, et l’étiquette le répète en toutes lettres. Corps `
+        + `translucide et arête vive, comme les prismes — et la hauteur du cintre est un `
+        + `dessin, elle ne mesure rien.`,
+    });
+  }
 
   // D1 for the third mark. It is not a colour key — the outlines take the arc
   // colours already listed above — it is the row that says why they are empty.
@@ -1175,12 +1427,12 @@ export function energyPrismLegend(records, marketCount = 0) {
   // Conditional, and that is A1 again: the market file is allowed to fail
   // without taking the layer down, and a legend that promised outlines nobody
   // drew would be describing a map that is not on screen.
-  const markets = Number.isFinite(marketCount) ? Math.max(0, Math.floor(marketCount)) : 0;
-  if (markets > 0) {
+  const marketCount = Number.isFinite(markets) ? Math.max(0, Math.floor(markets)) : 0;
+  if (marketCount > 0) {
     entries.push({
       label: 'Contour — zone de marché voisine',
       color: null,
-      count: markets,
+      count: marketCount,
       blurb: 'Un trait, jamais un aplat : de l’autre côté de la frontière, rien n’est mesuré. '
         + 'Il prend la couleur du flux, ardoise si rien ne passe. La flèche part du point de la '
         + 'frontière le plus proche, jamais d’un poste d’interconnexion : un solde commercial '
@@ -1254,6 +1506,41 @@ export function energyClassificationTypeForStack(activeId) {
 }
 
 /**
+ * The rotation that aims a Cesium cone down a flow direction.
+ *
+ * `CylinderGraphics` is built along its own +Z and `entity.orientation` is the
+ * rotation from that body frame into the fixed frame, so the whole job is a
+ * basis whose third column IS the direction. The other two are any orthonormal
+ * pair — a cone of revolution does not care how it is rolled.
+ *
+ * The seed axis is swapped near the poles for the usual reason: crossing the
+ * direction with a nearly parallel vector gives a near-zero vector, and
+ * normalising that yields NaN and an arrowhead that disappears. The threshold
+ * is on the ECEF z component, so it fires over the Arctic and never over
+ * France — but a layer that draws only France is exactly where nobody would
+ * notice the bug until it moved.
+ *
+ * @param {Cesium.Cartesian3} direction Unit vector, fixed frame.
+ * @returns {Cesium.Quaternion}
+ */
+export function arrowOrientation(direction) {
+  const seed = Math.abs(direction.z) < 0.99
+    ? Cesium.Cartesian3.UNIT_Z
+    : Cesium.Cartesian3.UNIT_X;
+  const right = Cesium.Cartesian3.normalize(
+    Cesium.Cartesian3.cross(seed, direction, new Cesium.Cartesian3()),
+    new Cesium.Cartesian3(),
+  );
+  const up = Cesium.Cartesian3.cross(direction, right, new Cesium.Cartesian3());
+  // Matrix3 takes ROW-major arguments, and the basis is wanted by COLUMN.
+  return Cesium.Quaternion.fromRotationMatrix(new Cesium.Matrix3(
+    right.x, up.x, direction.x,
+    right.y, up.y, direction.y,
+    right.z, up.z, direction.z,
+  ));
+}
+
+/**
  * @param {object} [options]
  * @returns {object} Data-manager layer module.
  */
@@ -1285,7 +1572,12 @@ export function createFranceEnergyLayer({
   let _perimeterEntities = new Map();
   /** @type {Map<string, Cesium.Entity[]>} Market key → its ground outline rings. */
   let _marketEntities = new Map();
-  /** @type {Map<string, Cesium.Entity>} border key → arc polyline entity. */
+  /**
+   * Border key → its two entities. The flow is a tube AND a cone, and they are
+   * kept together because they are one mark: hiding one without the other
+   * leaves an arrowhead floating over an empty border.
+   * @type {Map<string, {shaft: Cesium.Entity, head: Cesium.Entity}>}
+   */
   let _arcEntities = new Map();
   let _shapesPromise = null;
   let _records = [];
@@ -1578,38 +1870,106 @@ export function createFranceEnergyLayer({
     }
   }
 
-  /** Rebuild the border arcs. Five entities at most, so they are recreated whole. */
+  /**
+   * The shaft's cross-section: a regular polygon of `radiusM`.
+   *
+   * A POLYGON and not a ribbon, because a ribbon has an orientation and the
+   * globe does not respect it — Cesium sweeps the shape along a Frenet frame,
+   * so a flat band lies horizontal and vanishes the moment the camera drops to
+   * an oblique. A regular section is as thick from every angle there is.
+   */
+  function tubeShape(radiusM) {
+    const shape = [];
+    for (let i = 0; i < ARC_SHAPE_SIDES; i += 1) {
+      const angle = (i / ARC_SHAPE_SIDES) * Math.PI * 2;
+      shape.push(new Cesium.Cartesian2(
+        radiusM * Math.cos(angle),
+        radiusM * Math.sin(angle),
+      ));
+    }
+    return shape;
+  }
+
+  /** Rebuild the border flows: a translucent tube, and the cone that ends it. */
   function repaintArcs() {
     if (!_dataSource) return;
     const live = new Set();
     for (const arc of _arcs) {
       live.add(arc.key);
-      let entity = _arcEntities.get(arc.key);
-      const positions = Cesium.Cartesian3.fromDegreesArrayHeights(arc.positions);
       const color = Cesium.Color.fromCssColorString(arc.style.color);
-      if (!entity) {
-        entity = _dataSource.entities.add({
-          id: `energy-fr:arc:${arc.key}`,
-          properties: { code: arc.key, kind: 'arc' },
-          polyline: {
-            positions,
-            width: arc.width,
-            // The arrow head is the direction of travel; `borderLabelText`
-            // repeats it in words for the angles where the head is not legible.
-            material: new Cesium.PolylineArrowMaterialProperty(color),
-            arcType: Cesium.ArcType.NONE,
-          },
-        });
-        _arcEntities.set(arc.key, entity);
+      const body = color.withAlpha(ARC_BODY_ALPHA);
+      const edge = color.withAlpha(ARC_EDGE_ALPHA);
+      const head = color.withAlpha(ARC_HEAD_ALPHA);
+      const positions = Cesium.Cartesian3.fromDegreesArrayHeights(arc.positions);
+      const shape = tubeShape(arc.radiusM);
+
+      let pair = _arcEntities.get(arc.key);
+      if (!pair) {
+        pair = {
+          shaft: _dataSource.entities.add({
+            id: `energy-fr:arc:${arc.key}`,
+            properties: { code: arc.key, kind: 'arc' },
+            polylineVolume: {
+              positions,
+              shape,
+              cornerType: Cesium.CornerType.ROUNDED,
+              material: new Cesium.ColorMaterialProperty(body),
+              outline: true,
+              outlineColor: new Cesium.ConstantProperty(edge),
+              outlineWidth: 1,
+            },
+          }),
+          head: _dataSource.entities.add({
+            id: `energy-fr:arc-head:${arc.key}`,
+            properties: { code: arc.key, kind: 'arc-head' },
+            cylinder: {
+              // A cone: `topRadius: 0` puts the apex on the local +Z, which is
+              // the axis `arrowOrientation` aims down the flow.
+              topRadius: 0,
+              bottomRadius: arc.headRadiusM,
+              length: arc.headLengthM,
+              material: new Cesium.ColorMaterialProperty(head),
+              outline: true,
+              outlineColor: new Cesium.ConstantProperty(edge),
+              outlineWidth: 1,
+              numberOfVerticalLines: 0,
+            },
+          }),
+        };
+        _arcEntities.set(arc.key, pair);
       } else {
-        entity.polyline.positions = positions;
-        entity.polyline.width = arc.width;
-        entity.polyline.material = new Cesium.PolylineArrowMaterialProperty(color);
+        pair.shaft.polylineVolume.positions = positions;
+        pair.shaft.polylineVolume.shape = shape;
+        pair.shaft.polylineVolume.material = new Cesium.ColorMaterialProperty(body);
+        pair.shaft.polylineVolume.outlineColor = new Cesium.ConstantProperty(edge);
+        pair.head.cylinder.bottomRadius = arc.headRadiusM;
+        pair.head.cylinder.length = arc.headLengthM;
+        pair.head.cylinder.material = new Cesium.ColorMaterialProperty(head);
+        pair.head.cylinder.outlineColor = new Cesium.ConstantProperty(edge);
       }
-      entity.show = true;
+
+      const tip = Cesium.Cartesian3.fromDegrees(...arc.head.tip);
+      const base = Cesium.Cartesian3.fromDegrees(...arc.head.base);
+      const direction = Cesium.Cartesian3.normalize(
+        Cesium.Cartesian3.subtract(tip, base, new Cesium.Cartesian3()),
+        new Cesium.Cartesian3(),
+      );
+      // A Cesium cylinder is centred on its own position, so the cone sits half
+      // its length back from the tip — otherwise the apex overshoots the flow
+      // by 29 km and the arrow points past its own market.
+      pair.head.position = Cesium.Cartesian3.add(
+        tip,
+        Cesium.Cartesian3.multiplyByScalar(direction, -arc.headLengthM / 2, new Cesium.Cartesian3()),
+        new Cesium.Cartesian3(),
+      );
+      pair.head.orientation = arrowOrientation(direction);
+      pair.shaft.show = true;
+      pair.head.show = true;
     }
-    for (const [key, entity] of _arcEntities) {
-      if (!live.has(key)) entity.show = false;
+    for (const [key, pair] of _arcEntities) {
+      if (live.has(key)) continue;
+      pair.shaft.show = false;
+      pair.head.show = false;
     }
   }
 
@@ -1652,6 +2012,19 @@ export function createFranceEnergyLayer({
           record.anchor[1],
           regionLabelHeightM(record),
         ),
+      ));
+    }
+    // The régions with NO figure get a label too, and it is the whole answer to
+    // « on n'a pas l'information, c'est ça ? ». They are not in `_records`, so
+    // nothing above reaches them: without this they are a grey shape with no
+    // name, and the reader has to work out which région is missing by looking
+    // at the coastline.
+    for (const region of unmeasuredRegions(_records)) {
+      const anchor = regionAnchor(REGION_DEPARTEMENTS[region.code], _departements);
+      if (!anchor) continue;
+      entries.push(createRegionOverlayEntry(
+        { code: region.code, name: region.name, netPhysical: null, balance: null },
+        Cesium.Cartesian3.fromDegrees(anchor[0], anchor[1], 0),
       ));
     }
     for (const arc of _arcs) {
@@ -1837,7 +2210,14 @@ export function createFranceEnergyLayer({
      * @returns {{chips: Array<object>, legend: Array<object>, surfaceFill: boolean}}
      */
     getRowControls() {
-      return { chips: [], legend: energyPrismLegend(_records, _marketEntities.size), surfaceFill: false };
+      return {
+        chips: [],
+        legend: energyPrismLegend(_records, {
+          markets: _marketEntities.size,
+          borders: _arcs.length,
+        }),
+        surfaceFill: false,
+      };
     },
 
     getStats() {
@@ -1850,9 +2230,10 @@ export function createFranceEnergyLayer({
         // A5, in the HUD as well as in the legend: how many prisms are stuck
         // at the top of the frozen domain and have stopped saying how much.
         clippedRegions: rows.filter((row) => row.clipped).length,
-        // Régions the upstream skipped this refresh, Corse aside. Zero on every
-        // captured snapshot; not zero is the interesting case.
-        unpublishedRegions: rows.filter((row) => !row.hasValue).length,
+        // Régions carrying no figure, Corse INCLUDED — counted from the known
+        // set, so a région the feed dropped entirely is in it. The old count
+        // filtered `_records`, which is the one place a dropped région is not.
+        unpublishedRegions: unmeasuredRegions(_records).length,
         lastUpdate: _lastUpdate,
         error: _lastError,
         stale: _stale,

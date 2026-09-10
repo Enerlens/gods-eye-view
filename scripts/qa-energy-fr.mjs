@@ -15,9 +15,10 @@
  *   ii.  the sign convention survives all the way to the globe — Île-de-France
  *        (a net importer) is amber and Auvergne-Rhône-Alpes (a net exporter)
  *        is teal, read back off the rendered material, not off the model
- *   iii. the five border flows are drawn as RAISED arcs pointing the way the
- *        power travels, leaving the FRONTIER rather than the middle of the
- *        country, with the direction repeated in words on the label
+ *   iii. the five border flows are drawn as RAISED VOLUMES pointing the way
+ *        the power travels — a translucent tube whose radius is the megawatts,
+ *        a near-opaque cone on the receiving end — leaving the FRONTIER rather
+ *        than the middle of the country, with the direction repeated in words
  *   iv.  the five neighbouring markets are outlined, and never filled
  *   v.   a border that falls to zero hides its arc instead of drawing a
  *        hairline — and KEEPS its market outline, in slate
@@ -168,6 +169,7 @@ function sceneProbe(page) {
 
     const polygons = [];
     const arcs = [];
+    const heads = [];
     const lines = [];
     for (const entity of collection ? collection.entities.values : []) {
       const id = String(entity.id);
@@ -185,6 +187,51 @@ function sceneProbe(page) {
           // an unpainted région (Corse) now draws.
           topM: entity.polygon.extrudedHeight?.getValue?.() ?? null,
           material: material ? 'color' : 'motif',
+        });
+      } else if (entity.polylineVolume) {
+        const positions = entity.polylineVolume.positions?.getValue?.() || [];
+        const shape = entity.polylineVolume.shape?.getValue?.() || [];
+        const material = entity.polylineVolume.material?.color?.getValue?.();
+        arcs.push({
+          id,
+          code,
+          shown: entity.show !== false,
+          vertices: positions.length,
+          // World radius, in metres. The old mark carried a screen width, and
+          // that is exactly what this harness must refuse to accept back.
+          radiusM: shape.length ? Math.round(Math.hypot(shape[0].x, shape[0].y)) : null,
+          sides: shape.length,
+          color: hex(material),
+          alpha: material ? Math.round(material.alpha * 100) / 100 : null,
+          outlineAlpha: entity.polylineVolume.outlineColor?.getValue?.()
+            ? Math.round(entity.polylineVolume.outlineColor.getValue().alpha * 100) / 100
+            : null,
+          ends: positions.length
+            ? [positions[0], positions[positions.length - 1]].map((p) => {
+              const c = gev.viewer.scene.globe.ellipsoid.cartesianToCartographic(p);
+              return [c.longitude * 180 / Math.PI, c.latitude * 180 / Math.PI, c.height];
+            })
+            : [],
+        });
+      } else if (entity.cylinder) {
+        const material = entity.cylinder.material?.color?.getValue?.();
+        const position = entity.position?.getValue?.(gev.viewer.clock.currentTime);
+        const carto = position
+          ? gev.viewer.scene.globe.ellipsoid.cartesianToCartographic(position)
+          : null;
+        heads.push({
+          id,
+          code,
+          shown: entity.show !== false,
+          topRadius: entity.cylinder.topRadius?.getValue?.() ?? null,
+          bottomRadius: Math.round(entity.cylinder.bottomRadius?.getValue?.() ?? 0),
+          length: Math.round(entity.cylinder.length?.getValue?.() ?? 0),
+          alpha: material ? Math.round(material.alpha * 100) / 100 : null,
+          color: hex(material),
+          oriented: Boolean(entity.orientation),
+          at: carto
+            ? [carto.longitude * 180 / Math.PI, carto.latitude * 180 / Math.PI, carto.height]
+            : null,
         });
       } else if (entity.polyline) {
         const positions = entity.polyline.positions?.getValue?.() || [];
@@ -205,8 +252,7 @@ function sceneProbe(page) {
             })
             : [],
         };
-        if (id.startsWith('energy-fr:arc:')) arcs.push(row);
-        else lines.push(row);
+        lines.push(row);
       }
     }
     return {
@@ -215,6 +261,7 @@ function sceneProbe(page) {
       controls: module.getRowControls(),
       polygons,
       arcs,
+      heads,
       lines,
       sourceFound: Boolean(collection),
     };
@@ -321,6 +368,24 @@ async function main() {
       perimeters.filter((line) => line.id.endsWith(':0')).map((line) => line.vertices).join(','));
     check('Corse has a perimeter even though it has no figure',
       perimeters.some((line) => line.id.startsWith('energy-fr:perimeter:94:') && line.shown));
+    // The unmeasured régions are NAMED. An anonymous grey shape is what made a
+    // reader hunt for the missing région along the coastline.
+    check('an unmeasured région is counted from the KNOWN 13, and named',
+      probe.stats.unpublishedRegions === 1
+      && probe.controls.legend.some((entry) => /non publié/.test(entry.label)
+        && entry.count === 1 && /Corse/.test(entry.blurb || '')),
+      `unpublished=${probe.stats.unpublishedRegions}`);
+    check('and the counts on the legend add up to 13',
+      (() => {
+        const counted = probe.controls.legend
+          .filter((entry) => entry.color && Number.isFinite(entry.count)
+            && !/^\d/.test(entry.label))
+          .reduce((sum, entry) => sum + entry.count, 0);
+        return counted === 13;
+      })(),
+      probe.controls.legend
+        .filter((entry) => Number.isFinite(entry.count))
+        .map((entry) => `${entry.label}=${entry.count}`).join(' · '));
     await shoot(page, '01-regions.png');
 
     // ── ii. the sign convention survives to the rendered material ──────────
@@ -368,13 +433,47 @@ async function main() {
     check('each arc is a sampled curve, not a two-point line',
       probe.arcs.every((arc) => arc.vertices > 8),
       probe.arcs.map((arc) => arc.vertices).join(','));
-    check('arc width tracks the flow', new Set(probe.arcs.map((arc) => arc.width)).size > 1,
-      probe.arcs.map((arc) => Math.round(arc.width)).join(','));
+    // A VOLUME in metres, not a stroke in pixels. The old mark was 3.85 px for
+    // 366 MW and this is the check that refuses to let it come back.
+    check('the flow is a world-sized volume, not a screen-width line',
+      probe.arcs.every((arc) => arc.radiusM >= 9000 && arc.radiusM <= 22000 && arc.sides >= 6),
+      probe.arcs.map((arc) => `${arc.code}:${arc.radiusM}m/${arc.sides}`).join(' '));
+    check('thickness tracks the flow', new Set(probe.arcs.map((arc) => arc.radiusM)).size > 1,
+      probe.arcs.map((arc) => arc.radiusM).join(','));
+    // The prism grammar the reader asked the arrow to borrow.
+    check('translucent body, near-opaque edge — the prism grammar',
+      probe.arcs.every((arc) => arc.alpha < 0.5 && arc.outlineAlpha > arc.alpha),
+      probe.arcs.map((arc) => `${arc.alpha}/${arc.outlineAlpha}`).join(' '));
+    check('and it is lifted clear of the ground at BOTH ends',
+      probe.arcs.every((arc) => arc.ends.every(([, , h]) => h > arc.radiusM)),
+      probe.arcs.map((arc) => arc.ends.map(([, , h]) => Math.round(h)).join('/')).join(' '));
+
+    console.log('[qa] iii-bis. the sense is a cone, and it is the brightest end');
+    check('every flow ends in a cone', probe.heads.length === 5
+      && probe.heads.every((head) => head.shown && head.topRadius === 0),
+      `${probe.heads.length} heads`);
+    check('the cone is FAT — a head barely wider than its shaft is a taper',
+      probe.heads.every((head) => {
+        const shaft = probe.arcs.find((arc) => arc.code === head.code);
+        return shaft && head.bottomRadius > shaft.radiusM * 1.5;
+      }),
+      probe.heads.map((head) => `${head.code}:${head.bottomRadius}m`).join(' '));
+    check('and it is the brightest end of the mark — that is where the sense is',
+      probe.heads.every((head) => {
+        const shaft = probe.arcs.find((arc) => arc.code === head.code);
+        return head.alpha > 0.8 && shaft && head.alpha > shaft.alpha;
+      }),
+      probe.heads.map((head) => `${head.code}:${head.alpha}`).join(' '));
+    check('each cone is aimed, not left on the local vertical',
+      probe.heads.every((head) => head.oriented && head.at));
     // The fix the reader asked for, proved at the pixel's own coordinates: no
     // arc may touch down anywhere near 2.60 E / 46.60 N, which is where all
     // five used to start.
     const BERRY = [2.60, 46.60];
-    const nearBerry = probe.arcs.filter((arc) => arc.ends.some(([lon, lat]) => (
+    const nearBerry = probe.arcs.filter((arc) => [
+      ...arc.ends,
+      probe.heads.find((head) => head.code === arc.code)?.at,
+    ].filter(Boolean).some(([lon, lat]) => (
       Math.hypot(lon - BERRY[0], lat - BERRY[1]) < 1
     )));
     check('no arc leaves the middle of the country any more',
@@ -383,9 +482,11 @@ async function main() {
     // And each one touches down on the French frontier facing its own market.
     const frenchEnd = (key) => {
       const arc = probe.arcs.find((entry) => entry.id.endsWith(`:${key}`));
-      if (!arc) return null;
-      // The frontier end is whichever of the two is inside metropolitan France.
-      return arc.ends.find(([lon, lat]) => lon > -5.2 && lon < 8.3 && lat > 42.2 && lat < 51.2);
+      const head = probe.heads.find((entry) => entry.id.endsWith(`:${key}`));
+      const inFrance = ([lon, lat]) => lon > -5.2 && lon < 8.3 && lat > 42.2 && lat < 51.2;
+      // Either end can be the French one: the cone lands on France for an
+      // import and abroad for an export.
+      return [...(arc?.ends || []), head?.at].filter(Boolean).find(inFrance);
     };
     check('the British arc leaves the Channel coast, not the Mediterranean',
       (frenchEnd('angleterre')?.[1] ?? 0) > 50,
@@ -443,6 +544,9 @@ async function main() {
       after.arcs.find((arc) => arc.id.endsWith(':suisse'))?.shown === false);
     check('the other four kept their geometry',
       after.arcs.filter((arc) => arc.shown).every((arc) => arc.vertices > 8));
+    check('and the Swiss cone went with its shaft — no orphan arrowhead',
+      after.heads.find((head) => head.code === 'suisse')?.shown === false,
+      after.heads.map((head) => `${head.code}:${head.shown}`).join(' '));
     // The outline is NOT an arc: an arc is a direction and a direction of
     // nothing is nothing, while "who is on the other side" stays true at zero.
     const swissOutline = after.lines.filter((line) => line.code === 'suisse');
