@@ -3806,7 +3806,7 @@ inert again.
 - Display and Context use matching 330 px expanded widths and matching compact tab dimensions. The parameter panel is part of Display's expanded content. DISPLAY may remain open beside one contextual panel; CCTV and Context are mutually exclusive. In Tactical HUD, expanding CCTV or Context hides the other contextual launcher while DISPLAY remains independently available. The most recently opened right-rail panel owns the constrained lane even when it appears later in DOM order; passive restoration and automatic disclosure do not replace that explicit owner. Minimal and other HUD layouts retain the collapsed launchers; when their active panel exceeds the measured corridor, the rail reserves sibling heights and gaps and scrolls the active panel internally.
 - `STYLE PRESETS` and `LOCATIONS` start collapsed, expand on intentional hover/click, and auto-collapse after hover leave delay.
 - Collapsed mini-status indicators show active style and active location/landmark.
-- Detection mode is user-controlled and should persist when switching styles. Since 2026-08-22 it also STARTS on — Dense @ 75% for every style on a first run, Normal included — as a `GLOBAL_POST_DEFAULTS` baseline that does NOT set `_detectionUserOverridden`. Exception (unchanged): selecting a military style (CRT/NVG/FLIR) auto-enables the same Dense preset, but only until the user manually changes detection this session (`_detectionUserOverridden` gate), after which style switches never touch it.
+- Detection mode is user-controlled and should persist when switching styles. Since 2026-08-22 it also STARTS on for every style on a first run, Normal included — as a `GLOBAL_POST_DEFAULTS` baseline that does NOT set `_detectionUserOverridden`. Since 2026-09-10 it starts at Balanced @ 50% (`FIRST_RUN_DETECTION_PRESET`), not at the tactical Dense @ 75%. Exception (unchanged): selecting a military style (CRT/NVG/FLIR) auto-enables the Dense preset, but only until the user manually changes detection this session (`_detectionUserOverridden` gate), after which style switches never touch it.
 - Detection runs in the bottom lane of the shared host's single world-overlay `postRender`
   listener (not `preRender`) to eliminate bounding-box drift at close zoom.
 - **Detection takes NO continuous-render hold (2026-08-22, `src/data/detectionRenderDemand.js`).**
@@ -3884,21 +3884,35 @@ inert again.
 ### Current Global Post Defaults
 
 **Reasonable-defaults batch (2026-08-22), extended and partly revised
-2026-08-23.** First-run defaults move together as one coherent console
+2026-08-23 and 2026-08-24, and re-read off the owner's own console
+2026-09-10.** First-run defaults move together as one coherent console
 presentation. Every one is a FIRST-RUN baseline only: a
 share link or the operator's own hand still wins over it, and none of them sets
 the `_detectionUserOverridden` / explicit-intent flags that would suppress a
 separate landed behaviour. Pinned in `src/reasonableDefaults.test.mjs` (feather,
 detection, OUTSIDE opacity) and `src/data/layerState.test.mjs` (3D).
 
-**The 2026-08-24 defaults** (superseding the interim 08-23 values of 8%/3%):
-the first-run look is Detection DENSE
-`75%`, ELASTIC allocation, Fade `7%`, OUTSIDE opacity `1%`, scope feather `11%`,
-and 3D fleet mode PROXIMITY, with `AIRCRAFT_BRACKET_FLOOR_ANCHOR` at `0.01` so
-brackets keep their approved brightness exactly at the new OUTSIDE default. Two
-terms that must never be conflated: scope FEATHER softens the black scope-mask
-edge; detection FADE is the label/card fading band around the keyhole. The
-OUTSIDE slider's `step` stays `1` so every low stop is reachable.
+**The 2026-09-10 defaults** (superseding the 08-24 values of `DENSE 75%`/`7%`/
+`1%`/`11%`): the first-run look is Detection **BALANCED `50%`**, ELASTIC
+allocation, Fade **`24%`**, OUTSIDE opacity **`37%`**, scope feather **`49%`**,
+and 3D fleet mode PROXIMITY (unchanged), with `AIRCRAFT_BRACKET_FLOOR_ANCHOR`
+moved to `0.37` to stay pinned to the OUTSIDE default it calibrates against.
+The instruction was a screenshot of the owner's own DISPLAY panel, with the ask
+that the settings on it become the shipped defaults — so these four values are
+one reading, not four rulings. Two terms that must never be conflated:
+scope FEATHER softens the black scope-mask edge; detection FADE is the
+label/card fading band around the keyhole. The OUTSIDE slider's `step` stays
+`1` so every low stop is reachable.
+
+**What moving OUTSIDE up costs the AIR bracket floor.** The floor lifts side
+aircraft brackets so they survive a faint surround, and it is anchored so
+`AIRCRAFT_BRACKET_ALPHA_FLOOR` (`0.35`) lands exactly at the default. With the
+anchor at `0.37` the whole ramp sits at or below the identity line, so the
+rescue is INERT at every setting — including a hand-dialled `1%`, where
+brackets now fade with their own labels instead of being held up. That is the
+consequence of the anchor tracking the default rather than the slider position,
+it is recorded in `detectionPolicy.test.mjs` rather than hidden, and moving the
+default back down re-arms the mechanism unchanged.
 
 **Allocation, defined precisely** (matches
 `src/data/labelArbiter.js` `allocateLayerQuotas`): **ELASTIC** begins with
@@ -3940,31 +3954,37 @@ easier to meet (detection is now on more often), but does not create it.
 
 - Sharpen: `ON`, intensity slider at `49%`
 - HUD: `ON`, layout `tactical`
-- **Detection: `DENSE` @ `75%`** — ON for EVERY style on a first run, Normal
-  included (was `OFF` @ `50%`). It is literally the same frozen
-  `MILITARY_DETECTION_PRESET { mode:'dense', densityPct:75 }` object the military
-  styles and the Contacts context mode already apply (Contacts OWNS detection
-  while active and restores the prior state on exit — `contactsDetectionPolicy.js`;
-  Cockpit deliberately does not touch detection at all), read by
-  `GLOBAL_POST_DEFAULTS`, so there is one tactical look rather than several that
-  can drift. Fade opens at `7%` since the 2026-08-24 final lock (`16%` before it). Style-switch semantics are
+- **Detection: `BALANCED` @ `50%`** — ON for EVERY style on a first run, Normal
+  included (was `OFF` @ `50%` before 08-22, then `DENSE` @ `75%` until
+  2026-09-10). It reads its own frozen
+  `FIRST_RUN_DETECTION_PRESET { mode:'balanced', densityPct:50 }`, declared
+  beside — and no longer the same object as —
+  `MILITARY_DETECTION_PRESET { mode:'dense', densityPct:75 }`, which remains the
+  TACTICAL look the military styles and the Contacts context mode apply
+  (Contacts OWNS detection while active and restores the prior state on exit —
+  `contactsDetectionPolicy.js`; Cockpit deliberately does not touch detection at
+  all). Splitting them is the point: a first run is now quieter than
+  CRT/NVG/FLIR instead of sharing one number by coincidence. `50` was already
+  the density slider's markup value, its readout and the detection engine's own
+  `_densityPct`, so the baseline and the DOM finally describe the same console.
+  Fade opens at `24%` since 2026-09-10 (`7%` on 08-24, `16%` before). Style-switch semantics are
   unchanged: CRT/NVG/FLIR still carry `detection: MILITARY_DETECTION_PRESET` and
   still yield to `_detectionUserOverridden`; Normal still has no
   `STYLE_PRESET_DEFAULTS` entry, so switching TO Normal touches nothing. A share
   link carrying `dm=OFF` still restores OFF.
-- **Detection OUTSIDE opacity: `1%`** (moved `5% → 3% → 1%` on 2026-08-24).
+- **Detection OUTSIDE opacity: `37%`** (moved `5% → 3% → 1% → 37%`; the world
+  beyond the keyhole is readable rather than erased).
   `KEYHOLE_OUTSIDE_OPACITY_DEFAULT` in `src/celestialRing.js`, mirrored by
   `#detection-opacity-slider`'s markup value AND readout,
   `GLOBAL_POST_DEFAULTS.detectionOutsideOpacityPct` in `ui.js`, and
   `_detectionOutsideOpacityPct` in `sharelink.js`. The slider's `step` is now
-  `1`, so 1–4 % are reachable at all (at the previous step of 5 the entire
-  sub-default range was one stop wide). `AIRCRAFT_BRACKET_FLOOR_ANCHOR` in
-  `src/data/detectionPolicy.js` MOVES WITH IT — the AIR bracket floor is
-  calibrated so `AIRCRAFT_BRACKET_ALPHA_FLOOR` (0.35) lands exactly at the
-  default, and the mapping follows bracket brightness rather than slider
-  position. The `ko` PARSE fallback stays at `5`.
-- **Scope feather: `11%`** — a soft scope-mask edge (moved `0% → 8% → 11%`; `0%` hard crop for one day,
-  `35%` before that). `SCOPE_FEATHER_RATIO_DEFAULT` in `src/scopeMask.js`,
+  `1`, so 1–4 % are reachable at all (at the step of 5 they were not).
+  `AIRCRAFT_BRACKET_FLOOR_ANCHOR` in `src/data/detectionPolicy.js` MOVES WITH IT
+  — now `0.37` — because the mapping follows bracket brightness rather than
+  slider position; see the inert-floor note above for what that costs. The `ko`
+  PARSE fallback stays at `5`.
+- **Scope feather: `49%`** — a wide, atmospheric falloff (moved
+  `35% → 0% → 8% → 11% → 49%`; the `0%` hard crop lasted one day). `SCOPE_FEATHER_RATIO_DEFAULT` in `src/scopeMask.js`,
   mirrored by `#scope-feather-slider`'s markup value AND readout and
   `_scopeFeatherPct` in `sharelink.js`. The slider is untouched and still spans
   0–100, and an explicit `0` is still the hard-crop path — pinned, so moving the

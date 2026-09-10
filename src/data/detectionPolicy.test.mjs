@@ -83,7 +83,8 @@ test('the range around the default is REACHABLE from the handle', () => {
   // values the slider will stop on. At the shipped step of 5 the whole
   // sub-default range was one stop wide — 0 or 5, nothing between — so the low
   // stops were not settings anyone could choose. The control has to be able to
-  // express what the policy can render, and the default itself now lives at 1 %.
+  // express what the policy can render, and the low stops stayed reachable
+  // after the default itself moved back up to 37 %.
   assert.match(
     indexHtml,
     /id="detection-opacity-slider"[^>]*\smin="0"[^>]*\smax="100"[^>]*\sstep="1"/,
@@ -106,7 +107,32 @@ test('the range around the default is REACHABLE from the handle', () => {
     AIRCRAFT_BRACKET_ALPHA_FLOOR,
     'the first-run setting still paints the approved bracket floor',
   );
-  assert.equal(AIRCRAFT_BRACKET_FLOOR_ANCHOR, 0.01, 'and that setting is 1% (owner, 2026-08-24)');
+  assert.equal(AIRCRAFT_BRACKET_FLOOR_ANCHOR, 0.37, 'and that setting is 37% (owner, 2026-09-10)');
+});
+
+test('with the anchor at the 37% default the rescue is inert, and knowingly so', () => {
+  // The floor exists to rescue AIR brackets from a surround so faint they
+  // vanish. Anchoring 0.35 at a 37% default puts the whole ramp at or below the
+  // identity line, so `detectionBracketAlpha` returns the ordinary alpha
+  // everywhere and the rescue never fires — including at a hand-dialled 1%,
+  // where brackets now fade with their own labels instead of being held up.
+  //
+  // That is the cost of the anchor tracking the default (2026-09-10), and it is
+  // recorded rather than hidden: it is what the operator's own console looks
+  // like, and moving the default back down re-arms the mechanism as written.
+  const outside = KEYHOLE_OUTSIDE_OPACITY_DEFAULT;
+  for (const alpha of [0.37, 0.5, 0.8, 1]) {
+    assert.equal(detectionBracketAlpha('AIR', alpha, outside), alpha,
+      `alpha ${alpha}: an AIR bracket is painted at its own alpha, not lifted`);
+  }
+  for (const setting of [0.005, 0.01, 0.1, 0.37, 0.6, 0.99]) {
+    assert.ok(aircraftBracketAlphaFloor(setting) <= setting,
+      `floor at ${setting} must not exceed the alpha the setting itself paints`);
+  }
+  // The shape of the rescue is intact for a lower anchor — the ramp still
+  // reaches the approved 0.35 exactly AT whatever the anchor is.
+  assert.equal(aircraftBracketAlphaFloor(AIRCRAFT_BRACKET_FLOOR_ANCHOR),
+    AIRCRAFT_BRACKET_ALPHA_FLOOR);
 });
 
 test('the bracket floor is strictly increasing and stops overriding at full opacity', () => {

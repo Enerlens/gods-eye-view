@@ -26,8 +26,9 @@ import { getKeyholeGeometry } from './celestialRing.js';
  * way down, reaching solid black by 7 Mm. Every working altitude below that is
  * opaque, because there the same 6% bleed reads as smeared geometry rather
  * than atmosphere. FEATHER is untouched BY THIS RAMP — only the terminus opacity
- * moves here. (The feather's own default later moved 35 → 0 on 2026-08-22; see
- * SCOPE_FEATHER_RATIO_DEFAULT below. The two are independent.)
+ * moves here. (The feather's own default moved 35 → 0 on 2026-08-22 and back
+ * up to 49 on 2026-09-10; see SCOPE_FEATHER_RATIO_DEFAULT below. The two are
+ * independent.)
  *
  * Perf contract for that ramp: the height sample is throttled AND the repaint
  * is gated on a QUANTIZED alpha step, so a full zoom gesture costs a handful
@@ -43,13 +44,14 @@ const SCOPE_OUTSIDE_COLOR = { r: 5, g: 5, b: 8 };
 /**
  * Default edge feather as a fraction of the keyhole radius.
  *
- * 0.11 since 2026-08-24 (final value; 0.08 on 08-23, hard-crop 0 on
- * 08-22 — this supersedes both), REVISING the 2026-08-22 ruling that
- * set it to zero: a subtle soft edge rather than either the hard crop or the
- * retired 35 % halo. The slider is untouched and still spans 0..100; this is
- * only where it STARTS. `setScopeMaskFeather` is unchanged, so any feather a
- * share link carries, or the operator dials in, overrides this immediately, and
- * the hard-crop path at 0 is still reachable from the handle.
+ * 0.49 since 2026-09-10, read straight off the owner's own console: a wide,
+ * atmospheric falloff rather than an edge you can point at. (0.11 on 08-24,
+ * 0.08 on 08-23, hard-crop 0 on 08-22 — this supersedes all three, and with
+ * them the 08-22 ruling that set it to zero.) The slider is untouched and
+ * still spans 0..100; this is only where it STARTS. `setScopeMaskFeather` is
+ * unchanged, so any feather a share link carries, or the operator dials in,
+ * overrides this immediately, and the hard-crop path at 0 is still reachable
+ * from the handle.
  *
  * Keep in lockstep with `#scope-feather-slider`'s markup value AND readout in
  * index.html and `_scopeFeatherPct` in sharelink.js — a fresh boot applies no
@@ -59,7 +61,7 @@ const SCOPE_OUTSIDE_COLOR = { r: 5, g: 5, b: 8 };
  * carries `scf=0` explicitly because the generator always writes the field.
  * Pinned in reasonableDefaults.test.mjs.
  */
-export const SCOPE_FEATHER_RATIO_DEFAULT = 0.11;
+export const SCOPE_FEATHER_RATIO_DEFAULT = 0.49;
 /**
  * Terminus opacity at/above SCOPE_TERMINUS_FAR_M — slightly translucent so
  * faint stars survive in the corners at globe scale.

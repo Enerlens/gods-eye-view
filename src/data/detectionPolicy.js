@@ -10,10 +10,10 @@ export const ALLOCATION_ELASTIC = 'ELASTIC';
 export const ALLOCATION_WEIGHTED = 'WEIGHTED';
 export const ALLOCATION_STRATEGIES = Object.freeze([ALLOCATION_ELASTIC, ALLOCATION_WEIGHTED]);
 
-// The keyhole's default 1% outside opacity is appropriate for text, but it
-// made side aircraft brackets effectively disappear while the same contacts
-// remained eligible. AIR geometry therefore gets a readable floor, without
-// changing label budgets.
+// A very low outside opacity is appropriate for text, but it made side
+// aircraft brackets effectively disappear while the same contacts remained
+// eligible. AIR geometry therefore gets a readable floor, without changing
+// label budgets.
 //
 // The floor is 0.35 AT THE DEFAULT OUTSIDE OPACITY, and it SCALES with the
 // OUTSIDE slider rather than overriding it. A flat 0.35 made that slider a
@@ -30,17 +30,23 @@ export const AIRCRAFT_BRACKET_ALPHA_FLOOR = 0.35;
  * stays a pure policy module with no Cesium dependency; detectionPolicy.test.mjs
  * imports the real constant and pins the two together so they cannot drift.
  *
- * It MOVES WITH THE DEFAULT (0.05 → 0.03 → 0.01; final value 2026-08-24).
- * That pin is the tripwire
- * for exactly this change, and the decision it forces is which of two things the
- * approval attaches to: the bracket BRIGHTNESS, or the slider POSITION. It is
- * the brightness — the floor exists so side aircraft brackets stay readable at
- * whatever the default is, and the owner's directive moved the label default,
- * not the bracket look. Holding the anchor at 0.05 instead would dim brackets to
- * 0.07 on a first run at the 1% default, which is the dead-zone complaint in
- * reverse.
+ * It MOVES WITH THE DEFAULT (0.05 → 0.03 → 0.01 → 0.37 on 2026-09-10). That pin
+ * is the tripwire for exactly this change, and the decision it forces is which
+ * of two things the approval attaches to: the bracket BRIGHTNESS, or the slider
+ * POSITION. It is the brightness — the floor exists so side aircraft brackets
+ * stay readable at whatever the default is, and the owner's directive moved the
+ * label default, not the bracket look.
+ *
+ * At the 2026-09-10 default this makes the floor INERT, and deliberately so:
+ * `detectionBracketAlpha` takes the max of floor and label alpha, and a 37%
+ * surround already paints brackets brighter than the 0.35 the floor was
+ * approved at, so the shipped look is the approved brightness reached by the
+ * ordinary path instead of by an override. Keeping the anchor at 0.01 would
+ * have lit brackets to 0.59 while their own labels sat at 0.37 — a rescue
+ * applied to something that is no longer drowning. The mechanism stays wired
+ * for the next time the default goes back down.
  */
-export const AIRCRAFT_BRACKET_FLOOR_ANCHOR = 0.01;
+export const AIRCRAFT_BRACKET_FLOOR_ANCHOR = 0.37;
 
 /**
  * The AIR bracket alpha floor for a given OUTSIDE opacity setting.
@@ -49,9 +55,9 @@ export const AIRCRAFT_BRACKET_FLOOR_ANCHOR = 0.01;
  * across its whole travel while the shipped look does not move:
  *
  *   slider 0    → 0     off means off; the operator's zero stays authoritative
- *   slider 0.01 → 0.35  EXACTLY the shipped constant at the default, so the
+ *   slider 0.37 → 0.35  EXACTLY the shipped constant at the default, so the
  *                       approved look is reproduced unchanged (above the
- *                       anchor the floor rises smoothly — 0.05 ≈ 0.376)
+ *                       anchor the floor rises smoothly — 0.5 ≈ 0.484)
  *   slider 1.0  → 1.0   the boost decays to nothing: at full opacity the floor
  *                       equals the label alpha and stops overriding at all
  *

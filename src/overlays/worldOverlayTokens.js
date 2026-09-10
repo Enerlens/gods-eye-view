@@ -32,10 +32,12 @@ export const WORLD_OVERLAY_STYLE = Object.freeze({
    * quotes its publisher: the SSMSI reporting-rate sentence the délinquance
    * layer carries verbatim measures ~1 900 px on its own, so a selected commune
    * card spanned the whole viewport (seen 2026-09-02, Gironde) and — worse — its
-   * clamped CENTRE landed outside the keyhole, which paints it at the
-   * `KEYHOLE_OUTSIDE_OPACITY_DEFAULT` floor of 0.01. The reported symptom was a
-   * card so pale it could not be read at all, on the exact communes that need
-   * the most copy (withheld cells carry the suppression rule too).
+   * clamped CENTRE landed outside the keyhole, which paints it at
+   * `KEYHOLE_OUTSIDE_OPACITY_DEFAULT` — 0.01 at the time, 0.37 since
+   * 2026-09-10. The reported symptom was a card so pale it could not be read at
+   * all, on the exact communes that need the most copy (withheld cells carry
+   * the suppression rule too). The wider default softens that symptom; the
+   * ceiling below is what removes the cause.
    *
    * 420 px is ~66 characters of `fontDetail`: long enough that ordinary two-
    * value cards never wrap, short enough that a card stays a card.

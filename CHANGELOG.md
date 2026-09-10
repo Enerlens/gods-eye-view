@@ -92,7 +92,41 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `Retry-After` jusqu'à la bascule UTC), le client obéit au `Retry-After` en
   servant son dernier décodage plutôt qu'en martelant, et un 429 non étiqueté
   ne prend le parti de personne.
+- **Le panneau DISPLAY s'ouvre désormais sur les réglages du propriétaire, pas
+  sur ceux d'août.** Une capture de sa propre console, le 2026-09-10, contre
+  quatre valeurs de premier lancement : la détection ouvre en `BALANCED` à
+  `50 %` au lieu de `DENSE` à `75 %`, le fondu des étiquettes (Fade) passe de
+  `7 %` à `24 %`, l'opacité hors lucarne (Outside) de `1 %` à `37 %`, et le
+  fondu du masque circulaire (Feather) de `11 %` à `49 %`. HUD `tactical`, 3D
+  en `Proximity`, Scope allumé, Celestial éteint et Sharpen à `49 %` étaient
+  déjà ces défauts-là et n'ont pas bougé.
 
+  **Le premier lancement cesse d'emprunter le look tactique.** `DENSE @ 75 %`
+  était littéralement le même objet gelé que les styles militaires et le mode
+  Contacts appliquent ; un premier lancement le lisait par coïncidence. Il a
+  maintenant le sien, `FIRST_RUN_DETECTION_PRESET`, déclaré à côté de
+  `MILITARY_DETECTION_PRESET` — qui n'a pas changé, donc CRT/NVG/FLIR et
+  Contacts continuent de forcer le même Dense qu'avant. Au passage, `50` était
+  déjà la valeur du curseur de densité dans le markup, celle de son affichage
+  et celle du moteur de détection : c'est la base de premier lancement qui les
+  écrasait à 75 à chaque démarrage.
+
+  **Ce que la remontée d'Outside coûte au plancher des brackets AIR.**
+  `AIRCRAFT_BRACKET_FLOOR_ANCHOR` suit le défaut qu'il calibre — c'est la règle
+  écrite depuis 2026-08-24 — et le voilà à `0,37`. À cette ancre, toute la
+  rampe passe sous la diagonale : le plancher ne relève plus rien, à aucun
+  réglage, y compris à un `1 %` composé à la main où les brackets latéraux
+  s'effacent désormais avec leurs propres étiquettes. C'est consigné dans
+  `detectionPolicy.test.mjs` plutôt que caché, et redescendre le défaut
+  réarme le mécanisme tel quel.
+
+  **Un défaut a cinq surfaces, et deux replis qui n'en sont pas.** Constante
+  moteur, valeur du curseur, son affichage, `GLOBAL_POST_DEFAULTS` et l'état de
+  départ du générateur de liens ont bougé ensemble ; les replis de LECTURE
+  `scf` (35) et `ko` (5) restent où ils sont, parce qu'ils répondent à ce que
+  voyait l'auteur d'un lien qui omet le champ. Épinglé dans
+  `src/reasonableDefaults.test.mjs`. Un lien de partage, ou la main de
+  l'opérateur, l'emporte toujours : `dm=OFF` restaure toujours OFF.
 - **La légende des bouées marines cesse de plaider et se contente de nommer :
   douze lignes et 692 px deviennent huit et 219.** Le bloc de droite portait
   388 mots pour une seule couche. Quatre de ces lignes étaient une RÈGLE

@@ -418,13 +418,13 @@
       </div>
       <div class="pp-slider-row detection-fade-row" id="detection-fade-row">
         <label class="pp-slider-mini-label" for="detection-fade-slider">Fade</label>
-        <input type="range" class="pp-slider" id="detection-fade-slider" min="0" max="40" step="1" value="7" aria-label="Detection fade distance" title="World-overlay fade distance outside the keyhole as a percentage of its radius" />
-        <span class="pp-slider-value" id="detection-fade-value">7%</span>
+        <input type="range" class="pp-slider" id="detection-fade-slider" min="0" max="40" step="1" value="24" aria-label="Detection fade distance" title="World-overlay fade distance outside the keyhole as a percentage of its radius" />
+        <span class="pp-slider-value" id="detection-fade-value">24%</span>
       </div>
       <div class="pp-slider-row detection-opacity-row" id="detection-opacity-row">
         <label class="pp-slider-mini-label" for="detection-opacity-slider">Outside</label>
-        <input type="range" class="pp-slider" id="detection-opacity-slider" min="0" max="100" step="1" value="1" aria-label="Detection opacity outside the keyhole" title="World-overlay label and card opacity beyond the fade distance" />
-        <span class="pp-slider-value" id="detection-opacity-value">1%</span>
+        <input type="range" class="pp-slider" id="detection-opacity-slider" min="0" max="100" step="1" value="37" aria-label="Detection opacity outside the keyhole" title="World-overlay label and card opacity beyond the fade distance" />
+        <span class="pp-slider-value" id="detection-opacity-value">37%</span>
       </div>
     </div>
     <!-- The one shared preset-parameter surface is inserted here at runtime. -->
@@ -460,13 +460,13 @@
       </button>
       <div class="pp-slider-row visible" id="scope-slider-row">
         <span class="pp-slider-mini-label">Feather</span>
-        <!-- Feather starts at an 11% soft scope-mask edge (final value
-             2026-08-24, superseding the 08-22 hard-crop and 08-23 8% rulings);
+        <!-- Feather starts at a wide 49% scope-mask falloff (2026-09-10,
+             superseding the 08-24 11%, the 08-23 8% and the 08-22 hard crop);
              mirrors SCOPE_FEATHER_RATIO_DEFAULT in src/scopeMask.js. Feather
              softens the black mask edge; label fading is the separate Fade
              slider. -->
-        <input type="range" class="pp-slider" id="scope-feather-slider" min="0" max="100" value="11" title="Scope edge feather as a percentage of the keyhole radius" />
-        <span class="pp-slider-value" id="scope-feather-value">11%</span>
+        <input type="range" class="pp-slider" id="scope-feather-slider" min="0" max="100" value="49" title="Scope edge feather as a percentage of the keyhole radius" />
+        <span class="pp-slider-value" id="scope-feather-value">49%</span>
       </div>
     </div>
     <div class="pp-toggle-group">

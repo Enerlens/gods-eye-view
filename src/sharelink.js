@@ -205,19 +205,21 @@ export class ShareLinkManager {
     this._detectionMode = 'OFF';
     this._detectionDensity = 50;
     this._detectionAllocation = 'ELASTIC';
-    this._detectionFadePct = 7;
+    // Mirrors KEYHOLE_LABEL_FEATHER_RATIO in celestialRing.js and the slider's
+    // markup value (2026-09-10: 16 -> 7 -> 24).
+    this._detectionFadePct = 24;
     // Mirrors KEYHOLE_OUTSIDE_OPACITY_DEFAULT in celestialRing.js and the
-    // slider's markup value (final value 2026-08-24: 5 -> 3 -> 1). This is the
+    // slider's markup value (2026-09-10: 5 -> 3 -> 1 -> 37). This is the
     // state the link THIS session generates starts from, so it must match what
     // the session actually renders; the `ko` PARSE fallback below is a separate
     // question and deliberately stays at 5.
-    this._detectionOutsideOpacityPct = 1;
+    this._detectionOutsideOpacityPct = 37;
     this._celestialRingEnabled = false;
     this._scopeEnabled = true;
-    // Feather opens on a soft 11% scope-mask edge (final value 2026-08-24,
-    // superseding the 08-22 hard-crop and 08-23 8% rulings) — mirrors
+    // Feather opens on a wide 49% scope-mask falloff (2026-09-10, superseding
+    // the 08-24 11%, the 08-23 8% and the 08-22 hard crop) — mirrors
     // SCOPE_FEATHER_RATIO_DEFAULT in scopeMask.js and the slider's markup value.
-    this._scopeFeatherPct = 11;
+    this._scopeFeatherPct = 49;
     // null = the altitude-adaptive terminus (the default). A number pins the
     // outside-fill opacity as a percent, 94..100. (`sce`, 2026-08-17)
     this._scopeTerminusPct = null;
