@@ -230,18 +230,20 @@ export const LAYER_FUSIONS = Object.freeze([
   // Vehicles where the operator publishes them, stops with their frequency
   // where it does not. Île-de-France is the second case, which is why the
   // capital had zero vehicles on the row that promised them.
+  //
+  // ONE IDFM chip and not two. `idfm-frequency` was a second chip on this row
+  // until 2026-09-10, drawing the SAME stops — 95.6 % of its 36 502 join
+  // `arrets.arrid` — so a reader who wanted "how good is the transport here"
+  // had to know to press both, and the frequency half answered a click with a
+  // card the network half could not see. The two modules are now one layer and
+  // one card; see `idfmNetwork.js` for what the merge kept and what it dropped.
   Object.freeze({
     primary: 'transit-fr',
     companions: Object.freeze([
       Object.freeze({
         id: 'idfm-network',
         chip: 'Réseau IDFM',
-        title: 'Arrêts et lignes d’Île-de-France — 37 956 arrêts, licence IDFM',
-      }),
-      Object.freeze({
-        id: 'idfm-frequency',
-        chip: 'Fréquence IDFM',
-        title: 'Passages par arrêt et par heure, semaine type',
+        title: 'Arrêts, lignes et fréquence horaire d’Île-de-France — 37 956 arrêts',
       }),
     ]),
   }),

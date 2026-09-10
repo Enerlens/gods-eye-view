@@ -16,7 +16,7 @@ export const SPRITE_LAYER_ORDER = Object.freeze([
   'gas-fr',
   'power-grid',
   'rte-generation',
-  'idfm-frequency',
+  'idfm-network',
   'bikeshare',
   'shared-mobility-fr',
   'transit-fr',

@@ -1,4 +1,6 @@
-// What the WIDE regime of `idfm-frequency` is allowed to colour.
+// What the région fold is allowed to claim. It is no longer drawn — see the
+// module header — but it still backs `GET /api/idfm-frequency/region`, and the
+// arithmetic below is what makes that endpoint's numbers meanable.
 //
 // The property under test is a division: every polygon this module paints
 // carries a NUMERATOR the publisher aggregated and a DIVISOR this repo

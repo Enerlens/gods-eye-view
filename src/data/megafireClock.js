@@ -10,7 +10,7 @@
  * ── WHY A CURSOR AND NOT FIVE BUTTONS ───────────────────────────────────────
  *
  * `docs/REPRESENTATION.md` (Piste 3) states the repo's own indictment: "le
- * temps n'est jamais sur la carte", with `idfm-frequency` as the single
+ * temps n'est jamais sur la carte", with `idfm-network` as the single
  * exception and its hour chips as the mechanism to reuse. Chips alone would
  * have worked here — there are only five satellite frames — and they would have
  * been a worse answer, because the interesting quantity is not WHICH frame but

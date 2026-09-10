@@ -1352,7 +1352,7 @@ const bdtopoBuildingsLayer = {
    * the theme's own ramp replaces them and carries its name (D1) — a ramp whose
    * owner is not written next to it is unreadable the moment two thematic
    * layers exist. The "no data" row is kept at zero for the same reason
-   * `idfm-frequency` keeps its silent row: "this volume was not measured" is an
+   * `idfm-network` keeps its silent row: "this volume was not measured" is an
    * entry the reader needs before they can read the map at all.
    * @returns {{chips: Array<object>, legend: Array<object>}}
    */

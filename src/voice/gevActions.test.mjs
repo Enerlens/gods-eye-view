@@ -3642,14 +3642,14 @@ test('naming a fused subject by voice switches the SUBJECT, not one of its halve
     setEnabled: async () => true,
     setRowFollowers: async (id, value) => {
       moved.push([id, value]);
-      return value ? ['idfm-network', 'idfm-frequency'] : [];
+      return value ? ['idfm-network'] : [];
     },
   };
   const runner = createGevActionRunner({ viewer, styleManager, dataManager });
   const result = await runner('set_layer_visibility', { layerId: 'transit-fr', enabled: true });
   assert.equal(result.ok, true);
   assert.deepEqual(moved, [['transit-fr', true]]);
-  assert.deepEqual(result.companions, ['idfm-network', 'idfm-frequency']);
+  assert.deepEqual(result.companions, ['idfm-network']);
 });
 
 test('a layer with no companions answers exactly as it always has', async () => {

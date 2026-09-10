@@ -96,13 +96,19 @@ test('the taxonomy carries the fusion facets, and the panel projection drops the
   }
 });
 
-test('the merge is measured, not asserted: the panel loses 23 rows and keeps every layer', () => {
+test('the merge is measured, not asserted: the panel loses 22 rows and keeps every layer', () => {
   // The number is the point of the whole exercise, so it is pinned. If a new
   // layer lands, the row count moves and this assertion moves with it — what
   // must not move silently is the DIFFERENCE between what is registered and
   // what is listed.
+  //
+  // 23 until 2026-09-10, when `idfm-frequency` stopped being a companion by
+  // stopping being a layer: it and `idfm-network` drew the same stops, so they
+  // were merged into ONE module rather than kept as two chips on one row. A
+  // fusion hides a row; a merge deletes one, and the two are not the same
+  // operation. See `idfmNetwork.js`.
   const folded = LAYER_FUSIONS.reduce((total, fusion) => total + fusion.companions.length, 0);
-  assert.equal(folded, 23);
+  assert.equal(folded, 22);
 
   const rows = groupLayerIdsByCategory().flatMap((group) => group.layerIds);
   const datasets = LAYER_TAXONOMY.filter((entry) => entry.kind === 'dataset');

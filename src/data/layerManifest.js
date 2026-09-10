@@ -8,7 +8,7 @@
 // panel draws before anything is switched on, the subset of the optional layer
 // API the module implements, its default parameters, and a `load()` that
 // imports the module. `main.js` registers stubs built from these entries
-// (`createLazyLayer`), so the 61 layer modules and their 4.7 MB of
+// (`createLazyLayer`), so the 60 layer modules and their 4.7 MB of
 // pre-minification JavaScript leave the entry chunk and arrive per layer, on
 // the first toggle that needs one.
 //
@@ -226,8 +226,9 @@ export const LAYER_MANIFEST = Object.freeze([
     id: 'idfm-network',
     name: 'Réseau IDFM (Paris)',
     icon: 'Ⓜ',
-    source: 'Île-de-France Mobilités (ODbL)',
-    capabilities: Object.freeze(['destroy', 'getStats']),
+    source: 'Île-de-France Mobilités — référentiel (ODbL 1.0) et offre horaire (Licence Ouverte v2.0)',
+    capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
+    defaultParams: Object.freeze({ band: 'now', day: 'mardi' }),
     load: () => import('./idfmNetwork.js').then((module) => module.default),
   }),
   Object.freeze({
@@ -405,15 +406,6 @@ export const LAYER_MANIFEST = Object.freeze([
     source: 'Sitadel — permis de construire et de démolir, SDES/CGDD · parcelles cadastrales Etalab (DGFiP)',
     capabilities: Object.freeze(['destroy', 'getStats']),
     load: () => import('./sitadelFrance.js').then((module) => module.default),
-  }),
-  Object.freeze({
-    id: 'idfm-frequency',
-    name: 'Fréquence des transports (IDFM)',
-    icon: '⏱',
-    source: 'Offre hebdomadaire moyenne hors vacances — Île-de-France Mobilités',
-    capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
-    defaultParams: Object.freeze({ band: 'now', day: 'mardi' }),
-    load: () => import('./idfmFrequency.js').then((module) => module.default),
   }),
   Object.freeze({
     id: 'bruit-fr',

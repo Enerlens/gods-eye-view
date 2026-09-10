@@ -462,7 +462,7 @@ export function pulsePhrase(slot, curve) {
  *     calm end deliberately has almost none: a station doing nothing should let
  *     its street show through, which is the whole complaint this answers.
  *   · Closest approach to the two other magnitude ramps painted over these same
- *     streets (`idfm-frequency`, `comptages-fr`) is ΔE 19. Two layers on one
+ *     streets (`idfm-network`, `comptages-fr`) is ΔE 19. Two layers on one
  *     coordinate may not share a colour.
  *
  * It is warm without being a traffic light: amber → red → carmine, no green

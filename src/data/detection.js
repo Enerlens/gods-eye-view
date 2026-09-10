@@ -127,7 +127,7 @@ const LAYER_WEIGHTS = Object.freeze({
   'anfr-fr': 0.85,
   'fraicheur-fr': 0.85,
   'sitadel-fr': 0.8,
-  'idfm-frequency': 0.8,
+  'idfm-network': 0.8,
   'amenities-fr': 0.85,
   'meteo-stations-fr': 0.85,
   'petite-enfance-fr': 0.6,

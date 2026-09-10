@@ -170,7 +170,7 @@ test('an unsampled hour is neither end of the ramp, and never mistakable for a b
 });
 
 test('the ramp stays clear of the two magnitude ramps drawn over the same cities', () => {
-  // `idfm-frequency` paints a desaturated cold → cream ladder over Paris and
+  // `idfm-network` paints a desaturated cold → cream ladder over Paris and
   // `comptages-fr` an indigo → magenta → rose one over the same streets. Two
   // layers on one coordinate may not share a colour, and the check is a plain
   // distance in Lab rather than a promise in a comment.

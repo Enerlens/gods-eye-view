@@ -383,10 +383,10 @@ export const COMPTAGES_CLOCK_ZONE = 'Europe/Paris';
 /**
  * The chips the panel row offers.
  *
- * Seven, the same count `idfm-frequency` settled on, but split over TWO axes
+ * Seven, the same count `idfm-network` settled on, but split over TWO axes
  * instead of one: this layer's whole finding is that the weekend is a different
  * street (the peak hour moves on 83.9 % of arcs, and 40.7 % carry more traffic
- * at the weekend), so giving up the day-type axis the way `idfm-frequency` gave
+ * at the weekend), so giving up the day-type axis the way `idfm-network` gave
  * up the day would throw away the measurement.
  *
  * The four pinned hours are the ones the pack makes different, not an even
@@ -420,7 +420,7 @@ export function comptagesSlotToken(day, hour) {
 /**
  * Parse a slot token, or refuse it.
  *
- * Refuses rather than clamps, for the reason `idfm-frequency` wrote down about
+ * Refuses rather than clamps, for the reason `idfm-network` wrote down about
  * its own bands: a control that silently moved the reader to another hour
  * because a caller sent nonsense is worse than a control that did nothing.
  *
