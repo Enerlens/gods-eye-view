@@ -598,7 +598,6 @@ function renderRecords({ claimSelection = false } = {}) {
     fromPack: drawn.filter((record) => record.pack).length,
     packRetrievedAt: state.packRetrievedAt,
   });
-  state.paintSignature = paintSignature();
   for (const record of drawn) {
     const color = colorFor(record);
     const surfaceHeightM = installationSurfaceHeightM(record);
@@ -674,6 +673,10 @@ function renderRecords({ claimSelection = false } = {}) {
     : null;
   if (selectedEntity) selectEntityContext(selectedEntity);
   else state.selectedId = null;
+  // LAST, because the line above can drop a selection that produced no entity:
+  // a signature taken before it would describe a paint that never happened, and
+  // the next camera settle would skip the repaint that fixes it.
+  state.paintSignature = paintSignature();
 }
 
 /**
@@ -868,9 +871,10 @@ async function loadInstallations() {
     state.loading = false;
     // The pack answers a view this wide with no request at all, so a camera
     // past the gate is only "zoom in" where the pack has nothing: outside
-    // France, or before it has finished loading.
-    refreshCohort();
-    renderRecords();
+    // France, or before it has finished loading. Guarded, because `scheduleLoad`
+    // has already repainted for this same settle — rebuilding 700 entities
+    // twice per camera stop is the kind of cost that reads as a stutter.
+    repaintForView();
     // The status below passes NULL, not a prompt. `setInstallationStatus`'s
     // second argument is `state.error`, and the row renders a non-empty
     // `error` in its fault slot — so that one argument was the whole of
@@ -933,7 +937,10 @@ async function loadInstallations() {
         : (saturated ? 'Too many mapped sites in view to list them all' : null),
     );
     renderRecords();
-    warmInstallationFloors(state.records);
+    // The DRAWN cohort, not the loaded one: with the pack folded in, a wide
+    // view holds thousands of records and only 700 of them are on the globe.
+    // A floor for a mark nobody can see is a DEM request nobody asked for.
+    warmInstallationFloors(renderableRecords());
   } catch (error) {
     if (error?.name === 'AbortError') return;
     setInstallationStatus('unavailable', error?.message || 'Installation context unavailable');
