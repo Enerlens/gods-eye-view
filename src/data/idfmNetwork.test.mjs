@@ -57,8 +57,8 @@ import idfmNetworkLayer, {
   resolveSlot,
   stopBadge,
   stopBadgeFill,
-  waitPhrase,
-  weekLine,
+  mostDifferentDay,
+  waitClock,
   _clearIdfmNetworkSelectionForTest,
   _idfmNetworkDetectablesForTest,
   _idfmNetworkProbeForTest,
@@ -366,33 +366,45 @@ test('one click prints the network half and the frequency half together', () => 
   const { overlay } = seedStops({ pinnedBand: 8 });
   _selectIdfmNetworkForTest('idfm:stop:23613');
   const [entry] = overlay.entries.get(IDFM_OVERLAY_SOURCE_ID);
-  assert.equal(entry.title, 'Alésia - Général Leclerc');
+  // The mode rides on the title, beside the name: it is what kind of thing the
+  // reader just clicked, and it used to open the second line instead.
+  assert.equal(entry.title, 'Alésia - Général Leclerc · Bus');
   const body = norm(entry.details.join('\n'));
 
-  // THE NETWORK HALF: mode, arrondissement, fare zone, step-free status.
-  assert.ok(body.includes('Bus · Paris 14e · zone 1 · accessible'));
-  // THE FREQUENCY HALF, on the same card and never behind a second chip.
-  assert.ok(body.includes('Mardi 08:00–08:59 — 10 départs/h'));
-  assert.ok(body.includes('3 min d’attente moyenne'));
+  // THE CONSEQUENCE FIRST — how long you stand there, in the reader's words.
+  assert.ok(body.includes('Un bus toutes les 3 min — ce mardi à 08 h'));
+  // THE PROOF UNDER IT: the published rate, the peak, and the service span.
+  assert.ok(body.includes('10 par heure ici, jusqu’à 12 vers 19 h'));
+  assert.ok(/premier 06 h 00, dernier 01 h 00/.test(body));
+  // The day that DIFFERS, rather than seven numbers six of which agree.
+  assert.ok(body.includes('Samedi à la même heure : un toutes les 6 min'));
+  // THE NETWORK HALF: arrondissement, fare zone, step-free status.
+  assert.ok(body.includes('Paris 14e · zone 1 · accès de plain-pied'));
   // The whole day is on the card, which is what makes one hour on the map
   // legitimate rather than a cherry-pick.
   assert.ok(body.includes('04 h '));
-  assert.ok(body.includes(' 03 h'));
-  assert.ok(/premier 06:00/.test(body));
-  assert.ok(/dernier 01:00/.test(body));
+  assert.ok(body.includes(' 03 h — la journée entière'));
   // The other published name is kept, at the same point, rather than deleted.
   assert.ok(body.includes('Aussi publié « Les Plantes » au même point'));
-  // 21 of 24 bands published is not truncation, and the card says which it is.
-  assert.ok(body.includes('21 tranches publiées sur 24'));
-  // The week for the SELECTED band — the comparison the chips cannot make.
-  assert.ok(body.includes('Même tranche : Lun'));
   // It never reads like a departure board, and that is the LAST line: the two
   // licences used to follow it, and they are discharged by `dataCredits.js`
   // and by the layer's `source` string, not by the eleventh line of a card
   // somebody opened to find out what serves their street.
-  assert.ok(body.includes('semaine type hors vacances 2025'));
+  assert.ok(body.includes('Moyenne d’une semaine ordinaire 2025'));
+  assert.ok(body.includes('ce n’est pas un horaire'));
   assert.equal(/ODbL|Licence Ouverte/.test(body), false);
-  assert.ok(entry.details[entry.details.length - 1].includes('semaine type'));
+  assert.ok(entry.details[entry.details.length - 1].includes('semaine ordinaire'));
+
+  // WHAT THE REWRITE OF 2026-09-10 CUT, asserted so it cannot creep back: a
+  // day total in "courses" measures the operator's day rather than the
+  // reader's; a row of seven numbers asks no question; a count of published
+  // bands is internal accounting the first/last line already covers.
+  assert.equal(/Total \w+ : /.test(body), false);
+  assert.equal(body.includes('Même tranche'), false);
+  assert.equal(body.includes('tranches publiées'), false);
+  assert.equal(body.includes('départs/h'), false);
+  // Eleven lines became seven, plus the one caveat this stop happens to earn.
+  assert.ok(entry.details.length <= 8, `${entry.details.length} lines`);
   _clearIdfmNetworkSelectionForTest();
 });
 
@@ -415,11 +427,13 @@ test('a half that is missing says which one, and never says zero', async () => {
   await settle();
 
   const missing = norm(cardBody(overlay));
-  assert.ok(missing.includes('RER / Transilien · Paris 14e · zone 1 · accessibilité non renseignée'));
+  assert.ok(norm(overlay.entries.get(IDFM_OVERLAY_SOURCE_ID)[0].title)
+    .endsWith(' · RER / Transilien'));
+  assert.ok(missing.includes('Paris 14e · zone 1 · accessibilité non renseignée'));
   // Only now, with the answer in hand, is the absence stated.
   assert.equal(_idfmNetworkProbeForTest('999001')?.status, 'empty');
   assert.ok(missing.includes('Aucun profil horaire publié'));
-  assert.equal(missing.includes('départs/h'), false);
+  assert.equal(missing.includes('par heure ici'), false);
   assert.equal(missing.includes(IDFM_FREQ_SILENT_LABEL), false);
   assert.equal(asked.length, 1, 'one box, for one stop');
   // The smallest legal question, centred on the stop the reader clicked.
@@ -432,9 +446,10 @@ test('a half that is missing says which one, and never says zero', async () => {
   // the pack already holds it.
   _selectIdfmNetworkForTest('idfm-freq:23997');
   const orphan = norm(cardBody(overlay));
-  assert.ok(orphan.includes('Bus · Paris (75)'));
+  assert.ok(norm(overlay.entries.get(IDFM_OVERLAY_SOURCE_ID)[0].title).endsWith(' · Bus'));
+  assert.ok(orphan.includes('Paris (75)'));
   assert.equal(orphan.includes('zone 1'), false);
-  assert.ok(orphan.includes('départs/h') || orphan.includes(IDFM_FREQ_SILENT_LABEL));
+  assert.ok(orphan.includes('par heure ici') || orphan.includes('Rien ne passe ici'));
 
   // And going back to the stop with no profile does NOT buy the box again.
   _selectIdfmNetworkForTest('idfm:stop:999001');
@@ -469,8 +484,8 @@ test('a click above the frequency gate buys the profile it cannot draw', async (
   // No ceiling quoted back at the reader — the numbers, which is what a click
   // asked for. This line used to read "Offre horaire non lue à cette altitude".
   assert.equal(/altitude|Rapprochez|rapprochez/.test(body), false, body);
-  assert.ok(body.includes('départs/h'), body);
-  assert.ok(body.includes('Mardi 09:00–09:59'), body);
+  assert.ok(body.includes('par heure ici'), body);
+  assert.ok(body.includes('ce mardi à 09 h'), body);
   assert.equal(asked.length, 1);
 
   // The MAP is untouched: one stop wearing a rate while the hundred around it
@@ -535,11 +550,15 @@ test('a stop with no service in the band says so, and does not say zero', () => 
   seedStops({ pinnedBand: 27 });
   const resolved = resolveSelection('idfm-freq:23997');
   const copy = norm(buildStopCard(resolved, { day: 'mardi', band: 27, regime: 'arrets' }));
-  assert.ok(copy.includes(IDFM_FREQ_SILENT_LABEL));
-  assert.equal(copy.includes('0 départs/h'), false);
+  // Silence is stated as the thing it means to somebody standing there, and
+  // never as a rate of zero — a zero here would read as a measurement failure.
+  assert.ok(copy.includes('Rien ne passe ici ce mardi à 03 h'));
+  assert.equal(copy.includes('0 par heure'), false);
+  assert.equal(copy.includes('départs/h'), false);
   assert.equal(copy.includes('d’attente moyenne'), false);
-  // 19 bands out of 24, and the card explains the flat tail of the sparkline.
-  assert.ok(copy.includes('19 tranches publiées sur 24'));
+  // The service span still says when the day starts and ends, which is the
+  // part of "19 tranches publiées sur 24" a reader could act on.
+  assert.ok(/premier \d{2} h \d{2}, dernier \d{2} h \d{2}/.test(copy));
   _clearIdfmNetworkSelectionForTest();
 });
 
@@ -614,7 +633,17 @@ test('the legend counts what is drawn, and always carries the silence', () => {
   assert.ok(silent, 'the silent row is present even at zero');
   assert.equal(silent.count, 0);
   assert.equal(silent.color, IDFM_FREQ_SILENT_COLOR);
-  assert.ok(silent.blurb.includes('mesurée'));
+  // Silence is the ONE rung a colour cannot say on its own — the row right
+  // under it is literally "nobody counted" — so it is the one that still earns
+  // a sentence. The five that only paraphrased their own label are gone: the
+  // labels now name the wait, which is what they were reaching for.
+  assert.ok(silent.blurb.includes('il ne dessert rien'));
+  for (const entry of legend) {
+    if (entry === silent || entry.color === IDFM_NOT_MEASURED_COLOR) continue;
+    assert.equal(entry.blurb, undefined, entry.label);
+  }
+  // A rate rung names the WAIT, not the rate: nobody decides on « 8 à 16/h ».
+  assert.ok(legend.some((entry) => /^un passage toutes les /.test(entry.label)));
 
   // The badges the offer does not reach get their own row, in the repo-wide
   // "not measured" grey — one of the three referential stops in the fixture.
@@ -627,6 +656,34 @@ test('the legend counts what is drawn, and always carries the silence', () => {
   _idfmNetworkSetParamsForTest({ band: 27 });
   const night = _idfmNetworkRowControlsForTest().legend;
   assert.equal(night.find((entry) => entry.label === IDFM_FREQ_SILENT_LABEL).count, 5);
+
+  // The stops nobody can place are NOT a counted row: no swatch, no count
+  // beside them, and the number inside the sentence. Under rows counting what
+  // IS on screen, the old shape read as « 549 arrêts placés sur la carte »,
+  // which is the exact opposite of what it says. It is also a REGIONAL fact,
+  // read from the regional product: the viewport payload's own `unplaced`
+  // counts something else and answers 0 almost everywhere, which left the note
+  // unreachable.
+  _setIdfmNetworkStateForTest({
+    viewer: fakeViewer(BOX),
+    overlayHost: fakeOverlay(),
+    now: TUESDAY_0930,
+    points: fakePoints(),
+    pack: PACK,
+    refStops: REF_STOPS,
+    pinnedBand: 8,
+    unplacedTotal: 549,
+  });
+  const unplaced = _idfmNetworkRowControlsForTest().legend.at(-1);
+  assert.equal(unplaced.color, null);
+  assert.equal(unplaced.count, undefined);
+  assert.ok(unplaced.label.startsWith('549 arrêts sans coordonnée publiée'));
+  assert.ok(unplaced.label.includes('sur aucune carte'));
+  assert.equal(_idfmNetworkStatsForTest().stopsWithoutCoordinate, 549);
+  // Not read yet is NOT zero: an unknown count publishes no line at all.
+  seedStops({ pinnedBand: 8 });
+  assert.notEqual(_idfmNetworkRowControlsForTest().legend.at(-1).color, null);
+  assert.equal(_idfmNetworkStatsForTest().stopsWithoutCoordinate, null);
   _clearIdfmNetworkSelectionForTest();
 });
 
@@ -813,10 +870,6 @@ test('the small text helpers say what they mean', () => {
   assert.equal(formatRate(9.94), '9,9');
   assert.equal(norm(formatRate(1234.6)), '1 235');
   assert.equal(formatRate(NaN), '—');
-  assert.equal(waitPhrase(0), null);
-  assert.equal(waitPhrase(null), null);
-  assert.equal(waitPhrase(40), 'moins d’une minute d’attente moyenne');
-  assert.equal(waitPhrase(2), '15 min d’attente moyenne');
   // A missing sample is `·` and never `▁`, which is the sparkline module's own
   // rule; here every band is published, so there are no dots.
   const stop = PACK.stops.find((entry) => entry.id === '36547');
@@ -824,8 +877,30 @@ test('the small text helpers say what they mean', () => {
   assert.equal(glyphs.length, 24);
   assert.equal(glyphs.includes('·'), false);
   assert.equal(dayGlyphs(stop.profile, 'monday'), '');
-  assert.ok(weekLine(stop.profile, 8).startsWith('Lun 29'));
-  assert.equal(weekLine(stop.profile, 8).split(' · ').length, 7);
+  // A mean wait is said on a clock face, and never finer than the half minute:
+  // it is derived from a count of departures in an hour, not from a published
+  // headway, and seconds would claim a precision nobody has.
+  assert.equal(waitClock(12), '2 min 30');
+  assert.equal(waitClock(10), '3 min');
+  assert.equal(waitClock(2), '15 min');
+  assert.equal(waitClock(40), 'moins d’une minute');
+  assert.equal(waitClock(0), null);
+  assert.equal(waitClock(null), null);
+  // The day worth a line is the one that DIFFERS, and the shown day is never
+  // its own answer. Under the threshold there is nothing to say.
+  const different = mostDifferentDay(stop.profile, 8, 'mardi');
+  assert.ok(different);
+  assert.notEqual(different.day, 'mardi');
+  assert.equal(mostDifferentDay(stop.profile, 8, 'mardi', 10), null);
+  // Nothing runs on the shown day: there is no baseline to differ FROM, and a
+  // ratio against zero would print a comparison nobody can read.
+  assert.equal(mostDifferentDay({}, 8, 'mardi'), null);
+  assert.equal(mostDifferentDay(null, 8, 'mardi'), null);
+  // The mode left this line for the title; where the stop IS stayed behind.
+  assert.equal(networkLine(null), null);
+  assert.equal(networkLine({ town: 'Paris 14e', fareZone: 1, accessible: true }),
+    'Paris 14e · zone 1 · accès de plain-pied');
+  assert.equal(networkLine(null, { commune: 'Paris', dept: '75' }), 'Paris (75)');
 });
 
 test('a click on the map closes the card, even on a photorealistic globe', () => {

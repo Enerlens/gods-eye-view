@@ -526,6 +526,69 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   couche dans le navigateur, quatre repos sous la précision de comparaison
   n'émettent aucune requête, sur les onze.
 
+- **Les arrêts d'Île-de-France cessaient d'être des points fixes, et leur clé se
+  répétait.** Deux des quatre remarques d'un lecteur sur la couche « Transports
+  en commun ». Les deux autres — la marque grise sur gris, et le clic sans
+  réponse — sont réglées par la #162.
+
+  **« Il me semblait que c'étaient des points géographiques fixes. »** Ils
+  l'étaient — c'est le dessin qui ne l'était pas, et le défaut n'était pas
+  local à cette couche. Les marques étaient posées sur l'**ellipsoïde, à la
+  hauteur 0**, alors que le maillage photoréaliste lit **83 à 92 m** aux mêmes
+  coordonnées : quatre-vingt-dix mètres sous leur propre trottoir. Le test de
+  profondeur étant désactivé, elles étaient peintes quand même, et leur
+  position à l'écran devenait une fonction de la **pose de la caméra**. Mesuré
+  au Quartier latin, caméra au nadir à 420 m, canevas 1400 × 900 : **140 px**
+  d'écart médian, **272 px** au pire, et jusqu'à **269 px de glissement** sur un
+  panoramique de 250 m. Après : **0,0 px** aux trois mesures.
+
+  **La cause est générale.** Le mécanisme de calage lisait `globe.getHeight()`,
+  et l'application masque le globe dès que la pile photoréaliste est active —
+  c'est-à-dire par défaut. Un globe masqué ne charge aucune tuile : la fonction
+  renvoyait `undefined` partout, et tout le calage ne faisait **rien**, en
+  silence, sur la pile que la plupart des lecteurs regardent.
+  `src/data/renderedSurface.js` sonde désormais la surface réellement dessinée,
+  et il ration la sonde — `scene.sampleHeight` coûte **6,28 ms l'appel** : une
+  sonde au centre de la boîte prêtée à toutes les marques (à elle seule, 88 m
+  d'erreur ramenés à ~8 m), des sondes par marque plafonnées à 24 par passe et
+  verrouillées une fois pour toutes, et un réessai qui **double son délai**
+  (250 ms → 8 s, ~16 s d'horizon) parce qu'une première version à intervalle
+  fixe expirait *avant* la fin du streaming des tuiles. `isochroneRings`, les
+  cinq couches de scan d'adresse et les disques de fréquence — qui sont des
+  `PointPrimitive` — sont corrigés au passage. La bande de plausibilité, le
+  plafond de caméra et le test de drainage des tuiles sont **empruntés à
+  `provisionalFloor.js`** et `meshFloorSampler.js`, qui possèdent déjà cette
+  question ; ce qui n'est pas partagé, c'est le GRAIN — une cellule de ~111 m
+  sondée en son centre est la bonne maille pour un front de feu et la mauvaise
+  pour un arrêt, où elle tombe sur un toit haussmannien aussi volontiers que
+  sur le trottoir.
+
+  **« Là, c'est du charabia. »** La clé répétait surtout ses propres étiquettes
+  — `4 à 8/h — 7 à 15 min` portait dessous « Quatre à huit par heure : 7 à 15
+  minutes. » Les étiquettes nomment maintenant ce sur quoi un lecteur décide :
+  **« un passage toutes les 4 à 7 min »**. Les six paraphrases ont disparu ; il
+  reste une phrase, sur le seul état qu'une couleur ne peut pas dire — le
+  silence, dont la ligne voisine est justement « non mesuré ». Et les **549
+  arrêts sans coordonnée sortent de la colonne des comptes** : posée sous des
+  lignes comptant ce qui est à l'écran, avec sa pastille, elle se lisait
+  exactement à l'envers. C'est le contraire — ce sont les seuls arrêts qu'on
+  **ne peut pas** placer, 549 sur 36 502, soit **1,50 %**. Elle est désormais
+  une note sans pastille, son nombre est dans la phrase, et il est lu au bon
+  endroit : le produit régional et non la boîte à l'écran, dont le champ
+  homonyme compte autre chose et répond 0 partout — ce qui rendait la note tout
+  simplement inatteignable.
+
+  **La fiche passe de onze lignes à sept**, et commence par la conséquence :
+  `Un bus toutes les 2 min 30 — ce jeudi à 17 h`, puis le débit qui le prouve,
+  puis le seul jour qui **diffère** à la même heure. Trois lignes sont tombées :
+  un total quotidien en « courses » (qui mesure la taille de l'arrêt, pas la
+  journée du lecteur) ; une rangée de sept nombres sans question posée,
+  généralisée plutôt que câblée sur le week-end, parce que le plus grand écart
+  de ce jeu n'est pas le samedi mais le **vendredi soir, +98,6 % sur la tranche
+  01 h** ; et un décompte de tranches publiées, dont la part utile est déjà
+  « premier 06 h 00, dernier 00 h 00 ». Le mode monte sur le titre, à côté du
+  nom, où un lecteur cherche ce qu'il vient de cliquer.
+
 - **Le comptage parisien cessait de s'inviter à Tokyo.** `comptages-fr` dessine
   2 946 arcs de rue parisiens et rien d'autre sur Terre — sa boîte entière fait
   **12,6 km sur 10,0**. C'était un compagnon de la rangée « Trafic routier »

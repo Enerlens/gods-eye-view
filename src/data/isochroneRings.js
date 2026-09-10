@@ -614,7 +614,7 @@ export function flyToCatchmentFrame(viewer, frame) {
   // over the Camargue are not the same view, and the frame was solved in
   // metres of ground per pixel.
   const groundM = renderedGroundM(
-    viewer.scene?.globe, Cesium.Math.toRadians(lon), Cesium.Math.toRadians(lat),
+    viewer.scene, Cesium.Math.toRadians(lon), Cesium.Math.toRadians(lat),
   ) ?? 0;
   camera.cancelFlight?.();
   camera.flyTo({

@@ -7,6 +7,7 @@ import {
 import { governorRequestRender } from '../renderGovernor.js';
 import { sceneGroundPoint } from './groundPick.js';
 import { isWorldPick } from './pickRegistry.js';
+import { renderedSurfaceM, seatEntitiesOnSurface } from './renderedSurface.js';
 import { deriveFetchCenter, greatCircleKm } from './trafficBounds.js';
 
 /**
@@ -99,12 +100,15 @@ export const ADDRESS_SCAN_MOVE_DEBOUNCE_MS = 450;
  * a function of the camera pose, so the dots slide over the city instead of
  * sticking to it, and no amount of squinting at the data explains it.
  *
- * The height is therefore read rather than assumed. `globe.getHeight()`
- * returns the height of the terrain triangle the globe is ACTUALLY rendering —
- * the same call `bdtopoBuildings.js` uses to seat a footprint — synchronously,
- * with no network. Markers are re-seated when terrain finishes streaming and
- * when the camera settles, because the LOD under a point refines as you fly
- * toward it.
+ * The height is therefore read rather than assumed — and read from whichever
+ * surface is on screen. `renderedSurface.js` owns that question and records why
+ * it had to: `globe.getHeight()` is the right call on a globe stack and answers
+ * `undefined` for every point on the PHOTOREAL one, where the globe is hidden.
+ * The seating below was a no-op on the default stack until 2026-09-10 —
+ * measured at 83 to 92 m of error over the Latin Quarter, up to 272 px on
+ * screen. Markers are re-seated when the surface finishes streaming and when
+ * the camera settles, because the LOD under a point refines as you fly toward
+ * it.
  */
 
 /** Height change, in metres, below which re-seating a marker buys nothing. */
@@ -113,69 +117,77 @@ export const SEAT_EPSILON_M = 0.25;
 /** Settle time before a re-seat, in ms. Coalesces a burst of tile loads. */
 export const SEAT_SETTLE_MS = 250;
 
+/**
+ * Extra seating passes a layer books for itself while marks are still owed a
+ * reading of their own, and the backoff between them.
+ *
+ * TWO things have to be outlasted, and only one of them was obvious. Six passes
+ * x SURFACE_SAMPLE_BUDGET covers 144 marks, comfortably past the 100-stop
+ * ceiling the densest of these layers draws — that is the budget half. The
+ * other half is the TILESET: nothing may be probed until it reports
+ * `tilesLoaded`, and a first fixed-interval cut of this loop (six x 250 ms,
+ * 1.5 s) expired before the photoreal stack had finished streaming and left
+ * every mark on the ellipsoid — the exact bug it was written to fix, measured
+ * again on 2026-09-10 with `seatPending` still true eighteen seconds in.
+ *
+ * So the delay DOUBLES: 250, 500, 1 000, 2 000, 4 000, 8 000 ms — a ~16 s
+ * horizon at six wake-ups, rather than 1.5 s at the same price. Bounded rather
+ * than open-ended because a box the tileset never answers for (mid-air,
+ * mid-ocean, a stack with no tileset at all) must stop costing probes; the
+ * layer's own poll re-arms the loop if the debt is still standing then.
+ */
+export const SEAT_RETRY_PASSES = 6;
+/** Backoff factor between those passes. See {@link SEAT_RETRY_PASSES}. */
+export const SEAT_RETRY_BACKOFF = 2;
+
 const _seatScratch = new Cesium.Cartographic();
 const _centreScratch = new Cesium.Cartographic();
 
 /**
- * The height of the surface the globe is DRAWING at a point, in ellipsoidal
- * metres, or null when no terrain tile covers it yet.
+ * The height of the surface the app is DRAWING at a point, in ellipsoidal
+ * metres, or null when nothing can answer for it yet.
  *
- * @param {object} globe Cesium globe.
+ * A thin alias kept for the five call sites that already read this name. The
+ * decision it wraps — globe triangles or a rationed tileset probe — belongs to
+ * `renderedSurface.js`, which states the measurement behind it.
+ *
+ * @param {object} scene Cesium scene.
  * @param {number} lonRadians
  * @param {number} latRadians
  * @param {object} [scratch] Reused Cartographic.
  * @returns {?number}
  */
-export function renderedGroundM(globe, lonRadians, latRadians, scratch = _centreScratch) {
-  if (typeof globe?.getHeight !== 'function') return null;
-  scratch.longitude = lonRadians;
-  scratch.latitude = latRadians;
-  scratch.height = 0;
-  const height = globe.getHeight(scratch);
-  return Number.isFinite(height) ? height : null;
+export function renderedGroundM(scene, lonRadians, latRadians, scratch = _centreScratch) {
+  return renderedSurfaceM(scene, lonRadians, latRadians, { scratch });
 }
 
 /**
- * Move every marker onto the terrain underneath it.
+ * Move every marker onto the surface underneath it.
  *
  * Each entity's own longitude and latitude are read back off the position it
  * was drawn with, so a layer opts into this simply by placing its markers
  * where its data says they are; nothing has to be threaded through `render()`.
  *
- * `fallbackHeightM` is the ground under the scan centre, and it exists for the
+ * `fallbackHeightM` is the surface under the scan centre, and it exists for the
  * cold case: a camera that has just arrived has drawn its markers before a
- * single terrain tile answered. Every marker in these layers is within a few
- * hundred metres of that centre, so its height is a far better prior than
- * zero — and `pending` reports that a real reading is still owed, so the next
- * pass comes back for it.
+ * single tile answered. Every marker in these layers is within a few hundred
+ * metres of that centre, so its height is a far better prior than zero — and
+ * `pending` reports that a real reading is still owed, so the next pass comes
+ * back for it. On the photoreal stack that one centre reading is worth most of
+ * the fix on its own: see the TIER 1 note in `renderedSurface.js`.
  *
  * @param {Iterable<object>} entities Cesium entities.
- * @param {object} globe Cesium globe.
+ * @param {object} scene Cesium scene.
  * @param {?number} [fallbackHeightM]
  * @returns {{moved: number, pending: number}} How many markers changed height,
- *   and how many are still seated without a terrain reading of their own.
+ *   and how many are still seated without a reading of their own.
  */
-export function seatEntitiesOnGround(entities, globe, fallbackHeightM = null) {
-  const result = { moved: 0, pending: 0 };
-  if (!entities || typeof globe?.getHeight !== 'function') return result;
-  const now = Cesium.JulianDate.now();
-  for (const entity of entities) {
-    const position = entity?.position?.getValue?.(now);
-    // A clamped polyline carries `polyline.positions` and no `position` of its
-    // own. It is already on the ground; there is nothing here to seat.
-    if (!position) continue;
-    const carto = Cesium.Cartographic.fromCartesian(position, Cesium.Ellipsoid.WGS84, _seatScratch);
-    if (!carto) continue;
-    const current = carto.height;
-    const ground = globe.getHeight(carto);
-    const measured = Number.isFinite(ground);
-    if (!measured) result.pending += 1;
-    const target = measured ? ground : fallbackHeightM;
-    if (!Number.isFinite(target) || Math.abs(target - current) <= SEAT_EPSILON_M) continue;
-    entity.position = Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, target);
-    result.moved += 1;
-  }
-  return result;
+export function seatEntitiesOnGround(entities, scene, fallbackHeightM = null) {
+  const { moved, pending } = seatEntitiesOnSurface(entities, scene, {
+    fallbackHeightM,
+    epsilonM: SEAT_EPSILON_M,
+  });
+  return { moved, pending };
 }
 
 /** Accent of a selected marker and of the card it opens. */
@@ -642,7 +654,7 @@ export function createAddressScanLayer(config) {
     const at = cardAnchor(card);
     if (!at || !Number.isFinite(at.lon) || !Number.isFinite(at.lat)) return card;
     const height = renderedGroundM(
-      _viewer?.scene?.globe,
+      _viewer?.scene,
       Cesium.Math.toRadians(at.lon),
       Cesium.Math.toRadians(at.lat),
     ) ?? 0;
@@ -684,7 +696,7 @@ export function createAddressScanLayer(config) {
     if (!body?.title) return false;
     clearSelection();
     const height = renderedGroundM(
-      _viewer.scene?.globe,
+      _viewer.scene,
       Cesium.Math.toRadians(ground.lon),
       Cesium.Math.toRadians(ground.lat),
     ) ?? 0;
@@ -824,14 +836,14 @@ export function createAddressScanLayer(config) {
   }
 
   /**
-   * Move the open ground card onto the terrain now resident under it.
-   * @param {object} globe
+   * Move the open ground card onto the surface now resident under it.
+   * @param {object} scene
    * @returns {boolean} True when the card's anchor changed.
    */
-  function reseatGroundCard(globe) {
+  function reseatGroundCard(scene) {
     if (!_groundCard) return false;
     const height = renderedGroundM(
-      globe,
+      scene,
       Cesium.Math.toRadians(_groundCard.lon),
       Cesium.Math.toRadians(_groundCard.lat),
     );
@@ -852,18 +864,18 @@ export function createAddressScanLayer(config) {
    * @returns {number} How many markers moved.
    */
   function seatMarkers(centre = _lastPoint) {
-    const globe = _viewer?.scene?.globe;
-    if (!globe || !_dataSource || _dormant) return 0;
+    const scene = _viewer?.scene;
+    if (!scene?.globe || !_dataSource || _dormant) return 0;
     const fallback = centre
-      ? renderedGroundM(globe, Cesium.Math.toRadians(centre.lon), Cesium.Math.toRadians(centre.lat))
+      ? renderedGroundM(scene, Cesium.Math.toRadians(centre.lon), Cesium.Math.toRadians(centre.lat))
       : null;
-    const { moved, pending } = seatEntitiesOnGround(_dataSource.entities.values, globe, fallback);
+    const { moved, pending } = seatEntitiesOnGround(_dataSource.entities.values, scene, fallback);
     _seatPending = pending > 0;
     // The ground card is not an entity and so is not in that sweep, but it has
     // the same problem: it was anchored on whatever terrain LOD was resident
     // when the click landed, and the tile under it refines as the camera flies
     // in. Left alone, the card slides off the plot it names.
-    const cardMoved = reseatGroundCard(globe);
+    const cardMoved = reseatGroundCard(scene);
     if (moved > 0) indexCards();
     if (moved > 0 || cardMoved) {
       refreshSelectionAnchor();
@@ -872,10 +884,23 @@ export function createAddressScanLayer(config) {
     return moved;
   }
 
-  /** Re-seat once terrain settles, coalescing the burst of tile-load events. */
-  function scheduleSeat() {
+  /**
+   * Re-seat once the surface settles, coalescing the burst of tile-load events.
+   *
+   * `retries` is what makes the photoreal stack converge. On a globe stack the
+   * `tileLoadProgressEvent` below fires a `queued === 0` that says "ask again";
+   * with the globe hidden that event never fires at all, and the per-marker
+   * probe budget means one pass seats at most `SURFACE_SAMPLE_BUDGET` marks. So
+   * a pass that still reports a debt books the next one itself, bounded — a
+   * dense box converges in three or four passes, and a box the tileset will
+   * never answer for stops asking rather than retrying behind the reader's back.
+   */
+  function scheduleSeat(retries = SEAT_RETRY_PASSES, delayMs = SEAT_SETTLE_MS) {
     clearTimeout(_seatTimer);
-    _seatTimer = setTimeout(() => { seatMarkers(); }, SEAT_SETTLE_MS);
+    _seatTimer = setTimeout(() => {
+      seatMarkers();
+      if (_seatPending && retries > 0) scheduleSeat(retries - 1, delayMs * SEAT_RETRY_BACKOFF);
+    }, delayMs);
   }
 
   /**
@@ -898,6 +923,9 @@ export function createAddressScanLayer(config) {
       payload: _payload, dataSource: _dataSource, point: _lastPoint, viewer: _viewer,
     }) || 0;
     seatMarkers(_lastPoint);
+    // The photoreal stack has no `tileLoadProgressEvent` to come back on, so a
+    // pass that ends in debt has to book its own follow-up here.
+    if (_seatPending) scheduleSeat();
     indexCards();
     // The selection was cleared to rebuild the entities it pointed at, so the
     // hook runs here too — otherwise switching basemaps silently closes a card
