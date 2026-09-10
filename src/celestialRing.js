@@ -11,13 +11,19 @@ export const GLOBE_EXIT_CLEARANCE_PX = 12;
 export const CELESTIAL_PLANE_EPSILON = 0.045;
 /** Responsive radial fade band used by every keyhole-aligned text overlay —
  * this is the Detection FADE (label/card fading), NOT the scope-mask feather
- * in scopeMask.js. 0.07 since the 2026-08-24 final value (was 0.16). */
-export const KEYHOLE_LABEL_FEATHER_RATIO = 0.07;
+ * in scopeMask.js. 0.24 since the owner's 2026-09-10 console screenshot, which
+ * made the panel they actually work in the shipped default (was 0.07 on
+ * 08-24, 0.16 before). A wider band means labels dissolve into the surround
+ * instead of ending on a line. */
+export const KEYHOLE_LABEL_FEATHER_RATIO = 0.24;
 export const KEYHOLE_LABEL_FEATHER_MAX_RATIO = 0.4;
 /**
  * First-run OUTSIDE opacity for keyhole-aligned world overlays.
  *
- * 0.01 since 2026-08-24 (final value; 0.03 on 08-23, 0.05 before). Keep in lockstep with
+ * 0.37 since 2026-09-10, from the owner's own console: the world beyond the
+ * keyhole is readable rather than erased, so contacts outside the scope stay
+ * legible instead of being implied. (0.01 on 08-24, 0.03 on 08-23, 0.05
+ * before — this supersedes all three.) Keep in lockstep with
  * `#detection-opacity-slider`'s markup value AND readout in index.html,
  * `_detectionOutsideOpacityPct` in sharelink.js,
  * `GLOBAL_POST_DEFAULTS.detectionOutsideOpacityPct` in ui.js, and
@@ -26,7 +32,7 @@ export const KEYHOLE_LABEL_FEATHER_MAX_RATIO = 0.4;
  * fallback, which stays at 5 on purpose: a link predating that field was
  * authored when 5 was what its author saw. Pinned in reasonableDefaults.test.mjs.
  */
-export const KEYHOLE_OUTSIDE_OPACITY_DEFAULT = 0.01;
+export const KEYHOLE_OUTSIDE_OPACITY_DEFAULT = 0.37;
 
 const RING_INSET_PX = 11;
 const MARKER_INSET_PX = 36;

@@ -8,11 +8,20 @@
 //      Pinned in `data/layerState.test.mjs`, next to the coordinator that
 //      actually decides fresh-boot layer state — including the early return that
 //      makes each layer's own initializer the operative default.
-//   2. Scope feather moved to 0% on 2026-08-22, 8% on 2026-08-23, and a soft
-//      11% edge on 2026-08-24. The hard crop is still one drag away and pinned.
-//   3. Detection ON (Dense @ 75%) for EVERY style, Normal included.
-//   4. Detection OUTSIDE opacity 1% (final value, 2026-08-24; 3% on 08-23, 5% before), with
-//      the slider's `step` at 1 so the range around it is reachable at all.
+//   2. Scope feather moved to 0% on 2026-08-22, 8% on 2026-08-23, a soft 11%
+//      edge on 2026-08-24, and a wide 49% falloff on 2026-09-10. The hard crop
+//      is still one drag away and pinned.
+//   3. Detection ON for EVERY style, Normal included. It opens at Balanced @
+//      50% since 2026-09-10; Dense @ 75% is still the tactical preset the
+//      military styles and Contacts apply.
+//   4. Detection OUTSIDE opacity 37% (2026-09-10; 1% on 08-24, 3% on 08-23, 5%
+//      before), with the slider's `step` at 1 so the range around it is
+//      reachable at all.
+//
+// The 2026-09-10 batch is one instruction — the owner's own DISPLAY panel,
+// screenshotted, with "I'd like the display settings I picked here to be the
+// defaults." Fade, OUTSIDE, feather and the detection profile all move from
+// that single reading, which is why they move together.
 //
 // Each pin below has the same three parts, because a default is never one
 // literal:
@@ -28,8 +37,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-import { KEYHOLE_OUTER_RADIUS, KEYHOLE_OUTSIDE_OPACITY_DEFAULT, KEYHOLE_LABEL_FEATHER_RATIO } from './celestialRing.js';
-import { AIRCRAFT_BRACKET_FLOOR_ANCHOR } from './data/detectionPolicy.js';
+import {
+  KEYHOLE_OUTER_RADIUS,
+  KEYHOLE_OUTSIDE_OPACITY_DEFAULT,
+  KEYHOLE_LABEL_FEATHER_RATIO,
+  KEYHOLE_LABEL_FEATHER_MAX_RATIO,
+} from './celestialRing.js';
+import {
+  AIRCRAFT_BRACKET_FLOOR_ANCHOR,
+  canonicalizeDensity,
+  defaultDensityForProfile,
+  profileForDensity,
+} from './data/detectionPolicy.js';
 import {
   SCOPE_FEATHER_RATIO_DEFAULT,
   getScopeMaskFeather,
@@ -71,27 +90,27 @@ function managerForHash(hash) {
 // 2. Scope feather — a subtle soft edge on a first run
 // ---------------------------------------------------------------------------
 
-test('first run opens with a subtle scope feather, at every surface that decides it', () => {
-  assert.equal(SCOPE_FEATHER_RATIO_DEFAULT, 0.11,
-    'final value 2026-08-24, superseding the 08-22 hard-crop and 08-23 8% rulings');
-  assert.equal(getScopeMaskFeather(), 0.11,
+test('first run opens with a wide scope feather, at every surface that decides it', () => {
+  assert.equal(SCOPE_FEATHER_RATIO_DEFAULT, 0.49,
+    '2026-09-10, superseding the 08-24 11%, the 08-23 8% and the 08-22 hard crop');
+  assert.equal(getScopeMaskFeather(), 0.49,
     'and the live module starts there, not merely documents it');
 
   // The slider and its readout are the same default rendered as markup — a
   // fresh boot applies no restore, so a stale value here would show one number
   // over a mask drawn at another.
-  assert.match(indexHtml, /id="scope-feather-slider"[^>]*\svalue="11"/,
-    'index.html: the feather slider ships at 11');
-  assert.match(indexHtml, /id="scope-feather-value"[^>]*>11%</,
+  assert.match(indexHtml, /id="scope-feather-slider"[^>]*\svalue="49"/,
+    'index.html: the feather slider ships at 49');
+  assert.match(indexHtml, /id="scope-feather-value"[^>]*>49%</,
     'index.html: and its readout agrees with the handle');
 
   // The link this session generates must describe the mask this session draws,
   // for the window before the first _syncShareState.
-  assert.match(shareSource, /this\._scopeFeatherPct = 11;/,
+  assert.match(shareSource, /this\._scopeFeatherPct = 49;/,
     'sharelink.js: the generator starts from the same value the mask starts at');
 });
 
-test('an explicit feather still wins over the subtle default', () => {
+test('an explicit feather still wins over the wide default', () => {
   // A link is authored state. The new default governs a session that said
   // nothing; it must never overwrite one that said something.
   assert.equal(managerForHash('#lat=10&lon=20&scf=35').parseInitialHash().scopeFeatherPct, 35);
@@ -106,7 +125,7 @@ test('an explicit feather still wins over the subtle default', () => {
     'a pre-scf link restores the author\'s view, not the new default');
 });
 
-test('the subtle default did not weaken the feather control, and 0 is still reachable', () => {
+test('the wide default did not weaken the feather control, and 0 is still reachable', () => {
   // The cheap way to move a default would be to nerf the control. Prove the
   // slider still spans its full range and the geometry is still DERIVED from
   // the ratio — a check that would pass vacuously if it only ever saw one value.
@@ -140,40 +159,46 @@ test('the subtle default did not weaken the feather control, and 0 is still reac
 });
 
 // ---------------------------------------------------------------------------
-// 2c. Detection Fade — 7% on a first run, at every surface that decides it
-// (final value 2026-08-24; 16% before). Fade is the label/card fading
+// 2c. Detection Fade — 24% on a first run, at every surface that decides it
+// (2026-09-10; 7% on 08-24, 16% before). Fade is the label/card fading
 // band around the keyhole — a different control from the scope-mask feather.
-test('first run opens at 7% detection fade, at every surface that decides it', () => {
-  assert.equal(KEYHOLE_LABEL_FEATHER_RATIO, 0.07,
-    'celestialRing.js: the engine fade band opens at 7%');
-  assert.match(uiSource, /detectionFadePct: 7,/,
+test('first run opens at 24% detection fade, at every surface that decides it', () => {
+  assert.equal(KEYHOLE_LABEL_FEATHER_RATIO, 0.24,
+    'celestialRing.js: the engine fade band opens at 24%');
+  assert.match(uiSource, /detectionFadePct: 24,/,
     'ui.js: the global post defaults apply the same value on first load');
-  assert.match(indexHtml, /id="detection-fade-slider"[^>]*\svalue="7"/,
-    'index.html: the fade slider ships at 7');
-  assert.match(indexHtml, /id="detection-fade-value"[^>]*>7%</,
+  assert.match(indexHtml, /id="detection-fade-slider"[^>]*\svalue="24"/,
+    'index.html: the fade slider ships at 24');
+  assert.match(indexHtml, /id="detection-fade-value"[^>]*>24%</,
     'index.html: the fade readout agrees with the slider');
-  assert.match(shareSource, /this\._detectionFadePct = 7;/,
+  assert.match(shareSource, /this\._detectionFadePct = 24;/,
     'sharelink.js: the generator starts from the same value the overlay draws');
+  // The band is a fraction of the keyhole radius and the slider caps at 40, so
+  // the new default has to sit inside the range the engine will honour.
+  assert.ok(KEYHOLE_LABEL_FEATHER_RATIO < KEYHOLE_LABEL_FEATHER_MAX_RATIO,
+    'the default fade stays under the engine ceiling it is clamped to');
+  assert.match(indexHtml, /id="detection-fade-slider"[^>]*\smax="40"/,
+    'index.html: and the handle can still reach it');
 });
 
 // 2b. Detection OUTSIDE opacity — 1% on a first run
 // ---------------------------------------------------------------------------
 
-test('first run opens at 1% OUTSIDE opacity, at every surface that decides it', () => {
-  assert.equal(KEYHOLE_OUTSIDE_OPACITY_DEFAULT, 0.01,
-    'final value 2026-08-24: the world overlay reads quieter beyond the keyhole');
+test('first run opens at 37% OUTSIDE opacity, at every surface that decides it', () => {
+  assert.equal(KEYHOLE_OUTSIDE_OPACITY_DEFAULT, 0.37,
+    '2026-09-10: the world beyond the keyhole stays readable rather than erased');
 
   // Four independent literals decide this on a fresh boot: the engine constant
   // above, the markup and its readout, ui.js's global post defaults, and the
   // share generator's starting state. Changing one alone ships a UI that
   // disagrees with its own engine.
-  assert.match(indexHtml, /id="detection-opacity-slider"[^>]*\svalue="1"/,
-    'index.html: the OUTSIDE slider ships at 1');
-  assert.match(indexHtml, /id="detection-opacity-value"[^>]*>1%</,
+  assert.match(indexHtml, /id="detection-opacity-slider"[^>]*\svalue="37"/,
+    'index.html: the OUTSIDE slider ships at 37');
+  assert.match(indexHtml, /id="detection-opacity-value"[^>]*>37%</,
     'index.html: and its readout agrees with the handle');
-  assert.match(uiSource, /detectionOutsideOpacityPct: 1,/,
+  assert.match(uiSource, /detectionOutsideOpacityPct: 37,/,
     'ui.js: the global post defaults apply the same value on first load');
-  assert.match(shareSource, /this\._detectionOutsideOpacityPct = 1;/,
+  assert.match(shareSource, /this\._detectionOutsideOpacityPct = 37;/,
     'sharelink.js: the generator starts from the same value the overlay draws');
 
   // The bracket floor is calibrated AT the default, so it moves with it — the
@@ -187,7 +212,7 @@ test('first run opens at 1% OUTSIDE opacity, at every surface that decides it', 
     'index.html: every integer percent is reachable from the handle');
 });
 
-test('an explicit OUTSIDE opacity still wins over the new default', () => {
+test('an explicit OUTSIDE opacity still wins over the readable default', () => {
   assert.equal(managerForHash('#lat=10&lon=20&ko=5').parseInitialHash().detectionOutsideOpacityPct, 5);
   assert.equal(managerForHash('#lat=10&lon=20&ko=40').parseInitialHash().detectionOutsideOpacityPct, 40);
   assert.equal(managerForHash('#lat=10&lon=20&ko=0').parseInitialHash().detectionOutsideOpacityPct, 0,
@@ -203,28 +228,63 @@ test('an explicit OUTSIDE opacity still wins over the new default', () => {
 // 3. Detection — on for every style on a first run, Normal included
 // ---------------------------------------------------------------------------
 
-test('first run opens with detection on, in every style, using the one tactical preset', () => {
-  // Normal used to start OFF while only CRT/NVG/FLIR auto-applied the preset.
-  // It is now the baseline for all of them, reusing the SAME frozen object, so
-  // "the tactical look" cannot fork into two definitions.
+test('first run opens with detection on at Balanced @ 50%, from its own preset', () => {
+  // Normal used to start OFF while only CRT/NVG/FLIR auto-applied a preset.
+  // Detection is now on for all of them; what a FIRST RUN opens at is its own
+  // frozen object since 2026-09-10, read off the owner's console. The tactical
+  // Dense @ 75% did not move — it is still what the military styles and
+  // Contacts apply — so the two looks can now differ without either drifting.
+  assert.match(uiSource, /const FIRST_RUN_DETECTION_PRESET = Object\.freeze\(\{ mode: 'balanced', densityPct: 50 \}\);/,
+    'a first run opens at Balanced @ 50%');
   assert.match(uiSource, /const MILITARY_DETECTION_PRESET = Object\.freeze\(\{ mode: 'dense', densityPct: 75 \}\);/,
-    'the tactical look is still Dense @ 75%');
+    'and the tactical look is still Dense @ 75%');
   const baseline = uiBlock('const GLOBAL_POST_DEFAULTS = {', '\n};');
-  assert.match(baseline, /detectionMode: MILITARY_DETECTION_PRESET\.mode\.toUpperCase\(\),/,
+  assert.match(baseline, /detectionMode: FIRST_RUN_DETECTION_PRESET\.mode\.toUpperCase\(\),/,
     'the first-load baseline reads the preset rather than restating it');
-  assert.match(baseline, /detectionDensity: MILITARY_DETECTION_PRESET\.densityPct,/,
+  assert.match(baseline, /detectionDensity: FIRST_RUN_DETECTION_PRESET\.densityPct,/,
     'density comes from the same object, so the two cannot drift');
   assert.doesNotMatch(baseline, /detectionMode: 'OFF'/,
     'the retired OFF baseline is gone, not shadowed');
+
+  // 50 is a canonical stop and it really is the Balanced profile — a baseline
+  // that named a mode the density did not imply would be re-derived away by
+  // `_applyDetectionDensityFromUi` on the very next slider read.
+  assert.equal(canonicalizeDensity(50), 50, '50 is one of the five approved stops');
+  assert.equal(profileForDensity(50), 'BALANCED', 'and the stop and the mode agree');
+  assert.equal(defaultDensityForProfile('BALANCED'), 50,
+    'so the profile round-trips back to the same density');
+
+  // The markup and the engine already sat at 50; the baseline is what used to
+  // overwrite them with 75 on every boot. Pinned so they stay one number.
+  assert.match(indexHtml, /id="detection-density-slider"[^>]*\svalue="50"/,
+    'index.html: the density slider ships at the same stop the baseline applies');
+  assert.match(indexHtml, /id="detection-density-value"[^>]*>50%</,
+    'index.html: and its readout agrees with the handle');
 
   // `const` has no hoisted value: the baseline can only READ the preset if the
   // preset is declared first. Getting this backwards is a startup TDZ crash,
   // which no other test in the suite would reach.
   assert.ok(
-    uiSource.indexOf('const MILITARY_DETECTION_PRESET =')
+    uiSource.indexOf('const FIRST_RUN_DETECTION_PRESET =')
       < uiSource.indexOf('const GLOBAL_POST_DEFAULTS ='),
-    'MILITARY_DETECTION_PRESET must be declared before the baseline that reads it',
+    'FIRST_RUN_DETECTION_PRESET must be declared before the baseline that reads it',
   );
+});
+
+test('the tactical preset is still what the military styles and Contacts apply', () => {
+  // Splitting the first-run look out of MILITARY_DETECTION_PRESET must not
+  // quietly take the tactical look with it: the three military styles and the
+  // Contacts context mode all still reach for the Dense @ 75% object, and the
+  // first-run object is used by the baseline and nowhere else.
+  const stylePresets = uiBlock('const STYLE_PRESET_DEFAULTS = {', '\n};');
+  assert.equal((stylePresets.match(/detection: MILITARY_DETECTION_PRESET,/g) || []).length, 3,
+    'retro, surveillance and thermal each still apply the tactical preset');
+  assert.match(uiSource, /applyPreset: \(\) => this\._applyDetectionPreset\(MILITARY_DETECTION_PRESET\)/,
+    'Contacts still forces the tactical preset while it owns detection');
+  assert.equal((uiSource.match(/FIRST_RUN_DETECTION_PRESET\./g) || []).length, 2,
+    'the first-run preset is read twice — mode and density — and nowhere else');
+  assert.doesNotMatch(stylePresets, /FIRST_RUN_DETECTION_PRESET/,
+    'and no style preset reaches for the first-run look');
 });
 
 test('detection-on-by-default is a default, not an operator override', () => {

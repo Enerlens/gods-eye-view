@@ -462,6 +462,27 @@ const STYLE_STATUS_LABELS = {
 const MILITARY_DETECTION_PRESET = Object.freeze({ mode: 'dense', densityPct: 75 });
 
 /**
+ * What detection looks like the first time the console opens: Balanced at 50%.
+ *
+ * Read off the owner's own panel on 2026-09-10, when they asked for the
+ * display settings on it to become the shipped defaults. That supersedes the
+ * 2026-08-18 ruling which made the tactical Dense @ 75% the first-run look
+ * as well.
+ *
+ * Deliberately NOT the same object as MILITARY_DETECTION_PRESET any more: that
+ * one is the TACTICAL look and still belongs to the military styles and to the
+ * Contacts context mode, both of which own detection while they are active and
+ * hand it back on exit. Splitting them is the point — a first run is now
+ * quieter than CRT/NVG/FLIR, instead of every surface sharing one number
+ * because they happened to agree.
+ *
+ * 50% is also where the density slider's markup, its readout and the detection
+ * engine's own `_densityPct` already sat, so the baseline and the DOM finally
+ * describe the same console.
+ */
+const FIRST_RUN_DETECTION_PRESET = Object.freeze({ mode: 'balanced', densityPct: 50 });
+
+/**
  * What the render profile grants of a preset's sharpen request.
  *
  * Sharpening is a full-screen post-process pass, and `perf:gpu-ab` measures it
@@ -486,9 +507,11 @@ const GLOBAL_POST_DEFAULTS = {
   hudVariant: 'tactical',
   hudVisible: true,
   // Detection is ON for EVERY style on a first run, Normal included (owner
-  // directive 2026-08-22: "detect should also be on by default"). It is the
-  // same preset object the military styles and Contacts already apply, so there
-  // is one tactical look, not several that can drift.
+  // directive 2026-08-22: "detect should also be on by default"). What it opens
+  // AT is FIRST_RUN_DETECTION_PRESET — Balanced @ 50% since 2026-09-10, no
+  // longer the military Dense @ 75%. Both still read a single frozen object
+  // each, so the first-run look and the tactical look can each move without
+  // dragging the other along.
   //
   // This is a first-LOAD baseline, not an override: `_applyGlobalPostDefaults`
   // runs before any share-link restore, so a link's `dm`/`dd` still lands on top
@@ -496,11 +519,15 @@ const GLOBAL_POST_DEFAULTS = {
   // flag means the OPERATOR hand-edited detection, and a factory default is not
   // that. Turning detection off by hand therefore still sets the flag and still
   // suppresses the military-style auto-enable for the rest of the session.
-  detectionMode: MILITARY_DETECTION_PRESET.mode.toUpperCase(),
-  detectionDensity: MILITARY_DETECTION_PRESET.densityPct,
+  detectionMode: FIRST_RUN_DETECTION_PRESET.mode.toUpperCase(),
+  detectionDensity: FIRST_RUN_DETECTION_PRESET.densityPct,
   detectionAllocation: 'ELASTIC',
-  detectionFadePct: 7,
-  detectionOutsideOpacityPct: 1,
+  // Both mirror engine constants in celestialRing.js (KEYHOLE_LABEL_FEATHER_RATIO
+  // and KEYHOLE_OUTSIDE_OPACITY_DEFAULT), the two sliders' markup and readouts
+  // in index.html, and the share generator's starting state in sharelink.js.
+  // Moving one alone ships a panel that disagrees with its own overlay.
+  detectionFadePct: 24,
+  detectionOutsideOpacityPct: 37,
   celestialRing: false,
 };
 
@@ -3657,7 +3684,9 @@ export class StyleManager {
     const outsideOpacityValue = this._detectionOpacitySlider?.value;
     const outsideOpacityPct = Math.max(
       0,
-      Math.min(100, Math.round(outsideOpacityValue == null ? 3 : Number(outsideOpacityValue) || 0)),
+      // No slider in the DOM at all means no operator setting to read, so fall
+      // back to the shipped default rather than to a number from a retired one.
+      Math.min(100, Math.round(outsideOpacityValue == null ? 37 : Number(outsideOpacityValue) || 0)),
     );
     if (this._detectionFadeSlider) this._detectionFadeSlider.value = String(fadePct);
     if (this._detectionFadeValue) this._detectionFadeValue.textContent = `${fadePct}%`;
@@ -3880,10 +3909,10 @@ export class StyleManager {
       { syncShare: false, persist: false },
     );
     if (this._detectionFadeSlider) {
-      this._detectionFadeSlider.value = String(defaults.detectionFadePct ?? 7);
+      this._detectionFadeSlider.value = String(defaults.detectionFadePct ?? 24);
     }
     if (this._detectionOpacitySlider) {
-      this._detectionOpacitySlider.value = String(defaults.detectionOutsideOpacityPct ?? 1);
+      this._detectionOpacitySlider.value = String(defaults.detectionOutsideOpacityPct ?? 37);
     }
     this._applyDetectionFadeFromUi();
     if (typeof defaults.celestialRing === 'boolean') {
@@ -3926,8 +3955,8 @@ export class StyleManager {
       detectionMode: detection.mode,
       detectionDensity: detection.densityPct,
       detectionAllocation: getDetectionTuning().allocationStrategy,
-      detectionFadePct: parseInt(this._detectionFadeSlider?.value || '7', 10),
-      detectionOutsideOpacityPct: parseInt(this._detectionOpacitySlider?.value || '1', 10),
+      detectionFadePct: parseInt(this._detectionFadeSlider?.value || '24', 10),
+      detectionOutsideOpacityPct: parseInt(this._detectionOpacitySlider?.value || '37', 10),
       celestialRingEnabled: this.celestialRingEnabled,
       scopeEnabled: isScopeMaskEnabled(),
       scopeFeatherPct: Math.round(getScopeMaskFeather() * 100),
@@ -8150,7 +8179,7 @@ export class StyleManager {
       detectionMode: getDetectionMode(),
       densityPct: pct,
       allocationStrategy: getDetectionTuning().allocationStrategy,
-      fadePct: parseInt(this._detectionFadeSlider?.value || '7', 10),
+      fadePct: parseInt(this._detectionFadeSlider?.value || '24', 10),
       outsideOpacityPct: parseInt(this._detectionOpacitySlider?.value || '0', 10),
     };
   }
@@ -8905,7 +8934,7 @@ export class StyleManager {
         mode: getDetectionMode(),
         density: parseInt(this._detectionDensitySlider?.value || '50', 10),
         allocation: getDetectionTuning().allocationStrategy,
-        fadePct: parseInt(this._detectionFadeSlider?.value || '7', 10),
+        fadePct: parseInt(this._detectionFadeSlider?.value || '24', 10),
         outsideOpacityPct: parseInt(this._detectionOpacitySlider?.value || '0', 10),
       },
       scope: {

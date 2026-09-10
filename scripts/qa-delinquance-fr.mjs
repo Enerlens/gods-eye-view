@@ -12,9 +12,9 @@
  * the same breath from around Aubazine in the Corrèze: once a card is wider
  * than the screen the placement clamp pins it to the margin, which drags its
  * CENTRE away from its anchor — and the keyhole fade reads the centre. Outside
- * the scope circle every entry is painted at `KEYHOLE_OUTSIDE_OPACITY_DEFAULT`,
- * 0.01, so the same overflow that made one card too big made the next one
- * invisible. Both symptoms, one cause, and this harness measures the cause:
+ * the scope circle every entry is painted at `KEYHOLE_OUTSIDE_OPACITY_DEFAULT`
+ * — 0.01 when this was reported, 0.37 since 2026-09-10 — so the same overflow
+ * that made one card too big made the next one invisible. Both symptoms, one cause, and this harness measures the cause:
  * **the painted rectangle**.
  *
  * ── 2. The total, so no reader has to pick an offence first ────────────────
