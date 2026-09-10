@@ -3,6 +3,33 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
+## [Unreleased] — 2026-09-10
+
+### Changed
+- **La pastille `DENSE` de la couche Satellites s'appelle `STARLINK`, et la
+  classe qu'elle allume aussi.** `DENSE` nommait la MANIÈRE dont le catalogue
+  se charge — des milliers de points de plus, sur un budget de propagation
+  relâché — et pas ce qui apparaît dans le ciel quand on clique. La seule
+  réponse à « à quoi correspond cette pastille ? » vivait donc dans l'infobulle,
+  qui, elle, disait Starlink depuis le début. Le bouton lit maintenant
+  `STARLINK`, `STARLINK ···` pendant que la coquille arrive, et `STARLINK ✕`
+  avec la raison au survol quand le flux CelesTrak tombe.
+
+  **La légende de la ligne suit, et perd un mot au passage.** La classe qui
+  n'existe qu'avec cette pastille allumée s'appelait `COMMS`, et la carte de
+  l'objet suivi lisait `COMMS · STARLINK` — deux mots dont le premier ne se
+  reliait à rien de visible, pour désigner une chose que le second nommait
+  déjà. Le libellé de classe devient `STARLINK`, et le sous-type disparaît
+  plutôt que de dire `STARLINK · STARLINK`. La couleur ne bouge pas : l'ardoise
+  sourde tenue à ~0,40 de luma Rec.601 contre ~0,69 pour VISUAL, pour que la
+  coquille reste séparable quand NVG et FLIR écrasent la scène sur un canal.
+
+  **Aucun lien de partage ne casse.** Seules les surfaces lisibles changent :
+  le paramètre reste `catalog: 'core' | 'dense'`, son code dans le hash reste
+  `d`, et la clé de classe reste `comms` — le créneau de famille qu'une seconde
+  constellation large bande viendrait rejoindre le jour où le mode en chargerait
+  une autre que Starlink.
+
 ## [Unreleased] — 2026-09-09
 
 ### Added

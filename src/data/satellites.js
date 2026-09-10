@@ -2093,7 +2093,7 @@ const satellitesLayer = {
       // Any explicit request for core clears the error, even when the mode did
       // NOT change: a failed dense load already reverted the param to core, so
       // a Space Missions restore of an already-core snapshot would otherwise
-      // leave the user staring at a DENSE ✕ they never caused.
+      // leave the user staring at a STARLINK ✕ they never caused.
       _denseStatus = 'idle';
       _denseError = null;
     }
@@ -2126,9 +2126,9 @@ const satellitesLayer = {
   },
 
   /**
-   * Layer-row sub-controls (DataLayerManager row-controls contract): the DENSE
-   * catalog chip plus a class legend so the point colors are learnable without
-   * a new panel.
+   * Layer-row sub-controls (DataLayerManager row-controls contract): the
+   * STARLINK catalog chip plus a class legend so the point colors are
+   * learnable without a new panel.
    *
    * The chip is stateless — it declares the params to apply and the manager
    * owns the write, so the Space Missions snapshot/restore path (which drives
@@ -2158,7 +2158,7 @@ const satellitesLayer = {
     return {
       chips: [{
         id: 'catalog',
-        label: loading ? 'DENSE ···' : (failed ? 'DENSE ✕' : 'DENSE'),
+        label: loading ? 'STARLINK ···' : (failed ? 'STARLINK ✕' : 'STARLINK'),
         active,
         busy: loading,
         disabled: loading,
