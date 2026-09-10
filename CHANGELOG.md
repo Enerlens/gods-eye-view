@@ -168,6 +168,85 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   partage avec ses voisins. Une seule ligne répond à « pourquoi est-ce que je
   regarde ça ? » : `cat /opt/gev/state/selection`. Neuf tests exécutent le vrai
   script contre un GitHub factice et tiennent chaque branche de la décision.
+
+- **Les centrales électriques étaient dessinées en parasols : la moitié basse
+  de chaque disque était mangée par le sol.** Une pastille Cesium porte UNE
+  profondeur pour tout son carré — celle de la coordonnée du site — donc dès
+  que le test de profondeur est actif, elle est comparée au terrain sous
+  chacun de ses pixels. Vue autrement que droit du dessus, le sol situé sous
+  le point à l'écran est PLUS PRÈS de la caméra que le point lui-même : il
+  gagne le test et efface la moitié inférieure du disque, pendant que la
+  moitié haute survit. Le résultat n'est pas un marqueur à moitié caché, c'est
+  un SYMBOLE DIFFÉRENT — un dôme à fond plat, sur chaque site, à toute hauteur
+  de caméra au-dessus du seuil de 5 000 m qui était réglé là.
+
+  Reproduit dans l'application au-dessus de **Gravelines**, caméra à 6 km et
+  35° de tangage : le disque de 5 460 MW peint une calotte qui s'arrête net à
+  son ancrage. Après correctif, le profil ligne par ligne du même disque est
+  symétrique — 26 px au plus large, dégradé des deux côtés. Les anneaux de la
+  couche *Groupes de prod* étaient déjà entiers dans la même image, parce
+  qu'ils demandaient déjà `Number.POSITIVE_INFINITY` ; c'est ce qui rendait
+  l'écart visible sans le rendre lisible.
+
+  Corrigé sur les **79 sites EDF** et sur la **petite hydro** — les centrales
+  comme les anneaux de commune. Le prix de peindre par-dessus le terrain,
+  c'est qu'un site de l'autre côté de la planète peindrait à travers le globe :
+  chaque couche passe donc un rideau d'horizon par image, comme le fait déjà
+  `rteGeneration.js`. Les deux harnais le prouvent en plaçant la caméra à
+  l'antipode et en vérifiant que tout disparaît, puis revient.
+
+  **Au passage, le compteur de pixels du harnais RTE ne lisait rien du tout.**
+  Le viewer tourne en `preserveDrawingBuffer: false` : le tampon WebGL est
+  vidé dès qu'une image est présentée, donc un `drawImage` du canvas depuis
+  son propre `page.evaluate` renvoie **960 000 pixels noirs**. Le contrôle
+  annonçait `0 → 0` pour Paluel à 1 161 MW — alors qu'une capture de la même
+  image contient **235 pixels** de la couleur nucléaire — et son garde-fou
+  voisin (« le fond de carte n'était pas déjà de cette couleur ») passait au
+  vert POUR LA MÊME RAISON. Deux contrôles verts sur une lecture vide.
+  `requestRender()`, `render()` et la lecture dans la même tâche JS, plus un
+  contrôle qui vérifie d'abord qu'une image a été lue : `qa:rte-generation`
+  passe de 37 ✓ / 4 ✗ à **42 ✓**.
+
+- **Le texte des fiches de centrales était un code d'exploitant, et pour
+  moitié de l'anglais.** Cliquer sur Le Blayais répondait `4 × REP 900`,
+  `tranches couplées 1981-1983`, `40 MW de réserve secondaire` : trois champs
+  publiés, rendus fidèlement, dont aucun ne dit quoi que ce soit à quelqu'un
+  venu regarder une carte. Cliquer sur un groupe RTE répondait `69% of
+  nameplate`, `3 of 4 groups reporting`, `drawing from the grid` — en anglais,
+  sur des centrales françaises.
+
+  Même traitement que les plans de bruit aérien : une table qui va du code à
+  ce qu'il VEUT DIRE, consultée par la fiche, le chiffre du publieur laissé
+  intact à côté. Les treize valeurs que publient les trois fichiers EDF sont
+  couvertes, et la chaîne d'origine reste à un argument près
+  (`plantKindText(site, { register: 'raw' })`).
+
+      ◈ Centrale nucléaire · 4 réacteurs à eau pressurisée de 900 MW
+      ⚡ 3 640 MW installés : le maximum du site, pas ce qu'il produit à cet instant
+      ▸ combustible : MOX (uranium et plutonium recyclés) · uranium enrichi
+      ↻ 40 MW tenus en réserve pour stabiliser le réseau en quelques minutes
+      🕐 4 réacteurs raccordés au réseau entre 1981 et 1983
+      ⌁ RTE : 1 680 MW — n'y compte que les 4 groupes de 100 MW et plus
+
+  **La phrase qui manquait le plus est celle sur laquelle la couche entière
+  repose** : un disque dimensionné à la puissance installée, au-dessus d'un
+  site dont trois réacteurs sur six sont à l'arrêt, ressemble exactement à un
+  site qui tourne à fond. La fiche le dit maintenant, à chaque fois.
+
+  **Et `5,460 MW` se lisait « cinq et demi ».** `formatGenMw` groupait en
+  `en-US` sur une interface française. Corrigé en `5 460 MW`, avec la virgule
+  décimale pour les gigawatts, l'espace insécable avant `%`, et l'heure des
+  mesures RTE en format français. Côté petite hydro, les points décimaux d'un
+  dénivelé (`417.6 m de chute`) et des distances (`6.1 km`) partent avec, et
+  `h équivalent pleine puissance` devient « % de ce qu'elle produirait sans
+  jamais s'arrêter ».
+
+  Ce que ça ne fait PAS : rien de ce que publient EDF, RTE ou ODRÉ n'est
+  corrigé, arrondi autrement ou masqué. Les noms de départements et de régions
+  restent tels que le registre les crie (`GIRONDE`, `AUVERGNE-RHONE-ALPES`,
+  sans accents), parce que les recasser proprement demanderait de deviner des
+  accents que le publieur n'a pas écrits.
+
 - **Les véhicules partagés restent collés au sol quand on déplace la carte.**
   Même panne que les feux actifs la veille, sur une couche où elle se voyait
   bien plus souvent. Un objet était posé à la hauteur 0 — sur l'ellipsoïde

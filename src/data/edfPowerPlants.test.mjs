@@ -99,19 +99,37 @@ test('an unknown filière is drawn neutral rather than assigned a fuel', () => {
 // ── The label says what the object is ───────────────────────────────────────
 
 test('a label names the site, its installed power and what it actually is', () => {
-  assert.equal(plantLabelText(record('nucleaire:GRAVELINES')), 'GRAVELINES · 5 460 MW · 6 × REP 900');
-  assert.equal(plantLabelText(record('hydraulique:GRAND-MAISON')), 'GRAND-MAISON · 1 714 MW · Pompage mixte');
-  assert.equal(plantLabelText(record('thermique:CORDEMAIS')), 'CORDEMAIS · 1 160 MW · 2 × Charbon');
-  assert.equal(plantLabelText(record('thermique:BOUCHAIN')), 'BOUCHAIN · 585 MW · Gaz naturel');
-  assert.equal(plantLabelText(record('hydraulique:RANCE')), 'RANCE · 240 MW · Marémotrice');
+  // THE SHORT PLAIN REGISTER, not the publisher's part number: this string is
+  // painted on the globe, and `6 × REP 900` is not something a reader can read.
+  assert.equal(plantLabelText(record('nucleaire:GRAVELINES')), 'GRAVELINES · 5 460 MW · 6 réacteurs');
+  assert.equal(plantLabelText(record('hydraulique:GRAND-MAISON')), 'GRAND-MAISON · 1 714 MW · pompage-turbinage mixte');
+  assert.equal(plantLabelText(record('thermique:CORDEMAIS')), 'CORDEMAIS · 1 160 MW · 2 unités au charbon');
+  assert.equal(plantLabelText(record('thermique:BOUCHAIN')), 'BOUCHAIN · 585 MW · unité au gaz');
+  assert.equal(plantLabelText(record('hydraulique:RANCE')), 'RANCE · 240 MW · marémotrice');
+});
+
+test('the publisher’s own string survives, one argument away', () => {
+  // Translating the vocabulary must not lose it: a data-quality reader still
+  // has to be able to see what EDF actually wrote in the file.
+  const gravelines = record('nucleaire:GRAVELINES');
+  assert.equal(plantKindText(gravelines, { register: 'raw' }), '6 × REP 900');
+  assert.equal(plantKindText(record('thermique:CORDEMAIS'), { register: 'raw' }), '2 × Charbon');
+  assert.equal(plantKindText(record('hydraulique:GRAND-MAISON'), { register: 'raw' }), 'Pompage mixte');
+  // An unknown code is passed through rather than dropped or guessed at — and
+  // NOT inflected: `2 EPR2s` would be French grammar applied to a part number.
+  assert.equal(plantKindText({ filiere: 'nucleaire', kind: 'EPR2', units: 2 }), '2 × EPR2');
+  assert.equal(plantKindText({ filiere: 'nucleaire', kind: 'EPR2' }), 'EPR2');
 });
 
 test('a hydro plant is never labelled with an invented unit count', () => {
   // The file publishes no turbine count, so the label carries the regime alone.
-  assert.equal(plantKindText(record('hydraulique:BATHIE (LA)')), 'Lac');
-  assert.equal(plantKindText({ filiere: 'nucleaire', kind: 'REP 1450', units: 2 }), '2 × REP 1450');
-  // A single unit is stated once, not as "1 ×".
-  assert.equal(plantKindText({ filiere: 'thermique', kind: 'Gaz naturel', units: 1 }), 'Gaz naturel');
+  assert.equal(plantKindText(record('hydraulique:BATHIE (LA)')), 'retenue de lac');
+  assert.equal(
+    plantKindText({ filiere: 'nucleaire', kind: 'REP 1450', units: 2 }),
+    '2 réacteurs à eau pressurisée de 1 450 MW',
+  );
+  // A single unit is stated once, not as "1 ×", and stays singular.
+  assert.equal(plantKindText({ filiere: 'thermique', kind: 'Gaz naturel', units: 1 }), 'unité au gaz naturel');
   // A site whose file names no kind falls back to its filière, never to a guess.
   assert.equal(plantKindText({ filiere: 'thermique', kind: null }), 'Thermique à flamme');
   assert.equal(plantKindText({}), 'Centrale');
@@ -177,8 +195,10 @@ test('the legend names each filière, its site count and its installed total', (
   assert.deepEqual(legend.map((entry) => entry.count), [2, 6, 3]);
   assert.match(legend[0].blurb, /8 450 MW installés, 8 réacteurs/);
   // Hydro has no unit noun, so its blurb claims no unit count.
-  assert.doesNotMatch(legend[1].blurb, /réacteur|tranche/);
-  assert.match(legend[2].blurb, /5 tranches/);
+  assert.doesNotMatch(legend[1].blurb, /réacteur|unité/);
+  // `unité` and not EDF's own `tranche`, which outside a control room is a
+  // slice of bread — see the note on FILIERE_STYLES.
+  assert.match(legend[2].blurb, /5 unités/);
   // A filière with nothing drawn gets no legend entry at all.
   assert.deepEqual(filiereLegend(summarizePlants([])), []);
 });
@@ -302,7 +322,7 @@ test('the overlay publishes one label per drawn site, none of them interactive',
     }
     assert.equal(
       entries.find((entry) => entry.id === 'edf-plants:nucleaire:GRAVELINES').title,
-      'GRAVELINES · 5 460 MW · 6 × REP 900',
+      'GRAVELINES · 5 460 MW · 6 réacteurs',
     );
   } finally {
     h.restore();
@@ -503,13 +523,35 @@ test('the card publishes the fields that reached the browser and were never show
   const lines = buildEdfPlantCard(GRAVELINES).split('\n');
   assert.equal(lines[0], 'GRAVELINES', 'the first line is the title');
   const body = lines.slice(1).join('\n');
-  assert.match(body, /5 460 MW installés · 6 × REP 900/);
+  // WHAT IT IS, then what it can do. Every one of these lines used to carry a
+  // code instead: `6 × REP 900`, `tranches couplées`, `réserve secondaire`.
+  assert.match(body, /Centrale nucléaire · 6 réacteurs à eau pressurisée de 900 MW/);
+  assert.match(body, /5 460 MW installés/);
   // secondaryReserveMw reached the client record at buildPlantRecords and was
   // rendered by nothing at all before this card existed.
-  assert.match(body, /150 MW de réserve secondaire/);
+  assert.match(body, /150 MW tenus en réserve/);
   assert.match(body, /Gravelines · Nord · Hauts-de-France/);
-  assert.match(body, /1980–1985/);
-  assert.match(body, /situation au 2025-12-31/);
+  assert.match(body, /entre 1980 et 1985/);
+  assert.match(body, /arrêté au 31\/12\/2025/);
+});
+
+test('the card translates the register instead of reciting it', () => {
+  // The four codes that were on screen and meant nothing outside the industry.
+  const body = buildEdfPlantCard(GRAVELINES);
+  for (const code of [/REP 900\b(?! MW)/, /tranche/, /couplée/, /réserve secondaire/]) {
+    assert.doesNotMatch(body, code, String(code));
+  }
+  // A hydro regime is a word AND a sentence, the same pair the noise plans use.
+  const grandMaison = buildEdfPlantCard(RECORDS.find((r) => r.name === 'GRAND-MAISON'));
+  assert.match(grandMaison, /pompage-turbinage mixte/);
+  assert.match(grandMaison, /remonte de l’eau aux heures creuses/);
+  // TAC is the one technology string that says something the kind does not.
+  const peaker = buildEdfPlantCard({
+    name: 'TAC', filiere: 'thermique', kind: 'Fioul Domestique', tech: 'TAC', fuel: 'Fioul Domestique', mw: 185,
+  });
+  assert.match(peaker, /turbine à combustion/);
+  // ...and the columns that merely repeat the kind earn no line at all.
+  assert.equal(peaker.split('\n').filter((line) => /fioul/i.test(line)).length, 1);
 });
 
 test('the card never claims live output', () => {
@@ -517,8 +559,16 @@ test('the card never claims live output', () => {
   // layer is auth:'none', only 42 of the 69 joinable sites have a reporting
   // unit at any moment, and Flamanville's live 3 583 MW against EDF's 2 660 MW
   // nameplate would print as 135 %. `Groupes de prod` owns that number.
+  //
+  // The test is on the FIGURE, not on the word: the card now says in so many
+  // words that its megawatts are not what the site is producing, and a rule
+  // that banned the verb would ban the disclaimer along with the claim.
   const body = buildEdfPlantCard(GRAVELINES);
-  assert.doesNotMatch(body, /produit|production actuelle|en ce moment|%/i);
+  assert.doesNotMatch(body, /production actuelle|%/i);
+  assert.match(body, /pas ce qu’il produit à cet instant/);
+  // Every megawatt figure on the card is a nameplate or another register's
+  // nameplate — never a reading.
+  assert.doesNotMatch(body, /produit \d/);
 });
 
 test('EDF as the operator earns no line, because every row says EDF', () => {
@@ -531,7 +581,7 @@ test('a site with nothing but a name still yields a title and a power line', () 
   const lines = buildEdfPlantCard({ name: 'INCONNUE' }).split('\n');
   assert.equal(lines[0], 'INCONNUE');
   // "— MW" rather than a silent omission: an unpublished power is a fact.
-  assert.match(lines[1], /— MW installés/);
+  assert.ok(lines.some((line) => /— MW installés/.test(line)), lines.join(' | '));
   for (const line of lines) assert.ok(!/undefined|null|NaN/.test(line), line);
   assert.equal(buildEdfPlantCard({}).split('\n')[0], 'Centrale');
   assert.ok(buildEdfPlantCard(null).length > 0);

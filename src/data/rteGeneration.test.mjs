@@ -128,32 +128,32 @@ test('a station with no published output is not a station producing zero', () =>
   assert.equal(rteDiscSize(rteRingSize(5460), stopped.load), 0);
 
   const unmeasuredCard = buildRteSelectionLabel(unmeasured);
-  assert.match(unmeasuredCard, /RTE published no output/);
-  assert.match(unmeasuredCard, /not the same as producing nothing/);
+  assert.match(unmeasuredCard, /RTE n’a publié aucune mesure/);
+  assert.match(unmeasuredCard, /ce n’est PAS « elle ne produit rien »/);
   // No output figure and no load at all — the card claims nothing it was not told.
-  assert.doesNotMatch(unmeasuredCard, /of nameplate/);
+  assert.doesNotMatch(unmeasuredCard, /de son maximum/);
   assert.doesNotMatch(unmeasuredCard, /hour of/);
-  assert.match(unmeasuredCard, /not reported/);
+  assert.match(unmeasuredCard, /pas de mesure/);
 
   const stoppedCard = buildRteSelectionLabel(stopped);
-  assert.match(stoppedCard, /0 MW \/ 5,460 MW installed/);
-  assert.match(stoppedCard, /0% of nameplate/);
+  assert.match(stoppedCard, /0 MW sur 5 460 MW installés/);
+  assert.match(stoppedCard, /0\u00a0% de son maximum/);
   assert.doesNotMatch(stoppedCard, /published no output/);
 });
 
 test('the legend leads with the ring-and-disc grammar, not with a filière', () => {
   seed([station()], { joinStats: { placedUnits: 6, placedMw: 4730 } });
   const { legend } = _rteRowControlsForTest();
-  assert.match(legend[0].label, /Ring/);
-  assert.match(legend[0].blurb, /faint empty ring/);
-  assert.match(legend[0].blurb, /crisp empty ring/);
-  assert.match(legend[0].blurb, /DRAWING from the/);
+  assert.match(legend[0].label, /Anneau/);
+  assert.match(legend[0].blurb, /anneau pâle et vide/);
+  assert.match(legend[0].blurb, /anneau net et vide/);
+  assert.match(legend[0].blurb, /PREND du courant au réseau/);
 
   // With no key at all the first row says what to do about it instead.
   seed([station({ mw: null, load: null, reporting: 0 })], { joinStats: { placedUnits: 0 } });
   const keyless = _rteRowControlsForTest().legend;
   assert.match(keyless[0].blurb, /RTE_CLIENT_ID/);
-  assert.doesNotMatch(keyless[0].blurb, /crisp empty ring/);
+  assert.doesNotMatch(keyless[0].blurb, /anneau net et vide/);
 });
 
 // --- Consumption ------------------------------------------------------------
@@ -176,9 +176,9 @@ test('a pumping station keeps its sign, its size and its own colour', () => {
   assert.equal(rteDiscSize(ring, pumping.load), rteDiscSize(ring, Math.abs(pumping.load)));
 
   const card = buildRteSelectionLabel(pumping);
-  assert.match(card, /−1,180 MW/u);
-  assert.match(card, /drawing from the grid/);
-  assert.match(card, /−70% of nameplate/u);
+  assert.match(card, /−1 180 MW/u);
+  assert.match(card, /PREND du courant au réseau/);
+  assert.match(card, /−70\u00a0% de son maximum/u);
 
   // And the ambient label paints in the consumption colour, not the filière's.
   const entry = createRteStationOverlayEntry(pumping, POSITION);
@@ -187,13 +187,17 @@ test('a pumping station keeps its sign, its size and its own colour', () => {
 });
 
 test('formatLoad and formatGenMw keep the minus sign that is the whole story', () => {
-  assert.equal(formatLoad(-0.7), '−70%');
-  assert.equal(formatLoad(0), '0%');
+  assert.equal(formatLoad(-0.7), '−70\u00a0%');
+  assert.equal(formatLoad(0), '0\u00a0%');
   assert.equal(formatLoad(null), '—');
-  assert.equal(formatGenMw(-1180), '−1,180 MW');
+  // FRENCH GROUPING, and it is not cosmetic: `−1,180 MW` off a machine pumping
+  // eleven hundred megawatts reads as one and a bit to the reader this layer
+  // is for. Thin/non-breaking spaces are normalised to a plain one so the
+  // overlay's text measurement is predictable.
+  assert.equal(formatGenMw(-1180), '−1 180 MW');
   assert.equal(formatGenMw(0), '0 MW');
-  assert.equal(formatGenMw(12_500), '12.5 GW');
-  assert.equal(formatGenMw(-12_500), '−12.5 GW');
+  assert.equal(formatGenMw(12_500), '12,5 GW');
+  assert.equal(formatGenMw(-12_500), '−12,5 GW');
   assert.equal(formatGenMw(null), '—');
 });
 
@@ -222,23 +226,23 @@ test('the ring is nameplate and the disc is output, on a √ ramp', () => {
 
 test('the card states where the ring came from, and how far that is', () => {
   for (const [placement, pattern] of [
-    ['edf-published', /EDF’s own published coordinate/],
-    ['osm-plant', /OpenStreetMap outline/],
-    ['rte-switchyard', /switchyard/],
-    ['commune-centre', /centre of its commune/],
+    ['edf-published', /la coordonnée qu’EDF publie/],
+    ['osm-plant', /l’emprise de la centrale cartographiée dans OpenStreetMap/],
+    ['rte-switchyard', /le poste électrique/],
+    ['commune-centre', /au centre de sa commune/],
   ]) {
     assert.ok(RTE_PLACEMENT_NOTES[placement], placement);
     assert.match(buildRteSelectionLabel(station({ placement })), pattern);
   }
-  assert.match(buildRteSelectionLabel(station()), /1\.4 km from the commune centre/);
+  assert.match(buildRteSelectionLabel(station()), /à 1,4 km du centre de la commune/);
   // A commune anchor is zero kilometres from itself, so no distance is claimed.
   const commune = buildRteSelectionLabel(station({ placement: 'commune-centre', anchorKm: 0 }));
-  assert.doesNotMatch(commune, /km from the commune centre/);
+  assert.doesNotMatch(commune, /km du centre de la commune/);
 });
 
 test('a unit row shows both nameplates when RTE and the register disagree', () => {
   // RTE says 595 for a machine the register publishes as 600.
-  assert.match(buildUnitRow(unit({ installedMw: 595, registryMw: 600 })), /register: 600 MW/);
+  assert.match(buildUnitRow(unit({ installedMw: 595, registryMw: 600 })), /registre : 600 MW/);
   // The register publishes tenths, so a sub-megawatt gap is this layer's own
   // rounding and is not worth two numbers on a card.
   assert.doesNotMatch(buildUnitRow(unit({ installedMw: 180, registryMw: 180.4 })), /register/);
@@ -246,7 +250,7 @@ test('a unit row shows both nameplates when RTE and the register disagree', () =
 });
 
 test('a silent unit says it was not reported rather than showing a zero', () => {
-  assert.equal(buildUnitRow(unit({ mw: null, history: null })), 'Groupe 01 · 910 MW · not reported');
+  assert.equal(buildUnitRow(unit({ mw: null, history: null })), 'Groupe 01 · 910 MW · pas de mesure');
   // And a measured zero says zero, with a flat line behind it.
   assert.equal(buildUnitRow(unit({ mw: 0, history: [0, 0] })), 'Groupe 01 · 0/910 MW  ▁▁');
 });
@@ -255,21 +259,21 @@ test('a long station lists a bounded number of groups and admits to the rest', (
   const many = station({ units: Array.from({ length: 12 }, (_, i) => unit({ eic: `EIC${i}`, name: `Groupe ${i}` })) });
   const card = buildRteSelectionLabel(many);
   assert.match(card, /── 12 groupes ──/);
-  assert.match(card, /and 4 more/);
+  assert.match(card, /… et 4 de plus/);
 });
 
 test('the card reports partial coverage of its own units', () => {
   const partial = station({ reporting: 1, units: [unit(), unit({ eic: 'B', mw: null })] });
-  assert.match(buildRteSelectionLabel(partial), /1 of 2 groups reporting/);
+  assert.match(buildRteSelectionLabel(partial), /1 de ses 2 groupes ont transmis une mesure/);
   const full = station({ reporting: 1, units: [unit()] });
-  assert.doesNotMatch(buildRteSelectionLabel(full), /groups reporting/);
+  assert.doesNotMatch(buildRteSelectionLabel(full), /groupes ont transmis/);
 });
 
 test('published age is reported in the units a reader thinks in', () => {
   const now = Date.parse('2026-08-28T14:00:00+02:00');
-  assert.equal(formatPublishedAge(Date.parse('2026-08-28T13:20:00+02:00'), now), '40 min ago');
-  assert.equal(formatPublishedAge(Date.parse('2026-08-28T06:00:00+02:00'), now), '8 h ago');
-  assert.equal(formatPublishedAge(Date.parse('2026-08-25T14:00:00+02:00'), now), '3 d ago');
+  assert.equal(formatPublishedAge(Date.parse('2026-08-28T13:20:00+02:00'), now), 'il y a 40 min');
+  assert.equal(formatPublishedAge(Date.parse('2026-08-28T06:00:00+02:00'), now), 'il y a 8 h');
+  assert.equal(formatPublishedAge(Date.parse('2026-08-25T14:00:00+02:00'), now), 'il y a 3 j');
   assert.equal(formatPublishedAge(null, now), null);
 });
 
@@ -298,10 +302,10 @@ test('the ambient cohort keeps the biggest stations and is bounded', () => {
 });
 
 test('the ambient label says installed capacity when there is no output to say', () => {
-  assert.match(createRteStationOverlayEntry(station(), POSITION).title, /4,730 MW \/ 5,460 MW/);
+  assert.match(createRteStationOverlayEntry(station(), POSITION).title, /4 730 MW \/ 5 460 MW/);
   assert.match(
     createRteStationOverlayEntry(station({ mw: null }), POSITION).title,
-    /5,460 MW installed$/,
+    /5 460 MW installés$/,
   );
 });
 
@@ -372,9 +376,9 @@ test('the legend counts stations per filière and reports live against installed
   ]);
   const nuclear = legend.find((row) => row.label === RTE_GENERATION_CLASSES.nuclear.label);
   assert.equal(nuclear.count, 2);
-  assert.match(nuclear.blurb, /7,730 MW of 10\.8 GW/);
+  assert.match(nuclear.blurb, /7 730 MW produits sur 10,8 GW installés/);
   const pumped = legend.find((row) => row.label === RTE_GENERATION_CLASSES['hydro-pumped'].label);
-  assert.match(pumped.blurb, /no output published/);
+  assert.match(pumped.blurb, /aucune production publiée/);
   // Legend order is the class order, not insertion order.
   assert.deepEqual(legend.map((row) => row.label), [
     RTE_GENERATION_CLASSES.nuclear.label,
@@ -396,7 +400,7 @@ test('the readout surfaces unplaced units rather than hiding them', () => {
   assert.equal(stats.unplacedMw, 640);
   assert.equal(stats.silentUnits, 12);
   assert.equal(stats.installedMw, 93502);
-  assert.match(stats.loadingLabel, /3 unplaced/);
+  assert.match(stats.loadingLabel, /3 groupes non placés/);
 });
 
 test('with no credential the readout says so instead of reporting zero output', () => {
@@ -406,7 +410,7 @@ test('with no credential the readout says so instead of reporting zero output', 
   });
   const stats = _rteStatsForTest();
   assert.equal(stats.auth, 'missing');
-  assert.match(stats.loadingLabel, /installed capacity only/);
+  assert.match(stats.loadingLabel, /puissance installée seulement/);
   assert.equal(stats.outputMw, 0);
 
   // And it is not reported as an ERROR: having no account is the state every
@@ -414,8 +418,8 @@ test('with no credential the readout says so instead of reporting zero output', 
   // exists and does not work is a different thing.
   assert.equal(generationErrorFor('missing'), null);
   assert.equal(generationErrorFor('ok'), null);
-  assert.equal(generationErrorFor('failed'), 'RTE output unavailable');
-  assert.equal(generationErrorFor('unknown'), 'RTE output unavailable');
+  assert.equal(generationErrorFor('failed'), 'production RTE indisponible');
+  assert.equal(generationErrorFor('unknown'), 'production RTE indisponible');
 });
 
 test('the analyst record is JSON-safe and carries the placement', () => {

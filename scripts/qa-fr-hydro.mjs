@@ -147,6 +147,9 @@ function sceneProbe(page) {
         // valley is hundreds of metres underground, and drifts on screen as
         // the camera pans.
         height: carto ? carto.height : null,
+        // `Infinity` does not survive the CDP JSON hop, so it is a flag.
+        drawnOverTerrain: point.disableDepthTestDistance === Number.POSITIVE_INFINITY,
+        show: point.show !== false,
       });
     }
     return {
@@ -368,6 +371,23 @@ async function main() {
         onGround.every((point) => point.height > 300 && point.height < 3000),
         onGround.map((p) => Math.round(p.height)).join(', '));
     }
+    // THE OTHER HALF OF "the marker is where the plant is". `GROUND_LIFT_M`
+    // puts it in the right place; this puts it on the screen WHOLE. A point
+    // primitive carries one depth for its whole quad, so a depth-tested disc
+    // over terrain loses everything below its anchor and paints as a
+    // flat-bottomed dome — which is what these markers looked like at any
+    // camera height above the old 5 000 m threshold.
+    const drawn = (await sceneProbe(page)).points;
+    check('markers are drawn OVER the terrain, not depth-tested against it',
+      drawn.length > 0 && drawn.every((point) => point.drawnOverTerrain),
+      `${drawn.filter((point) => !point.drawnOverTerrain).length} depth-tested`);
+    // And the price of that: the far side of the planet must be culled by hand.
+    await setView(page, -179.6, -43.0, 9_000_000);
+    await pump(page, 6, 100);
+    const antipode = (await sceneProbe(page)).points;
+    check('and the far side of the globe is culled instead of painting through it',
+      antipode.length > 0 && antipode.every((point) => point.show === false),
+      `${antipode.filter((point) => point.show).length} of ${antipode.length} still shown`);
 
     console.log('[qa] iii. a ring is a commune, drawn as a ring');
     const cluster = REGISTRY.clusters.find((c) => c.plants >= 3);

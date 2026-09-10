@@ -4,6 +4,7 @@ import { PLANT_JOIN_KEYS } from './plantIdentity.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { cachedGroundFloor, resolveGroundFloorCellsBounded } from './groundFloor.js';
+import { horizonOccluder } from './iconOrientation.js';
 import {
   clearOverlaySource,
   hitTestWorldOverlay,
@@ -367,9 +368,16 @@ export function buildHydroCard(plant, joins = null) {
 
   const energy = formatHydroEnergy(plant?.energyKwh);
   if (energy) {
+    // WHAT THE PERCENTAGE IS A PERCENTAGE OF. It used to read
+    // `(29 %) · 2546 h équivalent pleine puissance`: two ways of saying the
+    // same ratio, one of them a control-room unit and neither of them naming
+    // the thing being divided. It is the plant's own year at full power, so
+    // the card says that instead of naming the unit.
     const factor = loadFactor(plant?.kw, plant?.energyKwh);
-    const hours = factor === null ? '' : ` · ${Math.round(factor * 8760)} h équivalent pleine puissance`;
-    lines.push(`↻ ${energy} injectés sur 12 mois glissants${factor === null ? '' : ` (${Math.round(factor * 100)} %)`}${hours}`);
+    const share = factor === null
+      ? ''
+      : ` — ${Math.round(factor * 100)} % de ce qu’elle produirait sans jamais s’arrêter`;
+    lines.push(`↻ ${energy} injectés sur les 12 derniers mois${share}`);
   } else {
     lines.push('↻ énergie injectée non publiée — ce n’est pas une centrale à l’arrêt');
   }
@@ -387,8 +395,19 @@ export function buildHydroCard(plant, joins = null) {
     lines.push(`◈ technologie publiée : « ${plant.tech} » — hors vocabulaire hydraulique du registre`);
   }
 
-  if (plant?.headM) lines.push(`↧ ${plant.headM} m de chute`);
-  if (plant?.groups) lines.push(`▸ ${plant.groups} groupe${plant.groups > 1 ? 's' : ''}`);
+  // THE REGISTER PUBLISHES CENTIMETRES OF HEAD (`417.6`, `212.76`) and the card
+  // printed them with a DOT, which in French is not a decimal separator at
+  // all. Rounded to the metre — the number is a description of a mountain, not
+  // a survey — and said as the drop a reader can picture.
+  if (plant?.headM) {
+    lines.push(`↧ ${Math.round(plant.headM).toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ')} m `
+      + 'de dénivelé entre la prise d’eau et les turbines');
+  }
+  if (plant?.groups) {
+    lines.push(plant.groups > 1
+      ? `▸ ${plant.groups} groupes : ${plant.groups} turbines et leurs alternateurs`
+      : '▸ 1 groupe : une turbine et son alternateur');
+  }
   if (plant?.installations > 1) {
     lines.push(`▸ ligne agrégée : ${plant.installations} installations`);
   }
@@ -402,8 +421,11 @@ export function buildHydroCard(plant, joins = null) {
       ? `${commune}  ⚠ selon le registre — et son propre poste source est à ${plant.communeContradictedKm.toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ')} km de là`
       : commune);
   }
-  const grid = [plant?.voltage, plant?.poste ? `poste ${plant.poste}` : null, plant?.operator]
-    .filter(Boolean).join(' · ');
+  const connection = [
+    plant?.voltage ? `raccordée en ${plant.voltage}` : null,
+    plant?.poste ? `au poste électrique ${plant.poste}` : null,
+  ].filter(Boolean).join(' ');
+  const grid = [connection || null, plant?.operator].filter(Boolean).join(' · ');
   if (grid) lines.push(`⌁ ${grid}`);
   if (plant?.commissioned) lines.push(`🕐 en service depuis le ${plant.commissioned.split('-').reverse().join('/')}`);
   if (plant?.regime && plant.regime !== 'En service') lines.push(`⚠ régime : ${plant.regime}`);
@@ -452,6 +474,11 @@ export function buildHydroNeighbourLines(joins) {
   return lines;
 }
 
+/** One decimal, with the separator a French reader expects. */
+function frDecimal(value) {
+  return Number(value).toFixed(1).replace('.', ',');
+}
+
 /** Kilometres, as a card says them. */
 function joinKmText(metres) {
   if (!Number.isFinite(metres)) return '';
@@ -495,8 +522,10 @@ export function buildPlacementLines(plant) {
   const source = SOURCE_NOTES[plant?.placement];
   if (!source) return lines;
   const geometry = GEOMETRY_NOTES[plant?.geometry];
+  // A DECIMAL POINT ON A FRENCH CARD IS A THOUSANDS SEPARATOR TO ITS READER.
+  // `6.1 km` and `0.3 km` were being read beside `74,0 MW` on the same card.
   const km = Number.isFinite(plant?.anchorKm) && plant.anchorKm > 0
-    ? ` · ${plant.anchorKm.toFixed(1)} km du centre de commune`
+    ? ` · à ${frDecimal(plant.anchorKm)} km du centre de la commune`
     : '';
   lines.push(`◎ ${source}${geometry ? ` — ${geometry}` : ''}${km}`);
 
@@ -527,9 +556,9 @@ export function buildPlacementLines(plant) {
   // from the bbox centre an earlier build would have used.
   if (Number.isFinite(plant?.snapKm) && plant.snapKm > 0) {
     const span = Number.isFinite(plant?.outlineSpanM)
-      ? ` d’une emprise de ${(plant.outlineSpanM / 1000).toFixed(1)} km`
+      ? ` d’une emprise de ${frDecimal(plant.outlineSpanM / 1000)} km`
       : '';
-    lines.push(`   recalée de ${plant.snapKm.toFixed(1)} km depuis le centre${span}`);
+    lines.push(`   recalée de ${frDecimal(plant.snapKm)} km depuis le centre${span}`);
   }
   if (plant?.placement === 'rte-switchyard') {
     lines.push(Number.isFinite(plant?.communeContradictedKm)
@@ -553,7 +582,7 @@ export function buildHydroClusterCard(cluster) {
   const lines = [`${cluster?.commune ?? 'Commune'} — ${count} centrale${count > 1 ? 's' : ''} non localisée${count > 1 ? 's' : ''}`];
   lines.push(`⚡ ${formatHydroPower(cluster?.kw)} installés au total`);
   const energy = formatHydroEnergy(cluster?.energyKwh);
-  if (energy) lines.push(`↻ ${energy} injectés sur 12 mois glissants (cumul)`);
+  if (energy) lines.push(`↻ ${energy} injectés sur les 12 derniers mois, toutes ensemble`);
   lines.push('◎ marqueur posé au CENTRE DE LA COMMUNE — le registre ne publie aucune position');
   lines.push('   et aucune source ne place ces installations. Distance typique au bâtiment réel : 3 km.');
   if (cluster?.anonymous) {
@@ -712,6 +741,8 @@ export function createFrHydroPlantsLayer({
   let _rowControlsListener = null;
   let _labelEntries = [];
   let _cameraRemovers = [];
+  /** Take-down for the per-frame horizon pass. Null while the row is off. */
+  let _preRenderRemover = null;
   /** Stop following RTE's own offer. Null while this layer is off. */
   let _unwatchRte = null;
   let _floorToken = 0;
@@ -793,7 +824,15 @@ export function createFrHydroPlantsLayer({
         outlineWidth: 1,
         scaleByDistance: new Cesium.NearFarScalar(20_000, 1.25, 3_000_000, 0.5),
         translucencyByDistance: new Cesium.NearFarScalar(20_000, 1, 5_000_000, 0.3),
-        disableDepthTestDistance: 5000,
+        // Drawn OVER the terrain at every distance — see the note on
+        // `onPreRender` below, and the identical line in `edfPowerPlants.js`.
+        // A finite threshold here made every marker above it a flat-bottomed
+        // dome rather than a disc, because a point primitive carries one depth
+        // for its whole quad and the ground below the anchor on screen is
+        // nearer to the camera than the anchor is. That is not the same lift
+        // as `GROUND_LIFT_M`: the two metres fix WHERE the marker is, this
+        // fixes whether the marker is drawn whole.
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
         id,
       });
       const record = {
@@ -842,7 +881,7 @@ export function createFrHydroPlantsLayer({
         outlineWidth: 1.4,
         scaleByDistance: new Cesium.NearFarScalar(20_000, 1.25, 3_000_000, 0.5),
         translucencyByDistance: new Cesium.NearFarScalar(20_000, 1, 5_000_000, 0.3),
-        disableDepthTestDistance: 5000,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
         id,
       });
       _records.set(id, {
@@ -942,6 +981,30 @@ export function createFrHydroPlantsLayer({
     publishOverlay();
     if (_selectedId && _records.has(_selectedId)) selectObject(_selectedId);
     governorRequestRender('fr-hydro-ground-clamp');
+  }
+
+  /**
+   * Per-frame horizon pass.
+   *
+   * What drawing over the terrain costs: with the depth test off at every
+   * distance, a mill in the Pyrénées would paint through the planet from a
+   * camera over the Pacific. Cesium's frustum culling does not catch it —
+   * the far side of the globe is inside the frustum, just behind a planet.
+   *
+   * ON `preRender` AND NOT ON THE CAMERA EVENTS this layer already listens
+   * to. `camera.changed` goes quiet ~0.8 s before `moveEnd`, so a marker
+   * would keep leaking through the globe for most of a rotation. The pass is
+   * one dot product per drawn point over the floor-filtered set, and it is
+   * this layer's only per-frame work.
+   */
+  function onPreRender() {
+    if (!_enabled || !_records.size) return;
+    const camera = _viewer?.camera;
+    if (!camera) return;
+    const occluder = horizonOccluder(camera);
+    for (const record of _records.values()) {
+      if (record.point) record.point.show = occluder.isPointVisible(record.position);
+    }
   }
 
   /**
@@ -1118,6 +1181,9 @@ export function createFrHydroPlantsLayer({
           if (event?.addEventListener) _cameraRemovers.push(event.addEventListener(follow));
         }
       }
+      if (_viewer?.scene?.preRender && !_preRenderRemover) {
+        _preRenderRemover = _viewer.scene.preRender.addEventListener(onPreRender);
+      }
       // RTE coming on or going off changes which of these plants are drawn.
       _unwatchRte?.();
       _unwatchRte = watchJoin(PLANT_JOIN_KEYS.eic, () => { if (_enabled) repaint(); });
@@ -1132,6 +1198,10 @@ export function createFrHydroPlantsLayer({
       removeClickHandler();
       for (const remove of _cameraRemovers) remove();
       _cameraRemovers = [];
+      if (_preRenderRemover) {
+        _preRenderRemover();
+        _preRenderRemover = null;
+      }
       if (_points) _points.show = false;
       overlayHost.clearSource(FR_HYDRO_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(FR_HYDRO_OVERLAY_SOURCE_ID, false);
@@ -1185,6 +1255,10 @@ export function createFrHydroPlantsLayer({
       removeClickHandler();
       for (const remove of _cameraRemovers) remove();
       _cameraRemovers = [];
+      if (_preRenderRemover) {
+        _preRenderRemover();
+        _preRenderRemover = null;
+      }
       if (_points) {
         viewer?.scene?.primitives?.remove?.(_points);
         _points = null;

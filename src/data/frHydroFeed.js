@@ -146,23 +146,26 @@ export const PLACEMENT_TIERS = Object.freeze([
 export const HYDRO_TECHNOLOGIES = Object.freeze({
   "Fil de l'eau": Object.freeze({
     key: 'run-of-river', label: "Fil de l'eau", color: '#4fc3f7',
-    blurb: 'Turbine le débit qui se présente, sans réserve',
+    blurb: 'elle turbine le débit qui se présente, sans rien mettre en réserve',
   }),
   Eclusée: Object.freeze({
     key: 'pondage', label: 'Éclusée', color: '#66d9a6',
-    blurb: 'Réserve de quelques heures à quelques jours',
+    blurb: 'sa retenue tient quelques heures à quelques jours de production',
   }),
   Lac: Object.freeze({
     key: 'reservoir', label: 'Lac', color: '#c792ea',
-    blurb: 'Retenue saisonnière, turbinée à la pointe',
+    blurb: 'l’eau est stockée des mois et turbinée quand la demande grimpe',
   }),
   'Pompage turbinage': Object.freeze({
     key: 'pumped', label: 'Pompage-turbinage', color: '#ffd166',
-    blurb: 'STEP — remonte l’eau aux heures creuses',
+    // The acronym STEP was the whole blurb's first word and explains nothing
+    // to a reader who does not already know it. Spelled out once, here, where
+    // both the legend row and the card read it.
+    blurb: 'elle remonte l’eau dans un lac haut aux heures creuses, et la turbine à la pointe',
   }),
   'Hydrolien fluvial': Object.freeze({
     key: 'instream', label: 'Hydrolien fluvial', color: '#7fd4c1',
-    blurb: 'Turbine immergée, sans ouvrage de chute',
+    blurb: 'une turbine immergée dans le courant, sans barrage ni conduite',
   }),
 });
 
