@@ -7,6 +7,14 @@ import {
 import { parseDepartements } from './meteoFranceVigilance.js';
 import { ARC_SAMPLES, greatCircleArc } from './greatCircleArc.js';
 import {
+  dissolveRings,
+  flattenRing,
+  geometryRings,
+  nearestRingVertex,
+  ringArea,
+  scaleRing,
+} from './polygonDissolve.js';
+import {
   PRISM_BASE_HEIGHT_M,
   PRISM_BODY_ALPHA,
   PRISM_HEIGHT_SWATCH_COLOR,
@@ -51,9 +59,12 @@ import {
  *    image instead of a table.
  *
  * 2. **The five border flows**, as arcs whose direction is the direction the
- *    power is going. Unchanged by the prism: they are a flow map, they already
- *    carry magnitude in stroke width and direction in an arrow head, and they
- *    are drawn between country reference points, not on the régions.
+ *    power is going. They are a flow map: magnitude in stroke width, direction
+ *    in an arrow head, and each one now runs between the FRENCH FRONTIER and
+ *    the neighbouring market rather than out of the middle of the country.
+ *
+ * 3. **The five neighbouring market areas**, as OUTLINES. Never filled — see
+ *    the honesty rules below.
  *
  * ── Why the flat fill had to go, and what replaced which channel ────────────
  *
@@ -115,6 +126,96 @@ import {
  * label at the top of every prism spells the verb (EXPORTE / IMPORTE) and the
  * megawatts, so colour is never the sole carrier.
  *
+ * ── One mark per measurement: the dissolve ─────────────────────────────────
+ *
+ * This layer measures TWELVE régions. It used to draw NINETY-SIX prisms.
+ *
+ * The old note here argued that the seams between the eight départements of
+ * Île-de-France were « the truth of the geometry, not twelve readings ». That
+ * was true about the polygons and false about the picture, and the first
+ * person to look at the layer proved it in one sentence: « chaque département
+ * a une hauteur qui est représentative du niveau de puissance qu'il exporte
+ * […] on n'arrive pas à distinguer un département par rapport à un autre » —
+ * a reading of DEPARTMENTAL measurements, on a map where no département is
+ * measured, followed by the complaint that they all look the same. They looked
+ * the same because they ARE the same. Ninety-six marks for twelve readings is
+ * A1 at the level of the mark itself: the unit the eye counts has to be the
+ * unit that was measured.
+ *
+ * So the départements are dissolved into their région before anything is
+ * drawn (`polygonDissolve.js`), and each région gets ONE mark. Measured on the
+ * bundled file: **96 polygons, 118 rings and 14 335 vertices** became **13
+ * marks** — twelve prisms and Corse — because **4 253 shared segments**
+ * cancelled, leaving 31 rings and 5 742 vertices in all. Île-de-France alone
+ * cancelled 139 of them.
+ *
+ * Two consequences are stated rather than hidden:
+ *
+ * • **Islands under {@link PRISM_MIN_RING_AREA_DEG2} carry no prism.** Ré,
+ *   Oléron, Belle-Île, Noirmoutier, Yeu, Porquerolles. A 78 km column standing
+ *   on a 23 km² island is a needle that measures its région and looks like it
+ *   measures the island. They keep their outline on the ground and lose the
+ *   volume. Corse is far above the threshold and is unaffected — its absence
+ *   from the map is a data fact, not a geometric one.
+ * • **The prism does not stand on the whole région.** See the next section.
+ *
+ * ── Why the footprint is pulled in, and what pays for it ────────────────────
+ *
+ * Twelve dissolved régions tile France with no gap. Extruded, at any oblique
+ * angle, they compose into a single continuous mesa: the near ones occlude the
+ * far ones, and where two neighbours run at similar heights the eye reads one
+ * plateau across a border it cannot see. Twelve marks that touch are not
+ * twelve marks.
+ *
+ * The prism therefore stands on the région's footprint scaled to
+ * {@link PRISM_FOOTPRINT_SCALE} about its own centroid, which opens a canyon
+ * between every pair of neighbours. Measured, mean pull-back per région: 6.3 km
+ * for Île-de-France, 17.2 km for Nouvelle-Aquitaine, 5.8 km for Corse — so a
+ * canyon of 12 to 34 km between two neighbours, ~24 px at the ~1 500 km
+ * national altitude this layer's calibration section uses. Each volume becomes
+ * an object with a silhouette on both sides.
+ *
+ * A uniform scale, not an inward buffer, and the reason is in
+ * `polygonDissolve.js`: a buffer self-intersects wherever a shape is narrower
+ * than twice the offset (the Cotentin, the Gironde, the Alpine valleys) and a
+ * scale about an interior point cannot self-intersect at all.
+ *
+ * What it costs, plainly: **the base of a prism is no longer exactly where the
+ * région ends.** That is a real loss and it is paid for, not waved away — the
+ * TRUE perimeter of every région is drawn as a line clamped to the ground,
+ * under the prism it belongs to, in the same colour. The reader who wants to
+ * know where Normandie stops looks at the line, which is exact; the reader who
+ * wants to compare two heights looks at the volumes, which no longer merge.
+ * The legend says both in French.
+ *
+ * ── The neighbours are delimited, and never filled ──────────────────────────
+ *
+ * `ech_comm_espagne` is 500 MW and a country name. Until now the country
+ * itself was nowhere on the globe: an arrow pointed off the frame and the
+ * reader supplied Spain from memory. The five market areas are now outlined
+ * from `local_data/energy_market_areas/` (Natural Earth, public domain,
+ * 674 points for the five).
+ *
+ * They are drawn as a LINE and the inside is left empty, deliberately, and it
+ * is the same rule as everywhere else in this layer: a filled polygon is what
+ * a MEASUREMENT looks like here, and nothing inside Spain was measured. The
+ * three marks are therefore three claims —
+ *
+ *     prism, filled            → measured, and this tall
+ *     flat footprint, striped  → known, and not published (Corse)
+ *     outline, empty           → this is the counterparty, and it is all we
+ *                                know about it
+ *
+ * — and the outline takes the flow's colour, so a market France is exporting
+ * to is teal on the arc AND on its own border. A market whose flow is under
+ * the deadband is drawn slate: still a neighbour, nothing crossing.
+ *
+ * Two honesty notes travel with the file and are repeated in its `SOURCE.md`:
+ * the Spanish outline is the peninsular MARKET, so the Balearics and the
+ * Canaries are absent; the British one is the GB bidding zone, so Northern
+ * Ireland is absent. Germany and Belgium share one outline because they share
+ * one field.
+ *
  * ── Calibration, frozen (C1) ────────────────────────────────────────────────
  *
  * `ENERGY_PRISM_DOMAIN_MAX_MW` = 12 000 MW ↔ 120 km, a literal measured once
@@ -143,16 +244,13 @@ import {
  *
  * ── Honesty rules this layer is built around ────────────────────────────────
  *
- * • **The régions are painted, but the DÉPARTEMENTS are the geometry.** There
- *   are no bundled region polygons; the 96 département shapes already carried
- *   for Vigilance are grouped by region and every département in a region is
- *   EXTRUDED TO ITS REGION'S HEIGHT. That is a presentational grouping, not a
- *   departmental measurement, so no label ever names a département — and the
- *   legend says it in French, because a prism looks far more like a measured
- *   unit than a flat fill ever did. The twelve départements of
- *   Auvergne-Rhône-Alpes form ONE plateau at one altitude; the seams between
- *   them are visible and they are the truth of the geometry, not twelve
- *   readings.
+ * • **The régions are painted, and the DÉPARTEMENTS are only the source.**
+ *   There are no bundled région polygons; the 96 département shapes already
+ *   carried for Vigilance are grouped by région and DISSOLVED into one outline
+ *   apiece before anything is drawn. No département survives into the scene,
+ *   no label ever names one, and the legend says so in French — a prism looks
+ *   far more like a measured unit than a flat fill ever did, and the unit has
+ *   to be the one that was measured. See the dissolve section above.
  *
  * • **Corse gets a sign of its own, and it is not a short prism.** éCO2mix
  *   régional covers 12 metropolitan regions; Corsica runs on its own system
@@ -165,13 +263,14 @@ import {
  *   states are now distinct marks (A1): striped flat footprint = unmeasured,
  *   opaque flat footprint = measured at zero, prism ≥ 4 km = measured.
  *
- * • **Only the flat footprints are ground-classified.** An extruded polygon
- *   does not classify: `GroundGeometryUpdater._isOnTerrain` returns false as
- *   soon as `extrudedHeight` is defined (`index.js:148334-148336`), so
+ * • **Only the flat marks are ground-classified.** An extruded polygon does
+ *   not classify: `GroundGeometryUpdater._isOnTerrain` returns false as soon
+ *   as `extrudedHeight` is defined (`index.js:148334-148336`), so
  *   `polygon.classificationType` would be read and then ignored in silence.
- *   The map-stack listener therefore still runs — the striped and the flat
- *   footprints ARE clamped, and they still have to drape on whichever surface
- *   is active — but it skips every prism instead of pretending. Two things
+ *   The map-stack listener therefore still runs — the striped footprint, the
+ *   measured-zero footprint, the région perimeters and the market outlines ARE
+ *   clamped, and they still have to drape on whichever surface is active — but
+ *   it skips every prism instead of pretending. Two things
  *   come free with the change: the batched-`GroundPrimitive` bug that colours
  *   an instance by its bounding rectangle cannot apply to a geometry that
  *   classifies nothing; and the outline Cesium force-disables on terrain
@@ -183,12 +282,24 @@ import {
  *   it is no arc — the same "absence is not a colour" rule the Vigilance layer
  *   established for level vert.
  *
- * • **The arcs are country-to-country balances, not cables.** `ech_comm_*` is
- *   a commercial nomination between two market areas, so the endpoints here
- *   are COUNTRY REFERENCE POINTS, deliberately not interconnection sites.
- *   Drawing them at Calais or Baixas would claim a precision about physical
- *   routing that this field does not carry. `ech_comm_allemagne_belgique` is
- *   one field for two countries and stays one arc, labelled with both.
+ * • **The arcs leave the frontier, and they are still not cables.** They used
+ *   to start at a single point in the middle of France — all five of them,
+ *   from Berry, which drew a country that trades out of its own centre of
+ *   gravity. Each arc now leaves the point of the FRENCH FRONTIER nearest its
+ *   market's reference point, computed from the same dissolved geometry
+ *   (`frontierAnchors`), and it lands on the reference point inside the
+ *   outlined market area. Measured, with Corsica excluded from the search so
+ *   the Italian arc does not leave from Bonifacio: Angleterre 1.58 E / 50.87 N
+ *   (Gris-Nez), Espagne 1.44 W / 43.05 N (Pays basque), Italie 7.71 E /
+ *   44.07 N (Alpes-Maritimes), Suisse 7.42 E / 47.45 N (Sundgau),
+ *   Allemagne + Belgique 6.47 E / 49.46 N (Moselle).
+ *
+ *   That those five land where real interconnections land is a consequence and
+ *   NOT a claim: `ech_comm_*` is a commercial nomination between two market
+ *   areas and carries no routing at all. The frontier point is a geometric
+ *   fact about a border, the far point is a reference point inside a country,
+ *   and neither is a converter station. `ech_comm_allemagne_belgique` is one
+ *   field for two countries and stays one arc, labelled with both.
  *
  * • **Commercial ≠ physical.** The five commercial balances do not sum to
  *   `ech_physiques` (measured: −2 893 against −3 633 MW). The arcs show the
@@ -202,6 +313,10 @@ import {
 const API_URL = '/api/energy-fr';
 const DEPARTEMENTS_URL = new URL(
   './local_data/france_departements/departements.geojson',
+  import.meta.url,
+).href;
+const MARKET_AREAS_URL = new URL(
+  './local_data/energy_market_areas/market_areas.geojson',
   import.meta.url,
 ).href;
 
@@ -325,9 +440,14 @@ export const ENERGY_PRISM_SCALE = createPrismScale({
 });
 
 /**
- * Country reference points for the border arcs — NOT interconnection sites.
+ * Reference points for the border arcs — NOT interconnection sites.
  * See the header: `ech_comm_*` is a market-area balance, and anchoring it at a
  * converter station would claim a routing precision the field does not carry.
+ *
+ * `france` is the FALLBACK end only. It is used when the bundled département
+ * geometry has not loaded, so an arc still draws rather than vanishing; every
+ * normal frame replaces it with the frontier point {@link frontierAnchors}
+ * computes for that market.
  */
 export const BORDER_ANCHORS = Object.freeze({
   france: Object.freeze([2.60, 46.60]),
@@ -342,8 +462,45 @@ export const BORDER_ANCHORS = Object.freeze({
 
 /** Arc stroke width in pixels, ramped by |MW| up to the saturation flow. */
 const ARC_WIDTH_MIN_PX = 3;
-const ARC_WIDTH_MAX_PX = 15;
+/**
+ * Down from 15 px when the arcs moved to the frontier.
+ *
+ * The chord they span went from ~700 km (Berry → Bern) to 94 km, and a 15 px
+ * stroke on a 54 px arc is not a flow, it is a lozenge: Cesium's arrow
+ * material sizes the head against the WIDTH, so the head eats a short line
+ * whole and the direction stops reading. 10 px keeps the head proportionate at
+ * the shortest chord the five borders produce.
+ */
+const ARC_WIDTH_MAX_PX = 10;
 const ARC_SATURATION_MW = 3000;
+/**
+ * Apex floor for a border arc, down from the shared 60 km default.
+ *
+ * The shared floor exists so a short hop still bows visibly; at a 94 km chord
+ * it bows 60 km, which is a croquet hoop, not a flow. 20 km leaves the ratio
+ * near {@link ARC_APEX_RATIO} on every one of the five.
+ */
+const ARC_APEX_MIN_M = 20_000;
+
+/**
+ * The true perimeter of a région, drawn on the ground under its prism.
+ *
+ * Thin and half-transparent on purpose. It is not a second reading and must
+ * not compete with the volume standing on it: its whole job is to be there
+ * when a reader asks where the région actually ends, which the reduced
+ * footprint no longer answers.
+ */
+const PERIMETER_WIDTH_PX = 2;
+const PERIMETER_ALPHA = 0.55;
+
+/**
+ * A neighbouring market's outline. Wider and brighter than a région
+ * perimeter — it is the only mark that market gets, where a région has a whole
+ * volume, and at continental altitude a 2 px line at 55 % vanishes into the
+ * imagery.
+ */
+const MARKET_OUTLINE_WIDTH_PX = 3;
+const MARKET_OUTLINE_ALPHA = 0.85;
 
 /**
  * Invert `REGION_DEPARTEMENTS` into a département → région lookup.
@@ -355,6 +512,178 @@ export function departementRegionIndex() {
     for (const code of departements) index.set(code, region);
   }
   return index;
+}
+
+/**
+ * How far a prism's footprint is pulled in from the région it stands on.
+ *
+ * 0.90, and the number is a compromise stated in the header: below ~0.85 the
+ * shape of a small région starts reading as a blob, above ~0.94 the canyon
+ * between two neighbours closes at national altitude. At 0.90 the gap between
+ * two average régions is ~25 km — 24 px in the 1600 × 1000 national view — and
+ * the shrunk outline is still unmistakably the région.
+ */
+export const PRISM_FOOTPRINT_SCALE = 0.90;
+
+/**
+ * Rings under this many SQUARE DEGREES get an outline but no prism.
+ *
+ * 0.05 deg² is ~430 km² at these latitudes. What it excludes, measured on the
+ * bundled file: Ré (85 km²), Oléron (174), Belle-Île (84), Noirmoutier (49),
+ * Yeu (23) and the Îles d'Hyères. What it keeps: every mainland body, and
+ * Corse at 0.95 deg² — nineteen times the threshold, so Corsica's blank state
+ * stays a fact about éCO2mix and never becomes a fact about geometry.
+ */
+export const PRISM_MIN_RING_AREA_DEG2 = 0.05;
+
+/**
+ * Dissolve the bundled départements into one outline per région.
+ *
+ * This is the join that turns 96 polygons into 13 marks. Every ring returned
+ * is CLOSED and ordered largest first, so `rings[0]` is the mainland body of
+ * the région and everything after it is an island.
+ *
+ * Three products per région, and they are three different jobs:
+ *
+ *   `rings`       every dissolved ring, at true size. The PERIMETER, drawn as
+ *                 a line on the ground: this is where the région actually
+ *                 ends, and it is what makes the shrunk prism honest.
+ *   `prismRings`  the rings above {@link PRISM_MIN_RING_AREA_DEG2}, each
+ *                 scaled to {@link PRISM_FOOTPRINT_SCALE} about its OWN
+ *                 centroid. The volume stands on these.
+ *   `flatRings`   the rings above the same threshold at TRUE size, for the two
+ *                 flat marks (measured zero, and Corse's stripe). A footprint
+ *                 is a footprint: it is not pulled in, because nothing is
+ *                 standing on it that needs a gap.
+ *
+ * Régions the grouping does not know are skipped, which is the same whitelist
+ * rule `buildRegionRecords` applies to the payload — a département code with
+ * no région is not drawable here whatever it is.
+ *
+ * @param {object|null|undefined} geojson The bundled département collection.
+ * @returns {Map<string, {code:string, rings:Array, prismRings:Array, flatRings:Array}>}
+ */
+export function buildRegionShapes(geojson) {
+  const index = departementRegionIndex();
+  /** @type {Map<string, Array>} région code → every ring of every département. */
+  const grouped = new Map();
+  for (const feature of Array.isArray(geojson?.features) ? geojson.features : []) {
+    const code = String(feature?.properties?.code ?? '').trim();
+    const region = index.get(code);
+    if (!region) continue;
+    const rings = geometryRings(feature.geometry);
+    if (!rings.length) continue;
+    const bucket = grouped.get(region);
+    if (bucket) bucket.push(...rings);
+    else grouped.set(region, [...rings]);
+  }
+
+  const shapes = new Map();
+  for (const [region, rings] of grouped) {
+    const dissolved = dissolveRings(rings);
+    if (!dissolved.length) continue;
+    const big = dissolved.filter((ring) => Math.abs(ringArea(ring)) >= PRISM_MIN_RING_AREA_DEG2);
+    // A région whose every ring falls under the threshold would be an island
+    // chain, which metropolitan France does not have — but a future file might,
+    // and a région with no drawable body must not silently disappear.
+    const flatRings = big.length ? big : [dissolved[0]];
+    shapes.set(region, {
+      code: region,
+      rings: dissolved,
+      flatRings,
+      prismRings: flatRings.map((ring) => scaleRing(ring, PRISM_FOOTPRINT_SCALE)),
+    });
+  }
+  return shapes;
+}
+
+/**
+ * Where on the French frontier each market's arc touches down.
+ *
+ * The point of the French border NEAREST that market's reference point,
+ * measured on the sphere. Derived from the geometry rather than typed in, so
+ * it cannot drift away from the coastline the same file draws.
+ *
+ * **Corsica is excluded from the search, and that is the whole reason this
+ * takes régions rather than a flat ring list.** Bonifacio is 314 km from the
+ * Italian reference point and Menton is 411 km, so a naive nearest-vertex over
+ * all of France would run the Italian arc out of Corsica — a région this layer
+ * does not measure, on a border that is the Alps.
+ *
+ * @param {object|null|undefined} geojson The bundled département collection.
+ * @returns {Map<string, number[]>} Market key → `[lon, lat]`.
+ */
+export function frontierAnchors(geojson) {
+  const index = departementRegionIndex();
+  const uncovered = new Set(UNCOVERED_REGIONS);
+  const mainland = [];
+  for (const feature of Array.isArray(geojson?.features) ? geojson.features : []) {
+    const code = String(feature?.properties?.code ?? '').trim();
+    const region = index.get(code);
+    if (!region || uncovered.has(region)) continue;
+    mainland.push(...geometryRings(feature.geometry));
+  }
+  const anchors = new Map();
+  if (!mainland.length) return anchors;
+  for (const [key, point] of Object.entries(BORDER_ANCHORS)) {
+    if (key === 'france') continue;
+    const vertex = nearestRingVertex(mainland, point);
+    if (vertex) anchors.set(key, vertex);
+  }
+  return anchors;
+}
+
+/**
+ * Parse the bundled market-area outlines into one entry per `ech_comm_*` field.
+ *
+ * No dissolve here: Natural Earth's polygons are already whole countries, and
+ * Germany and Belgium are two separate shapes that share one entry because
+ * they share one upstream field, not because anyone merged them.
+ *
+ * @param {object|null|undefined} geojson `local_data/energy_market_areas`.
+ * @returns {Array<{key:string, label:string, rings:Array}>}
+ */
+export function buildMarketOutlines(geojson) {
+  const outlines = [];
+  for (const feature of Array.isArray(geojson?.features) ? geojson.features : []) {
+    const key = String(feature?.properties?.key ?? '').trim();
+    // The whitelist is the anchor table, i.e. the fields éCO2mix publishes: a
+    // country the exchange list never mentions has no business being outlined.
+    if (!key || !BORDER_ANCHORS[key] || key === 'france') continue;
+    const rings = geometryRings(feature.geometry).filter((ring) => ring.length >= 4);
+    if (!rings.length) continue;
+    outlines.push({
+      key,
+      label: String(feature?.properties?.label ?? '').trim() || key,
+      rings,
+    });
+  }
+  return outlines;
+}
+
+/**
+ * The colour each market's outline takes, from the flows actually drawn.
+ *
+ * The outline is the counterparty of an arc, so it carries the arc's class and
+ * nothing else — teal where France is exporting to it, amber where France is
+ * importing from it. A market whose flow is absent or under the deadband gets
+ * the slate `balanced` colour: it is still a neighbour, and nothing is
+ * crossing. That is the same rule as the arc itself, which disappears rather
+ * than drawing a hairline — the arc says "no flow" by absence, the outline
+ * says "no flow" by colour, and neither invents a direction.
+ *
+ * @param {Array<object>} arcs From {@link buildBorderArcs}.
+ * @returns {Map<string, object>} Market key → a `BALANCE_STYLES` entry.
+ */
+export function marketOutlineStyles(arcs) {
+  const styles = new Map();
+  for (const [key] of Object.entries(BORDER_ANCHORS)) {
+    if (key !== 'france') styles.set(key, BALANCE_STYLES.balanced);
+  }
+  for (const arc of Array.isArray(arcs) ? arcs : []) {
+    if (styles.has(arc?.key)) styles.set(arc.key, arc.style);
+  }
+  return styles;
 }
 
 /**
@@ -531,24 +860,32 @@ export function regionAnchor(codes, departements) {
  * Turn the national exchange list into drawable arcs.
  *
  * Direction is the direction the electricity travels: a POSITIVE `mw` is an
- * import into France, so the arc starts abroad and ends in France, and the
- * arrow head lands on France. Zero flows produce no arc at all.
+ * import into France, so the arc starts abroad and ends on the French
+ * frontier, and the arrow head lands on France. Zero flows produce no arc.
+ *
+ * The French end is the FRONTIER point for that market when one is known —
+ * see the header on why five arrows leaving Berry was the wrong drawing. It
+ * falls back to `BORDER_ANCHORS.france` only when the geometry has not loaded,
+ * because an arc drawn from slightly the wrong place still says which way the
+ * power is going, and a missing arc says nothing at all.
  *
  * @param {Array<object>|null|undefined} exchanges From `/api/energy-fr`.
+ * @param {Map<string, number[]>|null} [frontier] From {@link frontierAnchors}.
  * @returns {Array<object>}
  */
-export function buildBorderArcs(exchanges) {
+export function buildBorderArcs(exchanges, frontier = null) {
   const arcs = [];
   for (const exchange of Array.isArray(exchanges) ? exchanges : []) {
     const key = String(exchange?.key ?? '').trim();
     const anchor = BORDER_ANCHORS[key];
     const mw = Number(exchange?.mw);
-    if (!anchor || !Number.isFinite(mw)) continue;
+    if (!anchor || key === 'france' || !Number.isFinite(mw)) continue;
     if (Math.abs(mw) < BALANCE_DEADBAND_MW) continue;
     const importing = mw > 0;
     const style = importing ? BALANCE_STYLES.importer : BALANCE_STYLES.exporter;
-    const from = importing ? anchor : BORDER_ANCHORS.france;
-    const to = importing ? BORDER_ANCHORS.france : anchor;
+    const home = frontier?.get?.(key) || BORDER_ANCHORS.france;
+    const from = importing ? anchor : home;
+    const to = importing ? home : anchor;
     const magnitude = Math.min(Math.abs(mw), ARC_SATURATION_MW) / ARC_SATURATION_MW;
     arcs.push({
       key,
@@ -556,8 +893,11 @@ export function buildBorderArcs(exchanges) {
       mw,
       importing,
       style,
+      // Recorded so a test — and an analyst — can tell an arc that left the
+      // frontier from one that fell back to the centre of the country.
+      fromFrontier: Boolean(frontier?.get?.(key)),
       width: ARC_WIDTH_MIN_PX + (ARC_WIDTH_MAX_PX - ARC_WIDTH_MIN_PX) * magnitude,
-      positions: greatCircleArc(from, to),
+      positions: greatCircleArc(from, to, { apexMinM: ARC_APEX_MIN_M }),
       // Midpoint of the sampled arc, which is also its apex — where a label
       // sits clear of both countries.
       anchorIndex: Math.floor(ARC_SAMPLES / 2),
@@ -733,7 +1073,7 @@ function fr(value) {
  * @param {Array<object>} records From {@link buildRegionRecords}.
  * @returns {Array<{label:string,color:?string,blurb?:string,count?:number,glyph?:string}>}
  */
-export function energyPrismLegend(records) {
+export function energyPrismLegend(records, marketCount = 0) {
   const list = Array.isArray(records) ? records : [];
   if (!list.length) return [];
   const scale = ENERGY_PRISM_SCALE;
@@ -753,12 +1093,19 @@ export function energyPrismLegend(records) {
   const entries = [{
     label: `Hauteur — ${scale.heightLabel}`,
     color: null,
-    blurb: `Échelle linéaire : deux fois plus haut vaut deux fois plus. Le plus haut prisme fait `
-      + `${Math.round(scale.maxHeightM / 1000)} km pour ${fr(scale.domainMax)} ${scale.heightUnit}, `
-      + `borne gelée et jamais recalculée sur le relevé en cours. La hauteur est la VALEUR ABSOLUE `
-      + `du solde : un exportateur et un importateur de même puissance montent pareil, et c’est la `
-      + `couleur qui dit lequel est lequel. Le socle du prisme est la RÉGION, dessinée par ses `
-      + `départements : aucun département n’est mesuré séparément.`,
+    blurb: `Échelle linéaire, domaine gelé à ${fr(scale.domainMax)} ${scale.heightUnit} pour `
+      + `${Math.round(scale.maxHeightM / 1000)} km : deux fois plus haut vaut deux fois plus, `
+      + `d’un relevé à l’autre. C’est la VALEUR ABSOLUE du solde — la couleur dit le sens. `
+      + `UN prisme par région, jamais un par département : aucun n’est mesuré séparément.`,
+  }, {
+    // The footprint is not the région, and the reader is told so on the map
+    // rather than in a source file. See the header: this is what pays for the
+    // gap that keeps twelve volumes from composing into one mesa.
+    label: 'Socle — emprise réduite d’un dixième',
+    color: null,
+    blurb: `Toute marque est posée sur la région rétrécie de `
+      + `${Math.round((1 - PRISM_FOOTPRINT_SCALE) * 100)} %, pour que deux voisines ne se `
+      + `touchent pas. Le PÉRIMÈTRE EXACT est le trait au sol, dessous et de la même couleur.`,
   }];
 
   for (const tick of scale.heightTicks) {
@@ -795,10 +1142,9 @@ export function energyPrismLegend(records) {
   entries.push({
     label: `Couleur — ${scale.ratioLabel}`,
     color: null,
-    blurb: 'Le sens est binaire, donc deux couleurs franches et aucun dégradé : une variation de '
-      + 'teinte différencie, elle n’ordonne pas. C’est la hauteur qui classe les régions entre '
-      + 'elles. Teal et ambre plutôt que vert et rouge, pour survivre à une deutéranopie, et '
-      + 'chaque étiquette répète le verbe : la couleur n’est jamais seule à porter le sens.',
+    blurb: 'Deux couleurs franches, aucun dégradé : une teinte différencie, elle n’ordonne pas '
+      + '— c’est la hauteur qui classe. Teal et ambre survivent à une deutéranopie, et chaque '
+      + 'étiquette répète le verbe : la couleur n’est jamais seule à porter le sens.',
   });
 
   scale.ratioColors.forEach((color, index) => {
@@ -819,9 +1165,28 @@ export function energyPrismLegend(records) {
     glyph: PRISM_NO_RATIO_GLYPH,
     count: unpublished,
     blurb: 'Emprise à plat et hachurée, jamais un prisme court : éCO2mix régional ne publie pas '
-      + 'la Corse, qui tient son propre réseau. Un motif et non une teinte, parce que sur un '
-      + 'globe photoréaliste il n’existe aucune couleur neutre.',
+      + 'la Corse, qui tient son propre réseau. Un motif et non une teinte — sur un globe '
+      + 'photoréaliste il n’existe aucune couleur neutre.',
   });
+
+  // D1 for the third mark. It is not a colour key — the outlines take the arc
+  // colours already listed above — it is the row that says why they are empty.
+  //
+  // Conditional, and that is A1 again: the market file is allowed to fail
+  // without taking the layer down, and a legend that promised outlines nobody
+  // drew would be describing a map that is not on screen.
+  const markets = Number.isFinite(marketCount) ? Math.max(0, Math.floor(marketCount)) : 0;
+  if (markets > 0) {
+    entries.push({
+      label: 'Contour — zone de marché voisine',
+      color: null,
+      count: markets,
+      blurb: 'Un trait, jamais un aplat : de l’autre côté de la frontière, rien n’est mesuré. '
+        + 'Il prend la couleur du flux, ardoise si rien ne passe. La flèche part du point de la '
+        + 'frontière le plus proche, jamais d’un poste d’interconnexion : un solde commercial '
+        + 'entre deux zones ne dit rien du câble.',
+    });
+  }
 
   return entries;
 }
@@ -897,19 +1262,29 @@ export function createFranceEnergyLayer({
   apiUrl = API_URL,
   departementsUrl = DEPARTEMENTS_URL,
   departementsGeoJson = null,
+  marketAreasUrl = MARKET_AREAS_URL,
+  marketAreasGeoJson = null,
   mapStackEventTarget = typeof window === 'undefined' ? null : window,
 } = {}) {
   let _viewer = null;
   let _dataSource = null;
   /** @type {Map<string, object>} INSEE code → bundled polygon metadata. */
   let _departements = new Map();
+  /** @type {Map<string, object>} Région code → dissolved outlines. */
+  let _shapes = new Map();
+  /** @type {Map<string, number[]>} Market key → its point on the French frontier. */
+  let _frontier = new Map();
   /**
-   * Département code → EVERY entity Cesium made for it. A `MultiPolygon`
-   * département becomes one entity PER PART — see the Vigilance layer's note
-   * on the ten départements that carry islands.
+   * Région code → the polygon entities that carry its mark. One per drawable
+   * ring, which is one for eleven of the thirteen régions: the dissolve is
+   * what makes that number small, and it is the whole point.
    * @type {Map<string, Cesium.Entity[]>}
    */
-  let _entities = new Map();
+  let _markEntities = new Map();
+  /** @type {Map<string, Cesium.Entity[]>} Région code → ground perimeter lines. */
+  let _perimeterEntities = new Map();
+  /** @type {Map<string, Cesium.Entity[]>} Market key → its ground outline rings. */
+  let _marketEntities = new Map();
   /** @type {Map<string, Cesium.Entity>} border key → arc polyline entity. */
   let _arcEntities = new Map();
   let _shapesPromise = null;
@@ -926,21 +1301,33 @@ export function createFranceEnergyLayer({
   let _mapStackListener = null;
 
   /**
-   * Retarget the classification of the FLAT footprints when the map stack
-   * changes.
+   * Retarget everything CLAMPED when the map stack changes.
+   *
+   * That is now three cohorts, not one: the flat région marks, the région
+   * perimeters, and the market outlines. All of them drape on whichever
+   * surface is active and all of them have to be told when it swaps.
    *
    * A prism is skipped, deliberately and by test: an extruded polygon is built
    * as an ordinary primitive and reads `classificationType` into a field it
-   * never uses. Writing it there would cost a geometry rebuild of 96 polygons
-   * to change nothing at all.
+   * never uses. Writing it there would cost a geometry rebuild to change
+   * nothing at all. The border arcs are skipped too, and for the opposite
+   * reason — they ride 20 to 85 km above the ground and are not clamped to
+   * anything.
    */
   function applyClassification(next) {
     if (next === undefined || next === _classificationType) return;
     _classificationType = next;
-    for (const parts of _entities.values()) {
+    for (const parts of _markEntities.values()) {
       for (const entity of parts) {
         if (!entity.polygon || isExtruded(entity)) continue;
         entity.polygon.classificationType = next;
+      }
+    }
+    for (const group of [_perimeterEntities, _marketEntities]) {
+      for (const parts of group.values()) {
+        for (const entity of parts) {
+          if (entity.polyline) entity.polyline.classificationType = next;
+        }
       }
     }
     _viewer?.scene?.requestRender?.();
@@ -951,9 +1338,21 @@ export function createFranceEnergyLayer({
     return entity?.polygon?.extrudedHeight !== undefined;
   }
 
+  /** A closed ring as the Cartesian hierarchy a Cesium polygon wants. */
+  function hierarchyOf(ring) {
+    return new Cesium.PolygonHierarchy(
+      Cesium.Cartesian3.fromDegreesArray(flattenRing(ring)),
+    );
+  }
+
   /**
-   * Load the bundled polygons ONCE, hidden. Every département gets an entity up
-   * front so a refresh only flips `show` and swaps a material.
+   * Load the bundled geometry ONCE, hidden.
+   *
+   * Two files, fetched together: the départements this layer dissolves into
+   * régions, and the outlines of the five markets it exchanges with. The
+   * market file is NOT fatal — a missing one costs the outlines and leaves the
+   * régions and the arcs intact, which is the right trade for a decoration
+   * that carries no measurement.
    */
   async function ensureShapes() {
     if (_shapesPromise) return _shapesPromise;
@@ -961,28 +1360,67 @@ export function createFranceEnergyLayer({
       const geojson = departementsGeoJson
         || await (await fetch(departementsUrl)).json();
       _departements = parseDepartements(geojson);
-      const source = await Cesium.GeoJsonDataSource.load(geojson, {
-        clampToGround: true,
-        fill: Cesium.Color.TRANSPARENT,
-        stroke: Cesium.Color.TRANSPARENT,
-        strokeWidth: 0,
-      });
-      source.name = 'éCO2mix — mix électrique français';
-      source.show = _enabled;
-      for (const entity of source.entities.values) {
-        const code = String(entity.properties?.code?.getValue?.() ?? '').trim();
-        if (!entity.polygon || !code) {
-          entity.show = false;
-          continue;
-        }
-        entity.polygon.outline = false;
-        entity.polygon.classificationType = _classificationType;
-        entity.polygon.material = new Cesium.ColorMaterialProperty(Cesium.Color.TRANSPARENT);
-        entity.show = false;
-        const parts = _entities.get(code);
-        if (parts) parts.push(entity);
-        else _entities.set(code, [entity]);
+      _shapes = buildRegionShapes(geojson);
+      _frontier = frontierAnchors(geojson);
+
+      let markets = [];
+      try {
+        const marketJson = marketAreasGeoJson
+          || await (await fetch(marketAreasUrl)).json();
+        markets = buildMarketOutlines(marketJson);
+      } catch (error) {
+        console.warn('[Data:Energy FR] Market outlines unavailable:', error);
       }
+
+      const source = new Cesium.CustomDataSource('éCO2mix — mix électrique français');
+      source.show = _enabled;
+
+      for (const [code, shape] of _shapes) {
+        // The MARK: one polygon per drawable ring, standing on the reduced
+        // footprint whether it is extruded or flat. One footprint convention
+        // for all three of A1's marks, and the perimeter below is what states
+        // the true one.
+        _markEntities.set(code, shape.prismRings.map((ring, part) => source.entities.add({
+          id: `energy-fr:region:${code}:${part}`,
+          properties: { code, kind: 'region', part },
+          show: false,
+          polygon: {
+            hierarchy: hierarchyOf(ring),
+            perPositionHeight: false,
+            outline: false,
+            classificationType: _classificationType,
+          },
+        })));
+        // The PERIMETER: every dissolved ring at TRUE size, islands included,
+        // clamped to the ground. This is the honesty half of the reduced
+        // footprint — where the région actually ends.
+        _perimeterEntities.set(code, shape.rings.map((ring, part) => source.entities.add({
+          id: `energy-fr:perimeter:${code}:${part}`,
+          properties: { code, kind: 'perimeter', part },
+          show: false,
+          polyline: {
+            positions: Cesium.Cartesian3.fromDegreesArray(flattenRing(ring)),
+            width: PERIMETER_WIDTH_PX,
+            clampToGround: true,
+            classificationType: _classificationType,
+          },
+        })));
+      }
+
+      for (const market of markets) {
+        _marketEntities.set(market.key, market.rings.map((ring, part) => source.entities.add({
+          id: `energy-fr:market:${market.key}:${part}`,
+          properties: { code: market.key, kind: 'market', part },
+          show: false,
+          polyline: {
+            positions: Cesium.Cartesian3.fromDegreesArray(flattenRing(ring)),
+            width: MARKET_OUTLINE_WIDTH_PX,
+            clampToGround: true,
+            classificationType: _classificationType,
+          },
+        })));
+      }
+
       if (_viewer) await _viewer.dataSources.add(source);
       _dataSource = source;
       return source;
@@ -996,7 +1434,7 @@ export function createFranceEnergyLayer({
   }
 
   /**
-   * Raise the current régions on the pre-built département entities.
+   * Raise the current régions on the pre-built entities.
    *
    * Three marks, and they are the three states of A1:
    *
@@ -1008,6 +1446,10 @@ export function createFranceEnergyLayer({
    *   not measured       → FLAT, STRIPED, ground-clamped. Corse lives here,
    *     permanently, and so does any région the upstream drops mid-session.
    *
+   * All three stand on the same reduced footprint and all three carry the same
+   * true perimeter underneath, so swapping between them changes the mark and
+   * never the geometry a reader is measuring against.
+   *
    * Only reached when the poll signature moved, i.e. at most once per upstream
    * 15-minute step, so rebuilding the extruded geometry costs one frame per
    * step rather than one per poll.
@@ -1016,30 +1458,28 @@ export function createFranceEnergyLayer({
     const painted = new Set();
     for (const record of _records) {
       const row = energyPrismRow(record);
-      // One material instance per région, shared across all its départements:
-      // they are one measurement, not eight, and the shared instance is what
-      // makes that visible as a single plateau.
       const material = prismMaterial(row);
-      const outlineColor = Cesium.Color
-        .fromCssColorString(row.color || PRISM_NO_RATIO_COLOR)
-        .withAlpha(PRISM_TOP_ALPHA);
-      for (const code of record.departements) {
-        const parts = _entities.get(code);
-        if (!parts) continue;
-        painted.add(code);
-        for (const entity of parts) applyPrism(entity, row, material, outlineColor);
+      const color = Cesium.Color
+        .fromCssColorString(row.color || PRISM_NO_RATIO_COLOR);
+      painted.add(record.code);
+      for (const entity of _markEntities.get(record.code) || []) {
+        applyPrism(entity, row, material, color.withAlpha(PRISM_TOP_ALPHA));
       }
+      applyPerimeter(record.code, color.withAlpha(PERIMETER_ALPHA));
     }
     // Everything else — Corse, and any région the upstream dropped this
     // refresh — is drawn as a DECLARED absence rather than as a hole. Under the
     // flat regime these were hidden, which made "not published" and "nothing
     // here" the same pixel; a height channel cannot afford that (A1).
     const stripe = unpublishedMaterial();
-    for (const [code, parts] of _entities) {
+    const slate = Cesium.Color.fromCssColorString(PRISM_NO_RATIO_COLOR);
+    for (const [code, parts] of _markEntities) {
       if (painted.has(code)) continue;
       for (const entity of parts) applyUnpublished(entity, stripe);
+      applyPerimeter(code, slate.withAlpha(PERIMETER_ALPHA));
     }
     repaintArcs();
+    repaintMarkets();
     _viewer?.scene?.requestRender?.();
   }
 
@@ -1069,7 +1509,8 @@ export function createFranceEnergyLayer({
    * depth-texture extension. Where that is missing, Cesium builds the footprint
    * as an ordinary primitive at height 0 and Corsican terrain hides it — i.e.
    * the layer falls back to exactly the behaviour it had before this change,
-   * on the machines that could not have done better anyway.
+   * on the machines that could not have done better anyway. The perimeter line
+   * is drawn either way, so Corsica never disappears entirely.
    */
   function unpublishedMaterial() {
     const slate = Cesium.Color.fromCssColorString(PRISM_NO_RATIO_COLOR);
@@ -1109,7 +1550,7 @@ export function createFranceEnergyLayer({
     entity.show = true;
   }
 
-  /** Draw one département of an unmeasured région as a striped footprint. */
+  /** Draw one ring of an unmeasured région as a striped footprint. */
   function applyUnpublished(entity, material) {
     const polygon = entity.polygon;
     if (!polygon) return;
@@ -1119,6 +1560,22 @@ export function createFranceEnergyLayer({
     polygon.outline = false;
     polygon.material = material;
     entity.show = true;
+  }
+
+  /**
+   * Show a région's true perimeter under whichever mark it is carrying.
+   *
+   * Same colour as the mark, at a lower alpha: it is the base of the volume
+   * standing on it, not a second reading. It is the only place the exact
+   * extent of a région is stated, so it is drawn for EVERY région including
+   * the unmeasured ones — Corse has a perimeter even though it has no figure.
+   */
+  function applyPerimeter(code, color) {
+    for (const entity of _perimeterEntities.get(code) || []) {
+      if (!entity.polyline) continue;
+      entity.polyline.material = new Cesium.ColorMaterialProperty(color);
+      entity.show = true;
+    }
   }
 
   /** Rebuild the border arcs. Five entities at most, so they are recreated whole. */
@@ -1133,6 +1590,7 @@ export function createFranceEnergyLayer({
       if (!entity) {
         entity = _dataSource.entities.add({
           id: `energy-fr:arc:${arc.key}`,
+          properties: { code: arc.key, kind: 'arc' },
           polyline: {
             positions,
             width: arc.width,
@@ -1152,6 +1610,27 @@ export function createFranceEnergyLayer({
     }
     for (const [key, entity] of _arcEntities) {
       if (!live.has(key)) entity.show = false;
+    }
+  }
+
+  /**
+   * Colour the market outlines from the flows, and show them all.
+   *
+   * Unlike an arc, an outline does NOT disappear when the flow falls under the
+   * deadband: an arc is a direction and a direction of nothing is nothing,
+   * while the outline answers "who is on the other side", which is true at
+   * zero. It goes slate and stays drawn.
+   */
+  function repaintMarkets() {
+    const styles = marketOutlineStyles(_arcs);
+    for (const [key, parts] of _marketEntities) {
+      const style = styles.get(key) || BALANCE_STYLES.balanced;
+      const color = Cesium.Color.fromCssColorString(style.color).withAlpha(MARKET_OUTLINE_ALPHA);
+      for (const entity of parts) {
+        if (!entity.polyline) continue;
+        entity.polyline.material = new Cesium.ColorMaterialProperty(color);
+        entity.show = true;
+      }
     }
   }
 
@@ -1213,6 +1692,7 @@ export function createFranceEnergyLayer({
       _viewer = viewer;
       _records = [];
       _arcs = [];
+      _frontier = new Map();
       _national = summarizeNational(null);
       _signature = null;
       _lastUpdate = null;
@@ -1267,7 +1747,7 @@ export function createFranceEnergyLayer({
         }
 
         const records = buildRegionRecords(payload, _departements);
-        const arcs = buildBorderArcs(payload?.national?.exchanges);
+        const arcs = buildBorderArcs(payload?.national?.exchanges, _frontier);
         const signature = signatureOf(records, arcs);
         _records = records;
         _arcs = arcs;
@@ -1312,7 +1792,11 @@ export function createFranceEnergyLayer({
       }
       _viewer = null;
       _departements = new Map();
-      _entities = new Map();
+      _shapes = new Map();
+      _frontier = new Map();
+      _markEntities = new Map();
+      _perimeterEntities = new Map();
+      _marketEntities = new Map();
       _arcEntities = new Map();
       _shapesPromise = null;
       _records = [];
@@ -1353,7 +1837,7 @@ export function createFranceEnergyLayer({
      * @returns {{chips: Array<object>, legend: Array<object>, surfaceFill: boolean}}
      */
     getRowControls() {
-      return { chips: [], legend: energyPrismLegend(_records), surfaceFill: false };
+      return { chips: [], legend: energyPrismLegend(_records, _marketEntities.size), surfaceFill: false };
     },
 
     getStats() {

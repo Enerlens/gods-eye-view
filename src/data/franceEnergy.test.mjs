@@ -21,15 +21,20 @@ import {
   UNCOVERED_REGIONS,
   balanceStyle,
   borderLabelText,
+  PRISM_FOOTPRINT_SCALE,
   buildBorderArcs,
+  buildMarketOutlines,
   buildRegionRecords,
+  buildRegionShapes,
   createFranceEnergyLayer,
   departementRegionIndex,
   energyClassificationTypeForStack,
   energyPrismLegend,
   energyPrismRow,
   formatMegawatts,
+  frontierAnchors,
   mapAnalystRecord,
+  marketOutlineStyles,
   regionAnchor,
   regionLabelHeightM,
   regionLabelText,
@@ -37,6 +42,7 @@ import {
   summarizeNational,
 } from './franceEnergy.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
+import { ringArea } from './polygonDissolve.js';
 import {
   PRISM_BODY_ALPHA,
   PRISM_MAX_HEIGHT_M,
@@ -49,6 +55,10 @@ import { projectEco2mix } from './eco2mixFeed.js';
 
 const BUNDLED = JSON.parse(readFileSync(
   new URL('./local_data/france_departements/departements.geojson', import.meta.url),
+  'utf8',
+));
+const MARKET_AREAS = JSON.parse(readFileSync(
+  new URL('./local_data/energy_market_areas/market_areas.geojson', import.meta.url),
   'utf8',
 ));
 const PAYLOAD = projectEco2mix({
@@ -290,6 +300,65 @@ test('an import arc ends on France and an export arc starts there', () => {
   assert.ok(Math.abs(exported.positions.at(-3) - BORDER_ANCHORS.italie[0]) < 1e-6);
 });
 
+test('the arcs leave the FRONTIER, not the middle of the country', () => {
+  const frontier = frontierAnchors(BUNDLED);
+  // Five markets, five frontier points, and Corsica excluded from the search:
+  // Bonifacio is nearer Rome than Menton is, and the Franco-Italian commercial
+  // border is the Alps.
+  assert.equal(frontier.size, 5);
+  const italy = frontier.get('italie');
+  assert.ok(italy[0] > 6.5 && italy[1] > 43.5, `Italie → ${italy}`);
+  const spain = frontier.get('espagne');
+  assert.ok(spain[1] < 44 && spain[1] > 42, `Espagne → ${spain}`);
+
+  const arcs = buildBorderArcs(PAYLOAD.national.exchanges, frontier);
+  for (const arc of arcs) {
+    assert.equal(arc.fromFrontier, true);
+    const home = arc.importing
+      ? [arc.positions.at(-3), arc.positions.at(-2)]
+      : [arc.positions[0], arc.positions[1]];
+    const anchor = frontier.get(arc.key);
+    assert.ok(Math.abs(home[0] - anchor[0]) < 1e-6, `${arc.key} lon ${home[0]}`);
+    assert.ok(Math.abs(home[1] - anchor[1]) < 1e-6, `${arc.key} lat ${home[1]}`);
+    // And nowhere near Berry, which is where all five used to start.
+    assert.ok(
+      Math.hypot(home[0] - BORDER_ANCHORS.france[0], home[1] - BORDER_ANCHORS.france[1]) > 1,
+      `${arc.key} still starts in the middle of France`,
+    );
+  }
+});
+
+test('a missing frontier costs the arc its start, never its existence', () => {
+  // The geometry has not loaded. An arc drawn from slightly the wrong place
+  // still says which way the power is going; a missing arc says nothing.
+  const arcs = buildBorderArcs(PAYLOAD.national.exchanges, new Map());
+  assert.equal(arcs.length, 5);
+  assert.ok(arcs.every((arc) => arc.fromFrontier === false));
+  // Suisse is an IMPORT on this snapshot, so the French end is the LAST
+  // sample: the arrow head lands on France.
+  const swiss = arcs.find((arc) => arc.key === 'suisse');
+  assert.ok(swiss.importing);
+  assert.ok(
+    Math.abs(swiss.positions.at(-3) - BORDER_ANCHORS.france[0]) < 1e-9,
+    String(swiss.positions.at(-3)),
+  );
+  assert.deepEqual(frontierAnchors({ features: [] }), new Map());
+});
+
+test('a shorter chord gets a shorter bow, or the arc is a croquet hoop', () => {
+  const frontier = frontierAnchors(BUNDLED);
+  const apexOf = (arcs, key) => {
+    const arc = arcs.find((entry) => entry.key === key);
+    return Math.max(...arc.positions.filter((_, i) => i % 3 === 2));
+  };
+  const near = buildBorderArcs(PAYLOAD.national.exchanges, frontier);
+  const far = buildBorderArcs(PAYLOAD.national.exchanges);
+  // Suisse is the shortest of the five: 94 km from the frontier, against ~590
+  // from Berry. Its bow has to come down with it.
+  assert.ok(apexOf(near, 'suisse') < apexOf(far, 'suisse'));
+  assert.ok(apexOf(near, 'suisse') <= 25_000, `${apexOf(near, 'suisse')} m`);
+});
+
 test('a zero border is no arc at all, and an unknown border is dropped', () => {
   assert.deepEqual(buildBorderArcs([{ key: 'suisse', label: 'Suisse', mw: 0 }]), []);
   assert.deepEqual(buildBorderArcs([{ key: 'lune', label: 'Lune', mw: 900 }]), []);
@@ -314,6 +383,57 @@ test('the five real borders all resolve, Allemagne+Belgique as one arc', () => {
 });
 
 // ── Presentation ────────────────────────────────────────────────────────────
+
+test('the dissolve turns 96 départements into 13 régions and no seams', () => {
+  const shapes = buildRegionShapes(BUNDLED);
+  assert.equal(shapes.size, 13, 'twelve measured régions plus Corse');
+  let marks = 0;
+  for (const [code, shape] of shapes) {
+    // ONE prism per région on the real file — the whole point of the dissolve.
+    assert.equal(shape.prismRings.length, 1, `région ${code} draws ${shape.prismRings.length}`);
+    marks += shape.prismRings.length;
+    // The perimeter keeps the islands the prism drops.
+    assert.ok(shape.rings.length >= shape.prismRings.length);
+    assert.ok(Math.abs(ringArea(shape.rings[0])) >= Math.abs(ringArea(shape.rings.at(-1))));
+  }
+  assert.equal(marks, 13);
+  // Île-de-France: eight départements in, one closed outline out, and the 139
+  // shared segments that used to draw the seams are not in it.
+  const idf = buildRegionShapes(BUNDLED).get('11');
+  assert.deepEqual(idf.rings[0][0], idf.rings[0].at(-1));
+  assert.ok(idf.rings[0].length < 250, `${idf.rings[0].length} points`);
+  assert.deepEqual(buildRegionShapes(null), new Map());
+});
+
+test('the market outlines are whitelisted on the fields éCO2mix publishes', () => {
+  const outlines = buildMarketOutlines(TEST_MARKETS);
+  assert.deepEqual(outlines.map((entry) => entry.key), ['espagne', 'italie']);
+  assert.equal(outlines[1].rings.length, 2, 'a MultiPolygon keeps its parts');
+  assert.ok(!outlines.some((entry) => entry.key === 'luxembourg'));
+  assert.deepEqual(buildMarketOutlines(null), []);
+
+  // The bundled file: five markets, and Germany + Belgium in ONE entry because
+  // they are ONE upstream field.
+  const bundled = buildMarketOutlines(MARKET_AREAS);
+  assert.deepEqual(
+    bundled.map((entry) => entry.key).sort(),
+    ['allemagne_belgique', 'angleterre', 'espagne', 'italie', 'suisse'],
+  );
+  assert.equal(bundled.find((entry) => entry.key === 'allemagne_belgique').rings.length, 2);
+  assert.match(bundled.find((entry) => entry.key === 'allemagne_belgique').label, /Belgique/);
+});
+
+test('an outline takes its arc class, and slate when nothing crosses', () => {
+  const styles = marketOutlineStyles(buildBorderArcs(PAYLOAD.national.exchanges));
+  assert.equal(styles.size, 5);
+  // +500 MW from Spain is an import; −2 537 MW to Italy is an export.
+  assert.equal(styles.get('espagne'), BALANCE_STYLES.importer);
+  assert.equal(styles.get('italie'), BALANCE_STYLES.exporter);
+  // No arc at all — the market is still a neighbour and still gets a line.
+  assert.equal(marketOutlineStyles([]).get('suisse'), BALANCE_STYLES.balanced);
+  assert.equal(marketOutlineStyles(null).size, 5);
+  assert.ok(!marketOutlineStyles([]).has('france'));
+});
 
 test('labels carry the verb and the megawatts, never colour alone', () => {
   const records = buildRegionRecords(PAYLOAD, parseDepartements(BUNDLED));
@@ -382,13 +502,21 @@ test('the legend publishes the height ruler AND the colour key (D1)', () => {
   // Height first — it is the primary variable now — with a title row and
   // numbered ticks, because a length without a ruler says nothing.
   assert.match(labels[0], /^Hauteur — /);
+  // And immediately after it, the row that admits the footprint is not the
+  // région. The prism is drawn on a reduced emprise, and the reader is told so
+  // on the map rather than in a source file.
+  assert.match(labels[1], /^Socle — /);
+  assert.match(legend[1].blurb, /PÉRIMÈTRE EXACT/);
+  assert.equal(legend[1].color, null);
+  let swatch = null;
   for (const tick of ENERGY_PRISM_SCALE.heightTicks) {
     const row = legend.find((entry) => entry.label.startsWith(`${tick.toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ')} `));
     assert.ok(row, `no tick row for ${tick}`);
     // One constant colour for all three: in these rows the datum is the bar's
     // HEIGHT, so a varying swatch colour would be a second, false encoding.
     assert.ok(row.glyph.startsWith('data:image/svg+xml;base64,'));
-    assert.equal(row.color, legend[1].color);
+    swatch = swatch ?? row.color;
+    assert.equal(row.color, swatch);
   }
   // Then the colour key, counted.
   const colourTitle = labels.findIndex((label) => label.startsWith('Couleur — '));
@@ -403,11 +531,23 @@ test('the legend publishes the height ruler AND the colour key (D1)', () => {
 
   // And Corsica, which is NOT in `records` and would otherwise be forgotten by
   // a legend that only counted what the join returned.
-  const missing = legend.at(-1);
+  const missing = legend.find((entry) => /non publié/.test(entry.label));
   assert.equal(missing.count, UNCOVERED_REGIONS.length);
   assert.equal(missing.color, PRISM_NO_RATIO_COLOR);
   assert.ok(missing.glyph, 'the absence is a motif, not just a tint (D3)');
   assert.match(missing.blurb, /Corse/);
+
+  // The third mark: the neighbours are delimited and never filled, and the
+  // legend has to say why they are empty or an empty outline reads as a bug.
+  // It is CONDITIONAL — the market file may fail without taking the layer
+  // down, and a legend cannot promise a mark nobody drew.
+  assert.ok(!legend.some((entry) => /^Contour — /.test(entry.label)));
+  const outline = energyPrismLegend(records, 5).at(-1);
+  assert.match(outline.label, /^Contour — /);
+  assert.equal(outline.color, null, 'the outline row keys no colour of its own');
+  assert.equal(outline.count, 5);
+  assert.match(outline.blurb, /jamais un aplat/);
+  assert.match(outline.blurb, /le plus proche/);
 
   // Every entry is the repo's shape, and no ratio is asserted anywhere: this
   // legend must never claim the colour is « un rapport ».
@@ -508,7 +648,46 @@ test('the harness fixture still spans three régions and a MultiPolygon', () => 
   assert.equal(TEST_SHAPES.features.find((f) => f.geometry.type === 'MultiPolygon').properties.code, '69');
 });
 
-function createHarness(polls, shapes = TEST_SHAPES) {
+/**
+ * Two of the five markets, one of them in two rings.
+ *
+ * Suisse is deliberately ABSENT: a market file that carries no shape for a
+ * border must cost that border its outline and nothing else — not its arc, not
+ * its label, not the layer.
+ */
+const TEST_MARKETS = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: { key: 'espagne', label: 'Espagne' },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[-5, 39], [-1, 39], [-1, 42], [-5, 42], [-5, 39]]],
+      },
+    },
+    {
+      type: 'Feature',
+      properties: { key: 'italie', label: 'Italie' },
+      geometry: {
+        type: 'MultiPolygon',
+        coordinates: [
+          [[[10, 42], [14, 42], [14, 45], [10, 45], [10, 42]]],
+          [[[13, 37], [15, 37], [15, 38], [13, 38], [13, 37]]],
+        ],
+      },
+    },
+    // Not a border éCO2mix publishes: dropped by the whitelist rather than
+    // drawn as a country nobody exchanges with.
+    {
+      type: 'Feature',
+      properties: { key: 'luxembourg', label: 'Luxembourg' },
+      geometry: { type: 'Polygon', coordinates: [[[6, 49], [7, 49], [7, 50], [6, 50], [6, 49]]] },
+    },
+  ],
+};
+
+function createHarness(polls, shapes = TEST_SHAPES, markets = TEST_MARKETS) {
   const dataSources = [];
   const hostCalls = [];
   const fetchUrls = [];
@@ -541,6 +720,7 @@ function createHarness(polls, shapes = TEST_SHAPES) {
   const layer = createFranceEnergyLayer({
     overlayHost,
     departementsGeoJson: shapes,
+    marketAreasGeoJson: markets,
     mapStackEventTarget,
   });
   return {
@@ -555,7 +735,7 @@ function createHarness(polls, shapes = TEST_SHAPES) {
   };
 }
 
-test('a région raises all of its départements to ONE height', async () => {
+test('a région is ONE mark, and its départements are gone from the scene', async () => {
   const h = createHarness([PAYLOAD]);
   try {
     h.layer.init(h.viewer);
@@ -564,36 +744,183 @@ test('a région raises all of its départements to ONE height', async () => {
 
     const shown = h.entities().filter((entity) => entity.polygon && entity.show);
     const codes = shown.map((entity) => entity.properties.code.getValue()).sort();
-    // 69 is a MultiPolygon, so it contributes TWO entities — both must rise,
-    // or an island sits at sea level while its mainland is 78 km up.
-    assert.deepEqual(codes, ['2A', '69', '69', '75', '95']);
+    // RÉGION codes, not département codes. The fixture's Île-de-France squares
+    // do not touch, so région 11 keeps two rings — a dissolve merges what is
+    // adjacent and honestly refuses to merge what is not. Auvergne-Rhône-Alpes
+    // is one mark: its 0.04 deg² island is under the prism threshold.
+    assert.deepEqual(codes, ['11', '11', '84', '94']);
+    assert.ok(!codes.includes('75'), 'no département reaches the scene any more');
+    assert.ok(!codes.includes('69'));
 
-    const at = (code) => shown.find((entity) => entity.properties.code.getValue() === code);
-    const heightOf = (code) => at(code).polygon.extrudedHeight.getValue();
+    const marksOf = (code) => shown.filter((e) => e.properties.code.getValue() === code);
+    const heightOf = (code) => marksOf(code)[0].polygon.extrudedHeight.getValue();
 
-    // Both Île-de-France départements share ONE material and ONE height: they
-    // are one measurement, not two, and the plateau is what shows it.
-    assert.equal(at('75').polygon.material, at('95').polygon.material);
-    assert.equal(heightOf('75'), heightOf('95'));
+    // Both rings of Île-de-France share ONE material and ONE height: they are
+    // one measurement, and nothing about the drawing may suggest two.
+    const [first, second] = marksOf('11');
+    assert.equal(first.polygon.material, second.polygon.material);
+    assert.equal(
+      first.polygon.extrudedHeight.getValue(),
+      second.polygon.extrudedHeight.getValue(),
+    );
     // The base is the ELLIPSOID for every prism, or the tops stop being
     // comparable the moment the terrain moves.
-    assert.equal(at('75').polygon.height.getValue(), 0);
-    assert.equal(at('69').polygon.perPositionHeight.getValue(), false);
+    assert.equal(first.polygon.height.getValue(), 0);
+    assert.equal(first.polygon.perPositionHeight.getValue(), false);
 
     // Auvergne-Rhône-Alpes exports 7 781 MW against Île-de-France's 6 478 MW
     // import: taller AND a different colour. Both facts, one mark.
-    assert.ok(heightOf('69') > heightOf('75'));
-    assert.equal(Math.round(heightOf('69')), Math.round(7781 / 12_000 * PRISM_MAX_HEIGHT_M));
-    const colorOf = (code) => at(code).polygon.material.color.getValue();
+    assert.ok(heightOf('84') > heightOf('11'));
+    assert.equal(Math.round(heightOf('84')), Math.round(7781 / 12_000 * PRISM_MAX_HEIGHT_M));
+    const colorOf = (code) => marksOf(code)[0].polygon.material.color.getValue();
     const amber = Cesium.Color.fromCssColorString(BALANCE_STYLES.importer.color);
     const teal = Cesium.Color.fromCssColorString(BALANCE_STYLES.exporter.color);
-    assert.ok(colorOf('75').red === amber.red && colorOf('75').green === amber.green);
-    assert.ok(colorOf('69').red === teal.red && colorOf('69').green === teal.green);
+    assert.ok(colorOf('11').red === amber.red && colorOf('11').green === amber.green);
+    assert.ok(colorOf('84').red === teal.red && colorOf('84').green === teal.green);
     // The body is translucent and the silhouette is not: the top edge is the
     // reading instrument, so it gets the outline a clamped fill cannot have.
-    assert.equal(colorOf('75').alpha, PRISM_BODY_ALPHA);
-    assert.equal(at('75').polygon.outline.getValue(), true);
-    assert.equal(at('75').polygon.outlineColor.getValue().alpha, PRISM_TOP_ALPHA);
+    assert.equal(colorOf('11').alpha, PRISM_BODY_ALPHA);
+    assert.equal(first.polygon.outline.getValue(), true);
+    assert.equal(first.polygon.outlineColor.getValue().alpha, PRISM_TOP_ALPHA);
+  } finally {
+    h.restore();
+  }
+});
+
+test('the prism stands on a REDUCED footprint, and the true one is drawn under it', async () => {
+  const h = createHarness([PAYLOAD]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+
+    const shapes = buildRegionShapes(TEST_SHAPES);
+    const ring = shapes.get('84').rings[0];
+    const inset = shapes.get('84').prismRings[0];
+    // The footprint is the SAME SHAPE, smaller: same vertex count, area down
+    // by the square of the factor. A buffer would have changed both.
+    assert.equal(inset.length, ring.length);
+    assert.ok(Math.abs(
+      Math.abs(ringArea(inset)) / Math.abs(ringArea(ring)) - PRISM_FOOTPRINT_SCALE ** 2,
+    ) < 1e-9);
+
+    // The prism polygon is built on the reduced ring, and a perimeter polyline
+    // on the true one is shown beneath it in the same colour. Without that
+    // line nothing on the globe says where the région ends.
+    const perimeters = h.entities().filter((entity) => (
+      entity.polyline && String(entity.id).startsWith('energy-fr:perimeter:')
+    ));
+    assert.ok(perimeters.length >= 4, `${perimeters.length} perimeter lines`);
+    assert.ok(perimeters.every((entity) => entity.show));
+    assert.ok(perimeters.every((entity) => entity.polyline.clampToGround.getValue()));
+    const aura = perimeters.find((e) => String(e.id) === 'energy-fr:perimeter:84:0');
+    const teal = Cesium.Color.fromCssColorString(BALANCE_STYLES.exporter.color);
+    assert.equal(aura.polyline.material.color.getValue().red, teal.red);
+    assert.ok(aura.polyline.material.color.getValue().alpha < PRISM_TOP_ALPHA);
+
+    // The 0.04 deg² island of Auvergne-Rhône-Alpes carries a perimeter and NO
+    // prism: a 78 km column on a speck measures its région and looks like it
+    // measures the island.
+    assert.ok(h.entities().some((e) => String(e.id) === 'energy-fr:perimeter:84:1'));
+    assert.ok(!h.entities().some((e) => String(e.id) === 'energy-fr:region:84:1'));
+  } finally {
+    h.restore();
+  }
+});
+
+test('the neighbouring markets are delimited, and never filled', async () => {
+  const h = createHarness([PAYLOAD]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+
+    const outlines = h.entities().filter((entity) => (
+      String(entity.id).startsWith('energy-fr:market:')
+    ));
+    assert.equal(outlines.length, 3, 'one entity per ring of the test outlines');
+    // A LINE and nothing else. A filled foreign polygon is what a measurement
+    // looks like in this layer, and nothing inside Spain was measured.
+    assert.ok(outlines.every((entity) => entity.polyline && !entity.polygon));
+    assert.ok(outlines.every((entity) => entity.show));
+    assert.ok(outlines.every((entity) => entity.polyline.clampToGround.getValue()));
+
+    const colorOf = (key) => outlines
+      .find((entity) => String(entity.id).startsWith(`energy-fr:market:${key}:`))
+      .polyline.material.color.getValue();
+    // Espagne is +500 MW upstream, i.e. France IMPORTS from it: amber, the
+    // same class as its arc. Italie is an export: teal.
+    const amber = Cesium.Color.fromCssColorString(BALANCE_STYLES.importer.color);
+    const teal = Cesium.Color.fromCssColorString(BALANCE_STYLES.exporter.color);
+    assert.equal(colorOf('espagne').red, amber.red);
+    assert.equal(colorOf('italie').red, teal.red);
+    // Suisse has no outline in the fixture and no entity: a market file that
+    // does not carry a shape costs its outline and nothing else.
+    assert.ok(!outlines.some((entity) => String(entity.id).includes('suisse')));
+  } finally {
+    h.restore();
+  }
+});
+
+test('a market file that fails costs the outlines and nothing else', async () => {
+  // The harness fetch answers every URL with the éCO2mix payload, so the
+  // market file comes back as a document with no `key` on any feature — the
+  // realistic shape of a bad deploy. The régions and the arcs must survive it,
+  // and the legend must stop promising a mark nobody drew.
+  const h = createHarness([PAYLOAD], TEST_SHAPES, null);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    assert.equal(await h.layer.update(h.viewer), true);
+
+    assert.ok(!h.entities().some((e) => String(e.id).startsWith('energy-fr:market:')));
+    assert.equal(h.layer.getStats().count, 12);
+    assert.equal(h.layer.getStats().borders, 5);
+    assert.ok(!h.layer.getRowControls().legend.some((entry) => /^Contour — /.test(entry.label)));
+  } finally {
+    h.restore();
+  }
+});
+
+test('the legend gains its outline row once the markets are on the globe', async () => {
+  const h = createHarness([PAYLOAD]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    const row = h.layer.getRowControls().legend.find((entry) => /^Contour — /.test(entry.label));
+    assert.ok(row);
+    assert.equal(row.count, 2, 'the two markets the fixture carries');
+  } finally {
+    h.restore();
+  }
+});
+
+test('a market whose flow dies keeps its outline, in slate', async () => {
+  // An arc is a DIRECTION and a direction of nothing is nothing, so it goes.
+  // An outline answers "who is on the other side", which stays true at zero.
+  const zeroed = {
+    ...PAYLOAD,
+    national: {
+      ...PAYLOAD.national,
+      exchanges: PAYLOAD.national.exchanges.map((entry) => (
+        entry.key === 'espagne' ? { ...entry, mw: 0 } : entry
+      )),
+    },
+  };
+  const h = createHarness([zeroed]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+
+    const spain = h.entities().find((e) => String(e.id) === 'energy-fr:market:espagne:0');
+    assert.equal(spain.show, true);
+    assert.equal(
+      spain.polyline.material.color.getValue().red,
+      Cesium.Color.fromCssColorString(BALANCE_STYLES.balanced.color).red,
+    );
+    assert.ok(!h.entities().some((e) => String(e.id) === 'energy-fr:arc:espagne' && e.show));
   } finally {
     h.restore();
   }
@@ -607,7 +934,7 @@ test('Corsica is a striped footprint, never a prism of height zero', async () =>
     await h.layer.update(h.viewer);
 
     const corse = h.entities().find((entity) => (
-      entity.polygon && entity.properties?.code?.getValue() === '2A'
+      entity.polygon && entity.properties?.code?.getValue() === '94'
     ));
     // Visible — a hidden Corsica made "not published" look like "nothing here",
     // which a height channel cannot afford (A1/A4).
@@ -618,6 +945,14 @@ test('Corsica is a striped footprint, never a prism of height zero', async () =>
     // the ground is exactly the thing classification is for.
     assert.ok(corse.polygon.material instanceof Cesium.StripeMaterialProperty);
     assert.ok(corse.polygon.classificationType);
+    // Its perimeter is drawn too: even the région nobody measures has to say
+    // where it is, and it says it in the slate of the unmeasured.
+    const edge = h.entities().find((e) => String(e.id) === 'energy-fr:perimeter:94:0');
+    assert.equal(edge.show, true);
+    assert.equal(
+      edge.polyline.material.color.getValue().red,
+      Cesium.Color.fromCssColorString(PRISM_NO_RATIO_COLOR).red,
+    );
     // And it never enters the analyst snapshot or the count.
     assert.ok(!h.layer.getAnalystRecords().some((row) => row.id === '94'));
   } finally {
@@ -644,9 +979,9 @@ test('the three marks A1 asks for are three different marks', async () => {
     const at = (code) => h.entities().find((entity) => (
       entity.polygon && entity.properties?.code?.getValue() === code
     ));
-    const prism = at('69');
-    const zero = at('75');
-    const absent = at('2A');
+    const prism = at('84');
+    const zero = at('11');
+    const absent = at('94');
 
     assert.ok(prism.polygon.extrudedHeight.getValue() > 0);
     assert.equal(zero.polygon.extrudedHeight, undefined);
@@ -686,7 +1021,7 @@ test('a région the upstream drops becomes striped, not stale', async () => {
     h.layer.enable(h.viewer);
     await h.layer.update(h.viewer);
     const rhone = () => h.entities().find((entity) => (
-      entity.polygon && entity.properties?.code?.getValue() === '69'
+      entity.polygon && entity.properties?.code?.getValue() === '84'
     ));
     assert.ok(rhone().polygon.extrudedHeight.getValue() > 0);
 
@@ -707,13 +1042,16 @@ test('the five border arcs are drawn as raised polylines', async () => {
     h.layer.enable(h.viewer);
     await h.layer.update(h.viewer);
 
-    const arcs = h.entities().filter((entity) => entity.polyline);
+    const arcs = h.entities().filter((entity) => String(entity.id).startsWith('energy-fr:arc:'));
     assert.equal(arcs.length, 5);
     for (const arc of arcs) {
       assert.ok(arc.show);
       assert.equal(arc.polyline.arcType.getValue(), Cesium.ArcType.NONE);
       assert.ok(arc.polyline.material instanceof Cesium.PolylineArrowMaterialProperty);
       assert.ok(arc.polyline.positions.getValue().length > 2);
+      // NOT clamped, unlike every other polyline this layer draws: an arc is a
+      // flow over the globe and rides 20 to 85 km above it.
+      assert.equal(arc.polyline.clampToGround, undefined);
     }
   } finally {
     h.restore();
@@ -734,14 +1072,16 @@ test('a border that falls to zero hides its arc rather than drawing a hairline',
   try {
     h.layer.init(h.viewer);
     h.layer.enable(h.viewer);
+    const arcs = (only = false) => h.entities().filter((e) => (
+      String(e.id).startsWith('energy-fr:arc:') && (!only || e.show)
+    ));
     await h.layer.update(h.viewer);
-    assert.equal(h.entities().filter((e) => e.polyline && e.show).length, 5);
+    assert.equal(arcs(true).length, 5);
 
     await h.layer.update(h.viewer);
-    const shown = h.entities().filter((e) => e.polyline && e.show);
-    assert.equal(shown.length, 4);
+    assert.equal(arcs(true).length, 4);
     // The entity is kept and hidden, not destroyed — the next refresh reuses it.
-    assert.equal(h.entities().filter((e) => e.polyline).length, 5);
+    assert.equal(arcs().length, 5);
     assert.equal(h.layer.getStats().borders, 4);
   } finally {
     h.restore();

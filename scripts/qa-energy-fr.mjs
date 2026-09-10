@@ -9,15 +9,18 @@
  * cannot drift from what the proxy actually serves — and proves the four
  * behaviours that only a real Cesium scene can prove:
  *
- *   i.   every département of a région paints with its RÉGION's colour, and
- *        Corsica stays dark because éCO2mix régional does not cover it
+ *   i.   ONE mark reaches the globe per RÉGION — twelve prisms and a striped
+ *        Corsica, not ninety-six départements — each with its true perimeter
+ *        traced on the ground under it
  *   ii.  the sign convention survives all the way to the globe — Île-de-France
  *        (a net importer) is amber and Auvergne-Rhône-Alpes (a net exporter)
  *        is teal, read back off the rendered material, not off the model
  *   iii. the five border flows are drawn as RAISED arcs pointing the way the
- *        power travels, with the direction repeated in words on the label
- *   iv.  a border that falls to zero hides its arc instead of drawing a
- *        hairline, and the entity is reused rather than rebuilt
+ *        power travels, leaving the FRONTIER rather than the middle of the
+ *        country, with the direction repeated in words on the label
+ *   iv.  the five neighbouring markets are outlined, and never filled
+ *   v.   a border that falls to zero hides its arc instead of drawing a
+ *        hairline — and KEEPS its market outline, in slate
  *
  * Screenshots are written under the gitignored `qa-shots/energy-fr/`.
  *
@@ -165,11 +168,14 @@ function sceneProbe(page) {
 
     const polygons = [];
     const arcs = [];
+    const lines = [];
     for (const entity of collection ? collection.entities.values : []) {
+      const id = String(entity.id);
+      const code = String(entity.properties?.code?.getValue?.() ?? '');
       if (entity.polygon) {
-        const code = String(entity.properties?.code?.getValue?.() ?? '');
         const material = entity.polygon.material?.color?.getValue?.();
         polygons.push({
+          id,
           code,
           shown: entity.show !== false,
           color: hex(material),
@@ -182,12 +188,25 @@ function sceneProbe(page) {
         });
       } else if (entity.polyline) {
         const positions = entity.polyline.positions?.getValue?.() || [];
-        arcs.push({
-          id: String(entity.id),
+        const row = {
+          id,
+          code,
           shown: entity.show !== false,
           vertices: positions.length,
           width: entity.polyline.width?.getValue?.() ?? null,
-        });
+          color: hex(entity.polyline.material?.color?.getValue?.()),
+          clamped: entity.polyline.clampToGround?.getValue?.() === true,
+          // Cartographic degrees of the two ends, so the harness can prove an
+          // arc leaves the frontier instead of the centre of the country.
+          ends: positions.length
+            ? [positions[0], positions[positions.length - 1]].map((p) => {
+              const c = gev.viewer.scene.globe.ellipsoid.cartesianToCartographic(p);
+              return [c.longitude * 180 / Math.PI, c.latitude * 180 / Math.PI];
+            })
+            : [],
+        };
+        if (id.startsWith('energy-fr:arc:')) arcs.push(row);
+        else lines.push(row);
       }
     }
     return {
@@ -196,6 +215,7 @@ function sceneProbe(page) {
       controls: module.getRowControls(),
       polygons,
       arcs,
+      lines,
       sourceFound: Boolean(collection),
     };
   });
@@ -260,45 +280,63 @@ async function main() {
     check('the layer fetched its snapshot', apiRequests >= 1, `${apiRequests} request(s)`);
     check('the data source reached the viewer', probe.sourceFound);
     check('all 12 covered régions resolved', probe.stats.count === 12, `count=${probe.stats.count}`);
-    check('the 96 bundled départements are all present',
-      probe.polygons.length >= 96, `${probe.polygons.length} polygon entities`);
 
-    const corsica = probe.polygons.filter((polygon) => ['2A', '2B'].includes(polygon.code));
+    // The dissolve, proved on the globe: THIRTEEN polygon marks — twelve
+    // measured régions and Corse — where there used to be ninety-six. The
+    // number the eye counts has to be the number that was measured.
+    const shownCodes = new Set(probe.polygons.filter((p) => p.shown).map((p) => p.code));
+    check('one polygon mark per région, and not one per département',
+      probe.polygons.length === 13 && shownCodes.size === 13,
+      `${probe.polygons.length} polygons, ${shownCodes.size} codes: ${[...shownCodes].sort().join(',')}`);
+    // Codes that are a DÉPARTEMENT and never a région — '75' and '76' are both,
+    // Paris and Nouvelle-Aquitaine, Seine-Maritime and Occitanie.
+    check('no département code survives into the scene',
+      !['95', '69', '2A', '2B', '01', '92'].some((code) => shownCodes.has(code)),
+      [...shownCodes].sort().join(','));
+
     // Corsica is KNOWN and deliberately unmeasured — éCO2mix régional publishes
     // no Corsican row. It used to be hidden outright, which made "we have no
     // figure" indistinguishable from "this place does not exist" (A1). It is
     // now DRAWN, flat and hatched: present, and visibly carrying no value.
+    const corsica = probe.polygons.find((polygon) => polygon.code === '94');
     check('Corsica is drawn, flat, and carries no prism',
-      corsica.length === 2
-      && corsica.every((polygon) => polygon.shown)
-      && corsica.every((polygon) => !polygon.topM),
-      corsica.map((c) => `${c.code}:shown=${c.shown} top=${c.topM}`).join(' '));
+      Boolean(corsica) && corsica.shown && !corsica.topM,
+      corsica ? `shown=${corsica.shown} top=${corsica.topM}` : 'absent');
+    const raised = probe.polygons.filter((p) => p.topM > 0).map((p) => p.code);
+    check('and 12 of the 13 carry a prism — every one but Corse',
+      raised.length === 12 && !raised.includes('94'), `${raised.length} prismes`);
 
-    // Counted by CODE, not by entity: a MultiPolygon département contributes
-    // one entity per island, so the entity count is higher than 96.
-    const shownCodes = new Set(probe.polygons.filter((p) => p.shown).map((p) => p.code));
-    check('all 96 départements are drawn, Corsica included',
-      shownCodes.size === 96, `${shownCodes.size} distinct codes drawn`);
-    const raised = new Set(probe.polygons.filter((p) => p.topM > 0).map((p) => p.code));
-    check('and 94 of them carry a prism — every one but Corsica',
-      raised.size === 94 && !raised.has('2A') && !raised.has('2B'),
-      `${raised.size} prismes`);
+    // The reduced footprint is only honest because the true one is drawn. One
+    // clamped perimeter per dissolved ring, islands included.
+    const perimeters = probe.lines.filter((line) => line.id.startsWith('energy-fr:perimeter:'));
+    const perimeterCodes = new Set(perimeters.map((line) => line.code));
+    // More lines than régions: the perimeter keeps the islands the prism drops,
+    // and an island ring is short by design.
+    check('every région traces its TRUE perimeter on the ground',
+      perimeterCodes.size === 13
+      && perimeters.every((line) => line.shown && line.clamped && line.vertices >= 4),
+      `${perimeters.length} lines over ${perimeterCodes.size} régions`);
+    check('a mainland perimeter is a real outline, not a stub',
+      perimeters.filter((line) => line.id.endsWith(':0')).every((line) => line.vertices > 100),
+      perimeters.filter((line) => line.id.endsWith(':0')).map((line) => line.vertices).join(','));
+    check('Corse has a perimeter even though it has no figure',
+      perimeters.some((line) => line.id.startsWith('energy-fr:perimeter:94:') && line.shown));
     await shoot(page, '01-regions.png');
 
     // ── ii. the sign convention survives to the rendered material ──────────
     console.log('[qa] ii. importer amber, exporter teal');
     const colorOf = (code) => probe.polygons.find((polygon) => polygon.code === code);
     // Île-de-France: +6 478 MW upstream, i.e. consumption above generation.
-    const idf = colorOf('75');
+    const idf = colorOf('11');
     check('Île-de-France (net importer) renders amber', idf?.color === AMBER,
-      `75 → ${idf?.color}`);
+      `11 → ${idf?.color}`);
     // Auvergne-Rhône-Alpes: −7 781 MW upstream, the country's biggest surplus.
-    const aura = colorOf('69');
+    const aura = colorOf('84');
     check('Auvergne-Rhône-Alpes (net exporter) renders teal', aura?.color === TEAL,
-      `69 → ${aura?.color}`);
-    check('every département of Île-de-France shares one fill',
-      ['75', '77', '78', '91', '92', '93', '94', '95']
-        .every((code) => colorOf(code)?.color === AMBER && colorOf(code)?.alpha === idf.alpha));
+      `84 → ${aura?.color}`);
+    check('the perimeter under a région repeats its colour, quieter',
+      probe.lines.some((line) => line.id === 'energy-fr:perimeter:11:0' && line.color === AMBER)
+      && probe.lines.some((line) => line.id === 'energy-fr:perimeter:84:0' && line.color === TEAL));
     // Alpha ramps on |balance| / load, so the country's largest imbalance must
     // read stronger than a milder one regardless of which side each is on.
     // A3, and this is the reversal worth reading. The magnitude used to ramp
@@ -309,10 +347,10 @@ async function main() {
     // ramp left on it would be the old defect surviving under the new one.
     check('alpha carries nothing any more — the height carries the magnitude',
       probe.polygons.filter((p) => p.topM > 0).every((p) => p.alpha === aura.alpha),
-      `AURA ${aura.alpha} vs Ille-et-Vilaine ${colorOf('35').alpha}`);
+      `AURA ${aura.alpha} vs Bretagne ${colorOf('53').alpha}`);
     check('and the strongest imbalance is the tallest prism',
-      aura.topM > colorOf('35').topM,
-      `AURA ${Math.round(aura.topM / 1000)} km vs Ille-et-Vilaine ${Math.round(colorOf('35').topM / 1000)} km`);
+      aura.topM > colorOf('53').topM,
+      `AURA ${Math.round(aura.topM / 1000)} km vs Bretagne ${Math.round(colorOf('53').topM / 1000)} km`);
     // The key is now the prism key: a height scale with numbered marks (D1 — a
     // height with no ruler says only "taller than that one") and the two sign
     // classes. Entries that name a CHANNEL carry no count, by contract.
@@ -324,7 +362,7 @@ async function main() {
       probe.controls.legend.map((entry) => entry.label).join(' · '));
 
     // ── iii. the border arcs ───────────────────────────────────────────────
-    console.log('[qa] iii. five raised border arcs');
+    console.log('[qa] iii. five raised border arcs, leaving the frontier');
     check('five arcs are drawn', probe.arcs.filter((arc) => arc.shown).length === 5,
       `${probe.arcs.filter((arc) => arc.shown).length} arcs`);
     check('each arc is a sampled curve, not a two-point line',
@@ -332,6 +370,32 @@ async function main() {
       probe.arcs.map((arc) => arc.vertices).join(','));
     check('arc width tracks the flow', new Set(probe.arcs.map((arc) => arc.width)).size > 1,
       probe.arcs.map((arc) => Math.round(arc.width)).join(','));
+    // The fix the reader asked for, proved at the pixel's own coordinates: no
+    // arc may touch down anywhere near 2.60 E / 46.60 N, which is where all
+    // five used to start.
+    const BERRY = [2.60, 46.60];
+    const nearBerry = probe.arcs.filter((arc) => arc.ends.some(([lon, lat]) => (
+      Math.hypot(lon - BERRY[0], lat - BERRY[1]) < 1
+    )));
+    check('no arc leaves the middle of the country any more',
+      probe.arcs.length === 5 && nearBerry.length === 0,
+      nearBerry.map((arc) => `${arc.id} ${arc.ends.map((e) => e.map((v) => v.toFixed(2)).join('/'))}`).join(' '));
+    // And each one touches down on the French frontier facing its own market.
+    const frenchEnd = (key) => {
+      const arc = probe.arcs.find((entry) => entry.id.endsWith(`:${key}`));
+      if (!arc) return null;
+      // The frontier end is whichever of the two is inside metropolitan France.
+      return arc.ends.find(([lon, lat]) => lon > -5.2 && lon < 8.3 && lat > 42.2 && lat < 51.2);
+    };
+    check('the British arc leaves the Channel coast, not the Mediterranean',
+      (frenchEnd('angleterre')?.[1] ?? 0) > 50,
+      String(frenchEnd('angleterre')));
+    check('the Spanish arc leaves the Pyrénées',
+      (frenchEnd('espagne')?.[1] ?? 90) < 44,
+      String(frenchEnd('espagne')));
+    check('the Italian arc leaves the Alps, not Corsica',
+      (frenchEnd('italie')?.[0] ?? 0) > 6.5 && (frenchEnd('italie')?.[1] ?? 0) > 43.5,
+      String(frenchEnd('italie')));
     check('the physical and commercial national balances are reported separately',
       probe.stats.netExportMw !== probe.stats.netCommercialExportMw,
       `${probe.stats.netExportMw} vs ${probe.stats.netCommercialExportMw}`);
@@ -339,8 +403,27 @@ async function main() {
       probe.analyst.find((record) => record.id === '84')?.netExportMw === 7781);
     await shoot(page, '02-borders.png');
 
-    // ── iv. a border that falls to zero ────────────────────────────────────
-    console.log('[qa] iv. a zero border hides its arc');
+    // ── iv. the market areas ───────────────────────────────────────────────
+    console.log('[qa] iv. the neighbours are delimited, never filled');
+    const markets = probe.lines.filter((line) => line.id.startsWith('energy-fr:market:'));
+    const marketKeys = new Set(markets.map((line) => line.code));
+    check('all five markets are outlined',
+      marketKeys.size === 5 && markets.every((line) => line.shown && line.clamped),
+      [...marketKeys].sort().join(','));
+    check('an outline is a LINE — nothing foreign is ever filled',
+      markets.every((line) => line.vertices > 8)
+      && !probe.polygons.some((polygon) => marketKeys.has(polygon.code)));
+    // The outline carries the arc's class: France imports from Spain on this
+    // snapshot (+500 MW) and exports to Italy (−2 537 MW).
+    const marketColor = (key) => markets.find((line) => line.code === key)?.color;
+    check('Spain, which France imports from, is outlined amber',
+      marketColor('espagne') === AMBER, `espagne → ${marketColor('espagne')}`);
+    check('Italy, which France exports to, is outlined teal',
+      marketColor('italie') === TEAL, `italie → ${marketColor('italie')}`);
+    await shoot(page, '04-markets.png');
+
+    // ── v. a border that falls to zero ─────────────────────────────────────
+    console.log('[qa] v. a zero border hides its arc and keeps its outline');
     const arcsBefore = probe.arcs.length;
     payload = energyPayload({ zeroBorder: 'suisse' });
     await page.evaluate(() => window.__godsEyeView.dataManager.refreshLayer?.('france-energy'));
@@ -360,6 +443,13 @@ async function main() {
       after.arcs.find((arc) => arc.id.endsWith(':suisse'))?.shown === false);
     check('the other four kept their geometry',
       after.arcs.filter((arc) => arc.shown).every((arc) => arc.vertices > 8));
+    // The outline is NOT an arc: an arc is a direction and a direction of
+    // nothing is nothing, while "who is on the other side" stays true at zero.
+    const swissOutline = after.lines.filter((line) => line.code === 'suisse');
+    check('but Switzerland keeps its outline, in slate',
+      swissOutline.length > 0
+      && swissOutline.every((line) => line.shown && line.color !== TEAL && line.color !== AMBER),
+      swissOutline.map((line) => `${line.shown}:${line.color}`).join(' '));
     await shoot(page, '03-zero-border.png');
 
     const relevantErrors = consoleErrors.filter((text) => /energy|eco2mix/i.test(text));
