@@ -5,6 +5,84 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased] — 2026-09-10
 
+### Changed
+- **Un arrêt IDFM ne porte plus qu'une seule marque, et on la voit.** La couche
+  fusionnée dessinait le pictogramme du mode ET la pastille de fréquence sur le
+  même point. Le lecteur qui l'a vue a dit la chose évidente : c'est un seul
+  sujet dessiné deux fois, et les deux chiffres sont joints de toute façon. Il
+  avait raison — l'argument pour l'empilement portait sur des pixels, pas sur
+  ce qui est dit.
+
+  **LE PICTOGRAMME EST DEVENU UN BADGE, et il a grandi.** 14–24 px de trait
+  blanc teinté `#c9d4e0` deviennent 21–27 px de disque plein avec le
+  pictogramme dedans. Le mode le plus nombreux du référentiel est le bus, et
+  au-dessus d'un Paris photoréaliste `#c9d4e0` est du trait gris pâle sur des
+  toits gris pâle : « gris sur gris », mot pour mot, dans le rapport. Une
+  marque pleine apporte son propre fond au lieu d'espérer une teinte plus
+  chanceuse. Le même constat a été mesuré le même jour sur les sites
+  militaires, plus bas dans cette entrée : sur trois fonds réels, une
+  silhouette nue devient introuvable sous 18 px là où une pastille tient à 10.
+
+  Une différence, et c'est celle qui décide de la fabrication : la pastille
+  militaire reste teintable par Cesium parce que sa silhouette est un TROU, et
+  ce qui se voit à travers est un noir fixe. Ici la moitié de l'échelle est plus
+  sombre que ce noir. L'encre du pictogramme est donc choisie sur la LUMINANCE
+  du remplissage et cuite dans le SVG, parce qu'une teinte Cesium multiplie et
+  ne peut donc jamais éclaircir ni retourner une encre. Deux bords, un sombre
+  et un clair, pour qu'il y en ait toujours un qui tranche sur l'imagerie.
+
+  **LE BADGE PORTE LA FRÉQUENCE DANS SON REMPLISSAGE**, donc rien n'est perdu
+  en retirant la pastille : le mode est la FORME, le débit est la COULEUR. La
+  pastille ne s'efface que là où un badge dessine déjà cet arrêt — dans une vue
+  dense la page de 100 arrêts du référentiel en laisse la plupart à l'écran, et
+  les 1 200 profils restent tous chiffrés, comptés et en légende.
+
+  **LA LÉGENDE SUIT LES REMPLISSAGES.** Au-dessus de la porte de fréquence, ou
+  dans une boîte que le proxy a refusée, aucun débit n'a été lu : les badges
+  nomment leur mode et la légende liste les MODES à l'écran avec leurs
+  effectifs. Jusqu'ici elle y affichait les six échelons de l'échelle à zéro et
+  la ligne du silence à zéro — une légende qui ne décrivait rien de ce qui était
+  dessiné. En vue chiffrée elle gagne une ligne : les arrêts du référentiel
+  sans aucune ligne dans le fichier d'offre, dans le gris `#8a93a6` que tout le
+  dépôt réserve à « non mesuré », qui n'est pas la couleur du passage nul —
+  laquelle est une mesure.
+
+- **Un clic sur un arrêt est une question, et il y est répondu.** La fiche
+  affichait « Offre horaire non lue à cette altitude — rapprochez-vous pour la
+  fréquence » au-dessus de la porte, et un « Aucun profil horaire publié pour
+  cet arrêt » plat dans une boîte que le proxy avait refusée — ce qui n'était
+  pas seulement inutile, c'était FAUX, puisque rien n'avait été demandé. Les
+  deux renvoyaient le plafond de la CARTE à quelqu'un qui avait déjà réduit sa
+  question à un point.
+
+  Un clic nomme une coordonnée, et la boîte légale la plus petite autour d'une
+  coordonnée est une cellule de la grille de 0,005° du proxy — cinq appels
+  amont, mis en cache sur disque. C'est abordable au clic et c'est exactement ce
+  qui ne l'est pas par vue de 1 200 arrêts : la porte borne désormais le DESSIN
+  et jamais la réponse. Tous les profils que la boîte a payés sont gardés, donc
+  le clic suivant dans la même rue est gratuit. La seule absence que la fiche
+  peut encore signaler est mesurée : un arrêt sans aucune ligne dans le fichier
+  d'offre (3 053 sur 37 956, 8,0 %). Une panne amont dit panne, jamais zéro.
+
+  **La carte ne bouge pas pour autant** : un badge portant un débit au milieu
+  de cent badges portant leur mode se lirait comme une différence de service.
+
+- **La fiche d'un arrêt se referme en cliquant la carte.** Le gestionnaire
+  fermait sur `!picked` — sur l'absence totale de quoi que ce soit sous le
+  curseur. Au-dessus d'un globe photoréaliste il y a TOUJOURS quelque chose
+  sous le curseur : le clic atterrit sur la tuile 3D du toit ou de la
+  chaussée, donc la condition était fausse partout dans Paris et la fenêtre
+  était impossible à chasser. N'importe quel clic qui n'est pas sur un de nos
+  arrêts la ferme maintenant, y compris sur le marqueur d'une autre couche —
+  la fiche répond « cet arrêt », et le lecteur vient de désigner autre chose.
+
+- **La fiche ne finit plus sur ses licences.** « Île-de-France Mobilités —
+  réseau ODbL 1.0 · fréquence Licence Ouverte v2.0 » était sa dernière ligne.
+  L'obligation est réelle et elle est tenue là où c'est fait pour : le crédit
+  d'attribution de `dataCredits.js`, affiché tant que la couche est allumée, et
+  la ligne `source` de la couche. Une fiche qu'on ouvre pour savoir ce qui
+  dessert sa rue n'est pas une surface d'attribution.
+
 ### Added
 - **Les sites militaires se voient enfin, et ils se voient de loin.** Sur une
   capture de la Gironde à 55 km, la couche dessinait quarante pastilles de
@@ -48,7 +126,6 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   le fourre-tout, un site nommé avant un site sans nom — et que les marques
   venues du pack sont un relevé daté, sans emprise.
 
-### Added
 - **Deux puces coupent la couche Véhicules partagés en deux : les vélos, et
   tout le reste.** Une vue de ville tient des vélos, des VAE, des trottinettes,
   des scooters et des voitures partagées dans les mêmes rues, dessinés par la

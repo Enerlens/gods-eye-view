@@ -13,11 +13,11 @@ import {
   restoreAddressMarker,
   seatEntitiesOnGround,
 } from './addressScanLayer.js';
-import { addressMarkerGlyph, idfmStopGlyphKind } from './addressMarkerIcons.js';
+import { idfmStopGlyphKind } from './addressMarkerIcons.js';
 import { IDFM_MODES } from './idfmFeed.js';
-import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
+import { registerPickOwner, resolvePickId, unregisterPickOwner } from './pickRegistry.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
-import { transitVehicleGlyph } from './transitVehicleIcons.js';
+import { transitStopBadge } from './transitVehicleIcons.js';
 import { greatCircleKm } from './trafficBounds.js';
 import { textSparkline } from './sparkline.js';
 import { boxKey, padBox, snapBoxOutward } from './viewportBox.js';
@@ -81,10 +81,12 @@ import {
  * chips drew ONE subject — measured 2026-09-02 against the referential,
  * **34 903 of the frequency file's 36 502 stops (95.6 %) join on `arrets.arrid`**
  * — and the reader who wanted "how good is the transport at this address" had
- * to know to press both. The four differences survive as facts ON THE CARD:
- * the licence line names both licences, the card says when a stop publishes no
- * profile, and the frequency half simply stops drawing above its own gate
- * rather than dragging the referential up with it.
+ * to know to press both. The differences survive as facts rather than as
+ * chips: the card says when a stop publishes no profile, `dataCredits.js`
+ * names both licences for as long as the row is on, and the frequency half
+ * simply stops DRAWING above its own gate rather than dragging the referential
+ * up with it — a click is still answered at any altitude, see
+ * {@link probeStop}.
  *
  * What did NOT survive is the département choropleth the frequency row painted
  * above that gate. Eight polygons carrying a per-stop mean, at an alpha that
@@ -92,23 +94,34 @@ import {
  * wash over half of France and answered a question nobody had asked at that
  * altitude. The stop-level product is the product.
  *
- * ── Two marks on one coordinate, measured then designed around ──────────────
- * Every stop can carry two: the mode's pictogram, and the rate disc under it.
- * Measured over the 805 stops in the 4 km Châtelet box, 2026-09-02: median
- * nearest-neighbour distance **24.2 m**, p10 8.9 m, **463 stops with a
- * neighbour inside 30 m**. Three consequences, all visible below:
+ * ── ONE MARK PER STOP, which took two goes to get right ────────────────────
+ * A stop could carry two marks on one coordinate — the mode's pictogram, and a
+ * rate disc under it — and the first version of this merge kept both, sized so
+ * that the disc "sits INSIDE the mode glyph rather than fighting it". The
+ * reader who saw it said the plain thing: they are one subject drawn twice, and
+ * the two numbers are joined anyway. They were right, and the argument for the
+ * stack was an argument about pixels rather than about what is being said.
  *
- *  • SIZE IS SMALL AND BOUNDED. 4.5 px silent to 13.0 px at 32 departures an
- *    hour — strictly under the SMALLEST pictogram (14 px bus; métro and rail
- *    are 24 px). The rate disc sits INSIDE the mode glyph rather than fighting
- *    it, and at that density a bigger disc would be a smear.
- *  • THE FILL IS TRANSLUCENT AND THE RIM IS NOT. Which of the point collection
- *    and the entity billboards paints last is not something this module can
- *    pin, so the composition reads both ways: at α 0.55 the pictogram survives
- *    underneath, and the opaque rim survives on top.
- *  • THE RAMP CANNOT BE READ AS A MODE. {@link IDFM_MODE_COLORS} is five
- *    saturated hues; {@link IDFM_FREQ_RAMP} is a desaturated cold→warm
- *    lightness ladder that holds none of them.
+ * So one point carries one mark, and the fix ran in both directions:
+ *
+ *  • THE PICTOGRAM BECAME A BADGE and grew, 14–24 px to 21–27 px. Naked white
+ *    line-art tinted `#c9d4e0` over photorealistic Paris is grey on grey and
+ *    the most numerous mode wore it. See {@link stopBadge}.
+ *  • THE BADGE CARRIES THE RATE IN ITS FILL, so nothing was lost by dropping
+ *    the disc: mode is the shape, rate is the colour, and the legend swaps to
+ *    match whichever the view has actually read. See {@link stopBadgeFill}.
+ *  • THE DISC YIELDS wherever a badge stands, and only there — never
+ *    everywhere. The two publications are read with different page sizes,
+ *    {@link STOP_LIMIT} against {@link IDFM_FREQ_MAX_STOPS}, so in a dense
+ *    viewport most discs have no badge over them and stay drawn. See
+ *    {@link restoreDiscStyle}.
+ *
+ * The discs' own size ladder still answers to density, and that is why the
+ * badges do not have to. Measured over the 805 stops in the 4 km Châtelet box,
+ * 2026-09-02: median nearest-neighbour distance **24.2 m**, p10 8.9 m, **463
+ * stops with a neighbour inside 30 m** — which is what caps a disc at 13 px.
+ * At most {@link STOP_LIMIT} badges are ever on screen, at any altitude,
+ * because a hundred is all one referential query asks for.
  *
  * ── Two queries, two gates, one row ─────────────────────────────────────────
  * THE REFERENTIAL is a viewport box: the stops API takes a bounding box, so
@@ -119,8 +132,13 @@ import {
  * calls buy at most {@link IDFM_FREQ_MAX_STOPS} full profiles. It draws below
  * {@link STOPS_ENTER_SPAN_DEG} of view span and leaves above
  * {@link STOPS_EXIT_SPAN_DEG}, with hysteresis so a wheel notch cannot flip it.
- * Between the two gates the pictograms are on their own and the card says so,
- * which is the honest answer: "not at this altitude", never a silent zero.
+ *
+ * THE GATE BOUNDS THE DRAWING AND NOT THE ANSWER. Above it the badges name
+ * their mode and no rate is drawn — but a click names one coordinate, and the
+ * cheapest legal box around one coordinate is one grid cell, so the click buys
+ * it. A card that answered "not at this altitude" was quoting the map's
+ * ceiling at somebody who had already stopped asking about the map. See
+ * {@link probeStop}.
  *
  * ── The clock is Paris's, and the day runs 04:00 → 03:59 ────────────────────
  * The default moment is `Europe/Paris` NOW, mapped onto the operating day by
@@ -134,7 +152,9 @@ import {
  * did not measure this" and nothing else. A stop that publishes a profile and
  * has no course in the selected band WAS measured, and the published answer is
  * zero. It keeps its own dark colour, its own legend row, its own card line,
- * and it is DRAWN.
+ * and it is DRAWN. The grey is not unused, though: a referential stop with NO
+ * row in the offer file is exactly what it is for, and in a charted view its
+ * badge wears it — see {@link IDFM_NOT_MEASURED_COLOR}.
  *
  * @module data/idfmNetwork
  */
@@ -168,24 +188,58 @@ const STOP_LIMIT = 100;
  * stop, though, serves several lines at once and has no colour of its own, so
  * these are the mode families — deliberately muted, so they never read as a
  * line colour a Parisian would recognise.
+ *
+ * `bus` moved off `#c9d4e0` on 2026-09-10. It is the mode this referential is
+ * mostly made of, and as the tint of naked line-art over a photorealistic
+ * Paris it was reported in three words: "gris sur gris". {@link stopBadge} is
+ * the real fix — a filled mark brings its own ground — but the value it fills
+ * with should not be a near-white either.
+ *
+ * These are only ever DRAWN in a view that read no rate. Where a rate exists
+ * the badge wears {@link IDFM_FREQ_RAMP} instead, so the two palettes never
+ * share a screen and are not required to be distinguishable from each other —
+ * only from each other's neighbours within one palette. See
+ * {@link stopBadgeFill}.
  */
 export const IDFM_MODE_COLORS = Object.freeze({
   metro: '#ffb03d',
   rail: '#3d8bff',
   tram: '#3dd6c4',
-  bus: '#c9d4e0',
+  bus: '#9fb4cf',
   funicular: '#ff7ad9',
   cableway: '#ff7ad9',
 });
-const COLOR_UNKNOWN_MODE = Cesium.Color.fromCssColorString('#7c8aa0');
+const COLOR_UNKNOWN_MODE = '#7c8aa0';
 
 /**
- * Marker size by mode, in CSS px: a metro entrance matters more to a reader
- * than one of the eighteen bus poles around it.
+ * Badge diameter by mode, in CSS px.
+ *
+ * A metro entrance matters more to a reader than one of the eighteen bus poles
+ * around it, so the ladder is kept — but every rung moved up by half again,
+ * from 14–24 px to 21–27 px, and the mark under it changed from line-art to a
+ * filled badge. See {@link stopBadge} for what that fixed.
+ *
+ * DENSITY IS NOT THE CONSTRAINT IT IS FOR THE DISCS, and that is the whole
+ * reason these can afford to be this big. `IDFM_FREQ_SIZES` is capped at 13 px
+ * because up to {@link IDFM_FREQ_MAX_STOPS} discs share a viewport whose
+ * median nearest-neighbour distance is 24.2 m. Badges are capped by
+ * {@link STOP_LIMIT}: at most a hundred are ever on screen, at any altitude,
+ * because a hundred is all one referential query asks for.
  */
-const MODE_SIZE = Object.freeze({ metro: 24, rail: 24, tram: 20, bus: 14 });
+export const IDFM_BADGE_SIZE = Object.freeze({ metro: 27, rail: 27, tram: 24, bus: 21 });
 /** A mode this layer has no size rule for. */
-const DEFAULT_MODE_SIZE = 16;
+const DEFAULT_BADGE_SIZE = 22;
+
+/**
+ * "The register did not measure this", the repo-wide grey.
+ *
+ * `fraicheurParis.js` reserved `#8a93a6` for exactly this and nothing else,
+ * and a badge in the frequency regime that has no row in the offer file is
+ * exactly this: 3 053 of the 37 956 referential stops, 8.0 %. It is NOT
+ * `IDFM_FREQ_SILENT_COLOR`, which means the opposite — a stop that publishes a
+ * profile and runs nothing in this band, which is a measurement.
+ */
+export const IDFM_NOT_MEASURED_COLOR = '#8a93a6';
 
 // --- Frequency half ---------------------------------------------------------
 
@@ -237,6 +291,25 @@ const MAX_RENDERED_DISCS = IDFM_FREQ_MAX_STOPS;
 const POINT_LIFT_M = 2.0;
 
 /**
+ * Half-side of the box ONE click asks the offer for, in degrees.
+ *
+ * ~65 m, which the proxy then snaps OUTWARD onto its shared 0.005° grid — so
+ * the smallest question this layer can ask is one or two grid cells, roughly
+ * 550 m on a side. That is deliberate on both counts: a box smaller than the
+ * grid would be rounded up anyway, and a box on the grid is the same cache
+ * entry the next click a street away will hit.
+ */
+const PROBE_HALF_DEG = 0.0006;
+
+/**
+ * Profiles kept from clicks. A click is cheap; a session of them must be bounded.
+ *
+ * One probe answers for its whole grid cell, so this holds far more than 200
+ * clicks' worth of ground.
+ */
+const PROBE_CACHE = 200;
+
+/**
  * The frequency ladder, drawn.
  *
  * A desaturated cold → warm LIGHTNESS ladder, six steps. Not a hue wheel and
@@ -284,6 +357,49 @@ const LEVEL_BLURBS = Object.freeze([
   'Seize à trente-deux par heure : 2 à 4 minutes.',
   'Trente-deux et plus : moins de deux minutes. Le plus fort mesuré dans la tranche 08 h est Gare de Meaux (Dépose) à 70,1 courses.',
 ]);
+
+/**
+ * Legend copy for the MODE regime — one sentence per mode, on what it is and
+ * why its badge is the size it is.
+ */
+const MODE_BLURBS = Object.freeze({
+  metro: 'Bouche ou station de métro. Le plus grand badge, avec le RER : une station porte des '
+    + 'ordres de grandeur de voyageurs de plus qu’un poteau de bus, et à cette altitude c’est '
+    + 'l’ossature du réseau qu’on lit.',
+  rail: 'Gare RER ou Transilien, au même diamètre que le métro.',
+  tram: 'Station de tramway.',
+  bus: 'Poteau de bus. Le mode le plus nombreux du référentiel de très loin, donc le plus petit '
+    + 'badge — sans quoi il recouvrirait les trois autres.',
+  funicular: 'Funiculaire.',
+  cableway: 'Téléphérique. Une seule ligne publiée dans tout le référentiel, le Câble C1 vers Créteil.',
+});
+
+/**
+ * The legend for a view that has read no rate: what modes are on screen.
+ *
+ * Ordered by the badge ladder rather than by count, so the legend reads in the
+ * same order as the marks read on the map — biggest first.
+ *
+ * @param {Map<string, object>} stops Referential rows currently drawn.
+ * @returns {Array<object>} Legend rows.
+ */
+export function modeLegend(stops) {
+  const counts = new Map();
+  for (const stop of stops?.values?.() || []) {
+    const mode = stop?.mode || 'unknown';
+    counts.set(mode, (counts.get(mode) || 0) + 1);
+  }
+  const size = (mode) => IDFM_BADGE_SIZE[mode] ?? DEFAULT_BADGE_SIZE;
+  return [...counts.entries()]
+    .sort((a, b) => (size(b[0]) - size(a[0])) || (b[1] - a[1]))
+    .map(([mode, count]) => ({
+      label: IDFM_MODES[mode] || 'Mode non publié',
+      color: IDFM_MODE_COLORS[mode] || COLOR_UNKNOWN_MODE,
+      count,
+      blurb: MODE_BLURBS[mode]
+        || 'Arrêt dont le référentiel ne publie pas le mode — jamais emprunté à un voisin.',
+    }));
+}
 
 const SILENT_BLURB = 'Arrêt qui publie bien un profil et n’a aucune course dans cette tranche. '
   + 'C’est une valeur mesurée, pas une donnée manquante — d’où sa couleur propre et non le gris '
@@ -366,6 +482,9 @@ let _freqStatus = 'idle';
 let _freqError = null;
 let _freqGeneration = 0;
 
+/** `id_arret` → `{status, stop}` for profiles bought by a CLICK. */
+let _probes = new Map();
+
 /** `null` means "follow the Paris clock"; a number pins the band. */
 let _pinnedBand = null;
 /** `null` means "today"; a day name pins it. Only ever set with a band. */
@@ -406,30 +525,71 @@ export function waitPhrase(rate) {
 }
 
 /**
- * The pictogram a stop is drawn with.
+ * The mark a stop is drawn with: its MODE's pictogram inside a filled badge.
  *
- * A stop is signed in the street with its MODE's pictogram — the bus on the
- * pole, the M on the entrance — so these reuse `transitVehicleIcons.js` rather
- * than inventing a second transit vocabulary for the same city. A mode that
- * pack cannot draw falls back to the urbanism plan sheet rather than borrowing
- * another mode's vehicle, which would assert something the referential never
- * said.
+ * A stop is signed in the street with its mode's pictogram — the bus on the
+ * pole, the M on the entrance — so this reuses `transitVehicleIcons.js` rather
+ * than inventing a second transit vocabulary for the same city.
+ *
+ * ── The bare pictogram was unreadable, and not by a little ────────────────
+ * Until 2026-09-10 this layer drew that glyph naked: white line-art with
+ * a ~1.6 px dark halo, 14 px wide for a bus, tinted `#c9d4e0`. Bus is the
+ * mode this referential is mostly made of. Over photorealistic Paris that is
+ * pale grey line-art on pale grey roofs and pale grey roads, and the reader
+ * who reported it used the words "gris sur gris". A filled badge answers it by
+ * construction instead of by hunting for a luckier hue: the mark brings its
+ * own ground, and `transitVehicleIcons.js` picks the ink from the fill's
+ * luminance so the pictogram survives either end of a lightness ramp.
+ *
+ * ── One mark per stop, which is what the fill is FOR ──────────────────────
+ * A stop used to be able to carry two marks on one coordinate — this pictogram
+ * and a rate disc under it — and the reader who saw both said the obvious
+ * thing: they are one subject drawn twice. So the disc now yields wherever a
+ * badge stands (see {@link reconcileDiscs}) and the badge carries the rate in
+ * its FILL. That is why the fill is a parameter and not a property of the
+ * mode: at a hundred badges on screen the fill is the only channel wide enough
+ * to read at a glance, and the mode is already carried by the shape inside it.
  *
  * @param {?string} mode
+ * @param {string} fill Badge fill, from {@link stopBadgeFill}.
  * @returns {string} data URI.
  */
-export function stopGlyph(mode) {
-  return transitVehicleGlyph(idfmStopGlyphKind(mode)) || addressMarkerGlyph('plan');
+export function stopBadge(mode, fill) {
+  return transitStopBadge(idfmStopGlyphKind(mode), { fill });
 }
 
 /**
- * Colour a stop by its mode family.
- * @param {string} mode
- * @returns {object} Cesium colour.
+ * The fill one badge carries — and therefore what its colour MEANS.
+ *
+ * Three states, and the reason there are three rather than one is that this
+ * layer's two publications do not cover the same ground:
+ *
+ *  • A STOP WITH A PROFILE takes the frequency ramp, or the silent colour when
+ *    the published answer for this band is zero. This is the only state whose
+ *    colour is a rate, and it is the state the legend's ramp describes.
+ *  • A STOP WITH NO PROFILE, in a view where the offer WAS charted, takes
+ *    {@link IDFM_NOT_MEASURED_COLOR}. Measured: 3 053 of 37 956, 8.0 %.
+ *  • ANY STOP IN A VIEW THAT CHARTED NOTHING takes its mode's hue. Above the
+ *    frequency gate, or in a box the proxy refused as too dense, no rate has
+ *    been read for anything on screen — so nothing on screen can be misread as
+ *    one, and the colour channel is free to say what a reader can still use.
+ *    `getRowControls()` swaps the legend to match, so the legend always
+ *    describes the marks that are actually drawn.
+ *
+ * @param {Object} [state]
+ * @param {?string} [state.mode]
+ * @param {?object} [state.freq] The stop's row in the offer file, if any.
+ * @param {?string} [state.day]
+ * @param {?number} [state.band]
+ * @param {boolean} [state.charted] Whether this view charted any profile.
+ * @returns {string} CSS colour.
  */
-export function stopColor(mode) {
-  const css = IDFM_MODE_COLORS[mode];
-  return css ? Cesium.Color.fromCssColorString(css) : COLOR_UNKNOWN_MODE;
+export function stopBadgeFill({
+  mode = null, freq = null, day = null, band = null, charted = false,
+} = {}) {
+  if (freq) return frequencyStyle(profileRate(freq.profile, day, band)).css;
+  if (charted) return IDFM_NOT_MEASURED_COLOR;
+  return IDFM_MODE_COLORS[mode] || COLOR_UNKNOWN_MODE;
 }
 
 /**
@@ -528,6 +688,29 @@ export function levelColor(level) {
     return IDFM_FREQ_SILENT_COLOR;
   }
   return IDFM_FREQ_RAMP[Math.min(level, IDFM_FREQ_RAMP.length - 1)];
+}
+
+/**
+ * Whether this view has read a rate for ANYTHING, which is what makes the
+ * colour channel mean a rate rather than a mode.
+ *
+ * False above the frequency gate and false in a box the proxy refused as too
+ * dense — in both, nothing on screen carries a number, so nothing on screen
+ * can be misread as one. See {@link stopBadgeFill}.
+ */
+function freqCharted() {
+  return _freqRegime === 'arrets' && _freqRecords.size > 0;
+}
+
+/** {@link stopBadgeFill} against the pack, the slot and the regime held now. */
+function badgeFillFor(ref) {
+  return stopBadgeFill({
+    mode: ref?.mode,
+    freq: _freqByStopId.get(String(ref?.id))?.stop || null,
+    day: _slot.day,
+    band: _slot.band,
+    charted: freqCharted(),
+  });
 }
 
 // --- Camera -----------------------------------------------------------------
@@ -676,18 +859,31 @@ export function networkLine(ref) {
 /**
  * The selected stop's card — the network half and the frequency half, in one.
  *
- * This is the merge, stated as copy. Either half may be missing and the card
- * says which: a referential stop outside the frequency file (3 053 of 37 956,
- * 8.0 %) gets a line saying no profile is published, and a stop looked at from
- * too far up gets a line saying the hourly offer is not read at this altitude.
- * Neither is ever a zero, because a zero here is a measured claim.
+ * This is the merge, stated as copy. Every line is either published or an
+ * arithmetic identity on a published number, and the last one says which week
+ * was drawn: this is a yearly average of a term-time week, not a timetable.
  *
- * Every line is either published or an arithmetic identity on a published
- * number, and the last two lines say which week was drawn and under which
- * licences — this is a yearly average of a term-time week, not a timetable.
+ * ── A CLICK IS ANSWERED, NEVER DEFERRED ──────────────────────────────────
+ * There are no altitude excuses on this card any more. It carried two —
+ * "l'offre horaire n'est pas lue à cette altitude, rapprochez-vous" above the
+ * frequency gate, and a flat "aucun profil publié" in a box the proxy had
+ * refused without ever asking about this stop — and both were the MAP's
+ * ceiling quoted back at a reader who had already narrowed the question to one
+ * coordinate. `probeStop()` buys that coordinate's profile instead, so the
+ * only absence this card can still report is a measured one: a stop with no
+ * row in the offer file. See {@link selectStop}.
+ *
+ * ── AND NO LICENCE LINE ──────────────────────────────────────────────────
+ * It named both licences, which is a real obligation and is discharged in the
+ * two places built for it: `dataCredits.js`, which puts both in the
+ * attribution surface for as long as the layer is on, and the layer's own
+ * `source` string. A per-stop card is not one of those places — it is where a
+ * reader asks what serves this address — and "réseau ODbL 1.0 · fréquence
+ * Licence Ouverte v2.0" is the last line they read before closing it.
  *
  * @param {{ref:?object, freq:?object}} stop
- * @param {{day:string, band:number, pack:?object, regime:string}} context
+ * @param {{day:string, band:number, pack:?object, probe:?string}} context
+ *   `probe` is the state of the on-demand lookup: `loading`, `error`, or null.
  * @returns {string} Title on the first line, details after.
  */
 export function buildStopCard({ ref = null, freq = null } = {}, context = {}) {
@@ -695,7 +891,7 @@ export function buildStopCard({ ref = null, freq = null } = {}, context = {}) {
   const day = context.day || _slot.day;
   const band = clampBand(context.band ?? _slot.band);
   const pack = context.pack || null;
-  const regime = context.regime || _freqRegime;
+  const probe = context.probe || null;
 
   const lines = [ref?.name || freq?.name || `Arrêt ${ref?.id || freq?.id}`];
 
@@ -748,15 +944,17 @@ export function buildStopCard({ ref = null, freq = null } = {}, context = {}) {
       lines.push('Mode non publié par ce jeu de données — non emprunté au référentiel');
     }
     lines.push(`Offre moyenne, semaine type hors vacances ${pack?.year || IDFM_FREQ_REFERENCE_YEAR}`);
-  } else if (regime === 'arrets') {
-    // In the regime and still no profile: measured, 3 053 of the 37 956
-    // referential stops (8.0 %) have no row in the offer file at all.
-    lines.push('Aucun profil horaire publié pour cet arrêt dans l’offre IDFM');
+  } else if (probe === 'loading') {
+    lines.push('Lecture de l’offre horaire de cet arrêt…');
+  } else if (probe === 'error') {
+    lines.push('Offre horaire IDFM momentanément indisponible pour cet arrêt');
   } else {
-    lines.push('Offre horaire non lue à cette altitude — rapprochez-vous pour la fréquence');
+    // The one honest absence left, and it is a MEASUREMENT rather than a
+    // ceiling: this stop has no row in the offer file at all. Measured,
+    // 3 053 of the 37 956 referential stops, 8.0 %.
+    lines.push('Aucun profil horaire publié pour cet arrêt dans l’offre IDFM');
   }
 
-  lines.push('Île-de-France Mobilités — réseau ODbL 1.0 · fréquence Licence Ouverte v2.0');
   return lines.join('\n');
 }
 
@@ -782,7 +980,9 @@ export function buildLoadingLabel({
 
   const parts = [`${fr(stops)} arrêts`];
   if (regime !== 'arrets') {
-    return parts.concat('fréquence à partir d’une vue de 5 km').join(' · ');
+    // The colour channel is named, because up here it carries the MODE and
+    // lower down it carries the rate. See {@link stopBadgeFill}.
+    return parts.concat('couleur par mode', 'fréquence à partir d’une vue de 5 km').join(' · ');
   }
   const when = `${IDFM_FREQ_DAY_LABELS[slot.day] || slot.day} ${bandLabel(slot.band)}`;
   parts.push(pinned ? when : `${when} (heure de Paris)`);
@@ -851,8 +1051,22 @@ function selectedOverlayEntry(id, position, copy) {
   };
 }
 
-function slotContext() {
-  return { day: _slot.day, band: _slot.band, pack: _freqPack, regime: _freqRegime };
+/** The `id_arret` behind either of this layer's two pick-id spaces. */
+export function selectionStopId(id) {
+  if (typeof id !== 'string' || !id) return null;
+  if (id.startsWith('idfm:stop:')) return id.slice('idfm:stop:'.length);
+  if (id.startsWith('idfm-freq:')) return id.slice('idfm-freq:'.length);
+  return null;
+}
+
+function slotContext(id = _selectedId) {
+  const stopId = selectionStopId(id);
+  return {
+    day: _slot.day,
+    band: _slot.band,
+    pack: _freqPack,
+    probe: stopId ? (_probes.get(stopId)?.status ?? null) : null,
+  };
 }
 
 /**
@@ -880,7 +1094,13 @@ export function resolveSelection(id) {
         ? Cesium.Cartesian3.fromDegrees(ref.lon, ref.lat)
         : null);
     if (!position) return null;
-    return { ref, freq: _freqByStopId.get(stopId)?.stop || null, position };
+    return {
+      ref,
+      // The viewport pack first, then whatever a click has bought for this
+      // stop. Same shape, same feed, different reason for being here.
+      freq: _freqByStopId.get(stopId)?.stop || _probes.get(stopId)?.stop || null,
+      position,
+    };
   }
   const record = _freqRecords.get(id);
   if (!record) return null;
@@ -903,6 +1123,12 @@ function restoreDiscStyle(record) {
   record.point.color = Cesium.Color.fromCssColorString(record.style.css).withAlpha(record.style.alpha);
   record.point.outlineColor = Cesium.Color.fromCssColorString(record.style.css).withAlpha(RIM_ALPHA);
   record.point.pixelSize = record.style.sizePx;
+  // ONE MARK PER STOP. A stop the referential also returned is already drawn,
+  // as a badge carrying this same rate in its fill — so its disc is not a
+  // second reading of the same number, it is the same reading twice. Hidden
+  // rather than never created, because `_refStops` is refreshed by a query of
+  // its own and a disc must be able to reappear when its badge goes.
+  record.point.show = !_refStops.has(String(record.stop.id));
 }
 
 function clearSelection() {
@@ -930,7 +1156,8 @@ function repaintSelectedCard() {
 }
 
 function selectStop(id) {
-  if (!resolveSelection(id)) return false;
+  const resolved = resolveSelection(id);
+  if (!resolved) return false;
   if (_selectedId && _selectedId !== id) clearSelection();
   _selectedId = id;
   if (id.startsWith('idfm:stop:')) {
@@ -938,10 +1165,19 @@ function selectStop(id) {
   } else {
     const record = _freqRecords.get(id);
     if (record?.point) {
+      record.point.show = true;
       record.point.color = Cesium.Color.fromCssColorString(SELECTED_COLOR).withAlpha(0.85);
       record.point.outlineColor = Cesium.Color.fromCssColorString(SELECTED_COLOR);
       record.point.pixelSize = SELECTED_SIZE_PX;
     }
+  }
+  // A CLICK IS A QUESTION, and it is answered. If this view never charted this
+  // stop's profile — above the gate, or in a box the proxy refused — the card
+  // does not quote the map's ceiling back at the reader, it buys the one
+  // profile they asked for. Fired before the first paint so the card opens on
+  // "lecture…" rather than flashing an absence it is about to disprove.
+  if (!resolved.freq) {
+    void probeStop(selectionStopId(id), resolved.ref?.lat, resolved.ref?.lon);
   }
   repaintSelectedCard();
   return true;
@@ -957,17 +1193,39 @@ function ownsPickId(pickedId) {
   return _freqRecords.has(pickedId) || (pickedId.startsWith('idfm:stop:') && Boolean(resolveSelection(pickedId)));
 }
 
+/**
+ * What one left-click does: select a stop, close the card, or nothing.
+ *
+ * ── The bug this is a function because of ─────────────────────────────────
+ * The handler used to close on `!picked` — on nothing at all being under the
+ * cursor. Over a PHOTOREALISTIC globe there is always something under the
+ * cursor: the click lands on the 3D Tiles feature of the roof or the road, so
+ * `!picked` was false everywhere in Paris and the card could not be dismissed
+ * by clicking the map. Reported as exactly that, and it is the kind of
+ * condition that reads correct until you know which globe it runs on — so the
+ * decision is a pure function with the tileset case pinned in a test.
+ *
+ * ANY pick that is not one of ours closes the card, another layer's marker
+ * included. That is right rather than merely convenient: the card answers
+ * "this stop", and the reader has just pointed at something that is not it.
+ *
+ * @param {object|null} picked Result of `scene.pick()`.
+ * @param {{selectedId: ?string}} [state]
+ * @returns {{action:'select'|'close'|'ignore', id:?string}}
+ */
+export function clickDecision(picked, { selectedId = _selectedId } = {}) {
+  const pickedId = resolvePickId(picked);
+  if (ownsPickId(pickedId)) return { action: 'select', id: pickedId };
+  return { action: selectedId ? 'close' : 'ignore', id: null };
+}
+
 function installClickHandler(viewer) {
   if (_clickHandler || !viewer?.scene?.canvas) return;
   _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
   _clickHandler.setInputAction((click) => {
-    const picked = viewer.scene.pick(click.position);
-    const pickedId = typeof picked?.id === 'string' ? picked.id : picked?.id?.id;
-    if (ownsPickId(pickedId)) {
-      selectStop(pickedId);
-      return;
-    }
-    if (_selectedId && !picked) clearSelection();
+    const { action, id } = clickDecision(viewer.scene.pick(click.position));
+    if (action === 'select') selectStop(id);
+    else if (action === 'close') clearSelection();
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   document.addEventListener('keydown', onKeyDown);
 }
@@ -1048,6 +1306,7 @@ function reconcileDiscs(payload) {
     const point = _points?.add({
       id,
       position,
+      show: !_refStops.has(String(stop.id)),
       color: Cesium.Color.fromCssColorString(style.css).withAlpha(style.alpha),
       pixelSize: style.sizePx,
       outlineColor: Cesium.Color.fromCssColorString(style.css).withAlpha(RIM_ALPHA),
@@ -1059,7 +1318,32 @@ function reconcileDiscs(payload) {
     _freqRecords.set(id, record);
     _freqByStopId.set(String(stop.id), record);
   }
+  restyleBadges();
   governorRequestRender('idfm-network-frequency');
+}
+
+/**
+ * Repaint every badge for the slot and the pack the layer now holds.
+ *
+ * The badges are the ONLY mark on a stop this layer draws twice — the disc
+ * yields to them — so scrubbing the clock has to reach them, not just the
+ * discs. Cheap by construction: at most {@link STOP_LIMIT} entities, and the
+ * data URIs are memoised per (mode, fill) inside `transitVehicleIcons.js`, so
+ * a repaint is a property assignment against an atlas entry that already
+ * exists.
+ *
+ * The selected badge is repainted too. `restoreAddressMarker` snapshots colour
+ * and size and not the image, so a new fill survives deselection instead of
+ * being reverted to the band the reader has since left.
+ */
+function restyleBadges() {
+  if (!_dataSource) return;
+  for (const entity of _dataSource.entities.values) {
+    if (!entity?.billboard) continue;
+    const ref = _refStops.get(String(entity.id).slice('idfm:stop:'.length));
+    if (!ref) continue;
+    entity.billboard.image = stopBadge(ref.mode, badgeFillFor(ref));
+  }
 }
 
 /**
@@ -1073,6 +1357,7 @@ function restyleDiscs() {
     record.style = frequencyStyle(profileRate(record.stop.profile, _slot.day, _slot.band));
     if (record.id !== _selectedId) restoreDiscStyle(record);
   }
+  restyleBadges();
   if (_selectedId) repaintSelectedCard();
   governorRequestRender('idfm-network-restyle');
 }
@@ -1098,6 +1383,80 @@ async function fetchJson(url, { timeoutMs = FREQ_TIMEOUT_MS, validate } = {}) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Remember one probed profile, evicting the oldest first. */
+function rememberProbe(stopId, entry) {
+  _probes.delete(stopId);
+  while (_probes.size >= PROBE_CACHE) {
+    _probes.delete(_probes.keys().next().value);
+  }
+  _probes.set(stopId, entry);
+}
+
+/**
+ * Buy ONE stop's hourly profile, because the reader clicked it.
+ *
+ * ── The line this replaced ────────────────────────────────────────────────
+ * Above the frequency gate a card used to read "Offre horaire non lue à cette
+ * altitude — rapprochez-vous pour la fréquence", and in a box the proxy
+ * refused as too dense it read "Aucun profil horaire publié pour cet arrêt" —
+ * which was not merely unhelpful, it was FALSE, because nothing had been
+ * asked. Both were the map's ceiling quoted back at somebody who had already
+ * pointed at one stop. A click is not a viewport: it names a single
+ * coordinate, and the cheapest legal box around that coordinate is one grid
+ * cell. So the click buys it.
+ *
+ * WHAT IT COSTS, and why the gate still exists for the MAP. Five upstream
+ * calls — one identity page and the four band windows — for a box the proxy
+ * caches to disk. That is affordable per click and is exactly what is NOT
+ * affordable per frame across a viewport of 1 200 stops, which is what
+ * {@link STOPS_ENTER_SPAN_DEG} is for. The gate now bounds the DRAWING and
+ * never the answer to a question.
+ *
+ * Every profile the box paid for is kept, not just the one asked about: the
+ * neighbours are already in the payload, and the next click on that street is
+ * then free.
+ *
+ * @param {string} stopId `id_arret`, which is what joins `arrets.arrid`.
+ * @param {number} lat @param {number} lon
+ */
+async function probeStop(stopId, lat, lon) {
+  if (!stopId || _probes.has(stopId)) return;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  rememberProbe(stopId, { status: 'loading', stop: null });
+  const params = new URLSearchParams({
+    south: (lat - PROBE_HALF_DEG).toFixed(5),
+    west: (lon - PROBE_HALF_DEG).toFixed(5),
+    north: (lat + PROBE_HALF_DEG).toFixed(5),
+    east: (lon + PROBE_HALF_DEG).toFixed(5),
+  });
+  let answer = { status: 'empty', stop: null };
+  try {
+    const payload = await fetchJson(`${FREQ_URL}?${params}`, {
+      validate: (body) => Array.isArray(body?.stops),
+    });
+    for (const stop of payload.stops) {
+      const id = String(stop?.id ?? '');
+      if (!id || id === stopId) continue;
+      rememberProbe(id, { status: 'ok', stop });
+    }
+    const own = payload.stops.find((stop) => String(stop?.id ?? '') === stopId);
+    // `empty` and not `error`: the box answered, and its answer is that this
+    // stop has no row in the offer file. Measured, 3 053 of 37 956 stops.
+    if (own) answer = { status: 'ok', stop: own };
+  } catch (error) {
+    if (error?.name !== 'AbortError') {
+      console.warn('[Data:IDFM] stop profile unavailable:', error?.message || error);
+    }
+    answer = { status: 'error', stop: null };
+  }
+  rememberProbe(stopId, answer);
+  if (!_enabled) return;
+  // Only the open card reads a probe, so only the open card is repainted. The
+  // BADGE deliberately does not move: one stop wearing a rate while the
+  // hundred around it wear their mode would read as a difference in service.
+  if (_selectedId && selectionStopId(_selectedId) === stopId) repaintSelectedCard();
 }
 
 async function loadFrequency(box, { force = false } = {}) {
@@ -1170,6 +1529,9 @@ async function reconcileFrequency({ force = false } = {}) {
     if (regimeChanged) {
       clearDiscs();
       _freqStatus = 'idle';
+      // The badges were carrying rates; up here nothing has read one, so they
+      // go back to naming their mode. See {@link stopBadgeFill}.
+      restyleBadges();
       if (_selectedId) repaintSelectedCard();
     }
     return;
@@ -1251,14 +1613,17 @@ async function runScan(viewer, signal = null) {
           id: `idfm:stop:${stop.id}`,
           position: Cesium.Cartesian3.fromDegrees(stop.lon, stop.lat),
           billboard: {
-            // The mode's own pictogram, not a disc: five French registers scan
-            // the same address and a coloured dot said nothing about which one
-            // a marker came from. See `addressMarkerIcons.js`.
-            image: stopGlyph(stop.mode),
-            width: MODE_SIZE[stop.mode] ?? DEFAULT_MODE_SIZE,
-            height: MODE_SIZE[stop.mode] ?? DEFAULT_MODE_SIZE,
-            // The glyph is white line-art; this tint is the mode family.
-            color: stopColor(stop.mode),
+            // The mode's own pictogram, inside a filled badge: five French
+            // registers scan the same address and a coloured dot said nothing
+            // about which one a marker came from. See `addressMarkerIcons.js`.
+            image: stopBadge(stop.mode, badgeFillFor(stop)),
+            width: IDFM_BADGE_SIZE[stop.mode] ?? DEFAULT_BADGE_SIZE,
+            height: IDFM_BADGE_SIZE[stop.mode] ?? DEFAULT_BADGE_SIZE,
+            // WHITE, and deliberately: the badge's colours are BAKED, because
+            // a tint cannot flip a pictogram's ink from white to black and
+            // this fill ramp needs both ends. `emphasiseAddressMarker` still
+            // tints on selection, which is the one place a cast is wanted.
+            color: Cesium.Color.WHITE,
             // POSITIVE_INFINITY: see `addressScanLayer.js`. A finite value
             // leaves the terrain clipping the bottom of every stop marker
             // as soon as the camera is further off than that distance.
@@ -1447,6 +1812,7 @@ const idfmNetworkLayer = {
     _freqRegime = 'wide';
     _freqStatus = 'idle';
     _freqError = null;
+    _probes = new Map();
     _slot = resolveSlot(_pinnedBand, _now(), _pinnedDay);
     restoreSpriteOrder(viewer);
   },
@@ -1523,6 +1889,7 @@ const idfmNetworkLayer = {
     _refStops = new Map();
     _freqRecords = new Map();
     _freqByStopId = new Map();
+    _probes = new Map();
     _freqPack = null;
     _freqPackBoxKey = null;
     _selectedId = null;
@@ -1623,6 +1990,15 @@ const idfmNetworkLayer = {
       params: { band: moment.band === null ? 'now' : moment.band },
     }));
 
+    // THE LEGEND DESCRIBES WHAT IS DRAWN, and what is drawn depends on the
+    // regime. Above the gate, or in a box the proxy refused, no rate has been
+    // read for anything on screen and every badge names its MODE — so a ramp
+    // legend there listed six rungs at zero and a silent row at zero, which is
+    // what the reader saw and rightly read as broken. See {@link stopBadgeFill}.
+    if (!freqCharted()) {
+      return { chips, legend: modeLegend(_refStops) };
+    }
+
     const counts = new Array(IDFM_FREQ_RAMP.length).fill(0);
     let silent = 0;
     for (const record of _freqRecords.values()) {
@@ -1647,6 +2023,24 @@ const idfmNetworkLayer = {
       count: silent,
       blurb: SILENT_BLURB,
     });
+    // The badges the offer does not reach. Its own row, because it is the one
+    // grey on this map that means "nobody counted", and a reader who cannot
+    // tell it from the silent colour cannot read either.
+    let unmeasured = 0;
+    for (const stopId of _refStops.keys()) {
+      if (!_freqByStopId.has(String(stopId))) unmeasured += 1;
+    }
+    if (unmeasured) {
+      legend.push({
+        label: 'offre horaire non publiée',
+        color: IDFM_NOT_MEASURED_COLOR,
+        count: unmeasured,
+        blurb: 'Arrêt du référentiel qui n’a AUCUNE ligne dans le fichier d’offre — 3 053 des '
+          + '37 956, soit 8,0 %. Le gris « non mesuré » de toute l’application, et non la couleur '
+          + 'du passage nul, qui est une mesure. Un clic sur cet arrêt va tout de même chercher '
+          + 'son profil : le fichier d’offre est interrogé par arrêt, pas seulement par vue.',
+      });
+    }
     // The stops nobody can draw travel with the legend: they publish no
     // coordinate at all, and they carry 2.76 % of an average Tuesday's courses.
     if (_freqPack?.unplaced) {
@@ -1729,6 +2123,7 @@ export function _setIdfmNetworkStateForTest({
   _refStops = new Map((refStops || []).map((stop) => [String(stop.id), stop]));
   _freqRecords = new Map();
   _freqByStopId = new Map();
+  _probes = new Map();
   _selectedId = null;
   _selectedBase = null;
   _lastError = null;
@@ -1754,6 +2149,7 @@ export function _clearIdfmNetworkSelectionForTest() {
   _refStops = new Map();
   _freqRecords = new Map();
   _freqByStopId = new Map();
+  _probes = new Map();
   _freqPack = null;
   _freqPackBoxKey = null;
   _pinnedBand = null;
@@ -1769,6 +2165,11 @@ export function _clearIdfmNetworkSelectionForTest() {
 /** Whatever is selected right now. */
 export function _idfmNetworkSelectedIdForTest() {
   return _selectedId;
+}
+
+/** What a click bought, keyed on `id_arret`. */
+export function _idfmNetworkProbeForTest(stopId) {
+  return _probes.get(String(stopId)) || null;
 }
 
 /** One drawn disc record, for assertions about style. */

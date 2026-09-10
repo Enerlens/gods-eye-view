@@ -7,21 +7,25 @@
  * merge is that a reader never has to know that. Both upstreams are live and
  * therefore untestable as a fixed truth, so this harness intercepts
  * `/api/idfm/stops` and `/api/idfm-frequency/stops` with fixtures and proves
- * the six things the merge is answerable for:
+ * the seven things the merge is answerable for:
  *
  *   i.   the panel offers ONE IDFM control, not two — no `Fréquence IDFM` chip
  *        survives anywhere in the layer panel
  *   ii.  above 20 km the layer is dormant and asks for nothing at all
- *   iii. inside the gate, one toggle draws BOTH marks — a mode pictogram per
- *        referential stop and a rate disc per profiled stop, on the same points
+ *   iii. inside the gate, one stop carries ONE mark: a mode badge per
+ *        referential stop, and a rate disc only where no badge already draws
+ *        that stop — with every profile still charted and still in the legend
  *   iv.  one click prints one card carrying both halves: fare zone and step-free
  *        status from the referential, departures per hour from the offer — and
  *        a stop that only one publication holds says WHICH half is missing
  *        instead of showing a zero
  *   v.   the seven moment chips repaint what the browser already holds: a
  *        different hour, different colours, and NO new request
- *   vi.  between the two gates the pictograms stay and the discs go, and the
- *        card says the hourly offer is not read at that altitude
+ *   vi.  above the frequency gate the discs go and the badges name their mode,
+ *        the legend follows them — and a CLICK still buys the one profile it
+ *        asked about, because the gate bounds the drawing and not the answer
+ *   vii. the card can be dismissed by clicking the map, which on a
+ *        photorealistic globe means clicking a 3D Tiles feature
  *
  * Selection is driven through the layer module's own `resolveSelection` /
  * `buildStopCard` rather than through a synthetic click, deliberately: headless
@@ -225,10 +229,11 @@ async function shoot(page, name) {
 /**
  * Read the layer's own view of itself, plus what Cesium was actually handed.
  *
- * `billboards` counts the referential pictograms on the data source and `discs`
- * counts the rate primitives — the two marks the merge puts on one coordinate,
- * counted separately so "both drew" is a measurement and not an inference from
- * one number.
+ * `billboards` counts the referential badges on the data source, `discs` the
+ * rate primitives that are actually SHOWN, and `yielded` the ones standing
+ * down because a badge already draws their stop. Counted separately because
+ * "one stop, one mark" is the property under test, and it is a property about
+ * two collections that cannot see each other.
  */
 function layerProbe(page) {
   return page.evaluate(() => {
@@ -239,12 +244,16 @@ function layerProbe(page) {
       ? source.entities.values.filter((entity) => Boolean(entity.billboard)).length
       : 0;
     let discs = 0;
+    let yielded = 0;
     const primitives = gev.viewer.scene.primitives;
     for (let i = 0; i < primitives.length; i += 1) {
       const primitive = primitives.get(i);
       if (primitive?.constructor?.name !== 'PointPrimitiveCollection') continue;
       for (let p = 0; p < primitive.length; p += 1) {
-        if (String(primitive.get(p)?.id || '').startsWith('idfm-freq:')) discs += 1;
+        const point = primitive.get(p);
+        if (!String(point?.id || '').startsWith('idfm-freq:')) continue;
+        if (point.show === false) yielded += 1;
+        else discs += 1;
       }
     }
     return {
@@ -253,6 +262,7 @@ function layerProbe(page) {
       detectables: module.getDetectableObjects({ maxCount: 100000 }).length,
       billboards,
       discs,
+      yielded,
     };
   });
 }
@@ -290,12 +300,24 @@ function cardFor(page, id) {
   return page.evaluate(async (target, layerUrl, overlayUrl) => {
     const module = await import(layerUrl);
     const overlay = await import(overlayUrl);
-    const resolved = module.resolveSelection(target);
-    if (!resolved) return null;
+    if (!module.resolveSelection(target)) return null;
     module._selectIdfmNetworkForTest(target);
+    // A click on a stop this view never charted BUYS its profile, so the card
+    // opens on "lecture…" and settles a round-trip later. Waiting for that is
+    // part of reading the card, not a race the harness is papering over: the
+    // whole point of the change is that a click is answered.
+    const stopId = module.selectionStopId(target);
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      if (module._idfmNetworkProbeForTest(stopId)?.status !== 'loading') break;
+      await new Promise((resolve) => { setTimeout(resolve, 100); });
+    }
+    // Re-read AFTER the wait: the halves the card ended up with are what the
+    // reader sees, and the frequency half may have arrived in the meantime.
+    const resolved = module.resolveSelection(target);
     const [entry] = overlay.getOverlaySourceEntries(module.IDFM_OVERLAY_SOURCE_ID);
     return {
-      halves: { ref: Boolean(resolved.ref), freq: Boolean(resolved.freq) },
+      halves: { ref: Boolean(resolved?.ref), freq: Boolean(resolved?.freq) },
+      probe: module._idfmNetworkProbeForTest(stopId)?.status ?? null,
       selectedId: entry?.id ?? null,
       copy: entry ? [entry.title, ...entry.details].join('\n') : null,
     };
@@ -430,29 +452,38 @@ async function main() {
       /rapprochez-vous/i.test(gated.stats.loadingLabel || ''), gated.stats.loadingLabel);
     await shoot(page, '01-dormant.png');
 
-    // ── iii. one toggle, two marks ─────────────────────────────────────────
-    console.log('[qa] iii. both marks from one toggle');
+    // ── iii. one toggle, ONE mark per stop ─────────────────────────────────
+    console.log('[qa] iii. one mark per stop');
     await setView(page, CITY.lon, CITY.lat, 1_200);
     let drawn = null;
     for (let attempt = 0; attempt < 30; attempt++) {
       await pump(page, 3, 60);
       await sleep(400);
       drawn = await layerProbe(page);
-      if (drawn.billboards > 0 && drawn.discs > 0) break;
+      if (drawn.billboards > 0 && drawn.yielded > 0) break;
     }
-    check('the referential drew a pictogram per stop', drawn.billboards === 4,
-      `${drawn.billboards} pictograms`);
-    check('the offer drew a rate disc per profiled stop', drawn.discs === 4,
-      `${drawn.discs} discs`);
+    check('the referential drew a badge per stop', drawn.billboards === 4,
+      `${drawn.billboards} badges`);
+    // The fixtures overlap on three ids of four, which is the shape of the
+    // real join: 95.6 % of the offer's stops are in the referential.
+    check('and the three discs the badges already draw stood down',
+      drawn.yielded === 3, `${drawn.yielded} yielded`);
+    check('while the offer-only stop keeps its disc — nothing else draws it',
+      drawn.discs === 1, `${drawn.discs} discs shown`);
     check('both upstreams were asked, once each per box',
       referentialRequests >= 1 && offerRequests >= 1,
       `${referentialRequests} referential, ${offerRequests} offer`);
     check('the layer reports the frequency regime it is in',
       drawn.stats.regime === 'arrets', `regime=${drawn.stats.regime}`);
+    // Yielding a PRIMITIVE is not dropping a FACT: all four profiles are still
+    // charted, still counted, still in the legend — the badge carries the rate.
     check('and counts both halves separately',
       drawn.stats.count === 4 && drawn.stats.charted === 4,
       `count=${drawn.stats.count} charted=${drawn.stats.charted}`);
-    await shoot(page, '02-both-marks.png');
+    const rateLegend = (drawn.controls?.legend || []).map((entry) => entry.label);
+    check('the legend explains the fills that are on screen',
+      rateLegend.length > 0 && !rateLegend.includes('Bus'), rateLegend.join(' | '));
+    await shoot(page, '02-one-mark.png');
 
     // The layer is loaded now, so the page can be asked which URL it loaded it
     // FROM. Everything below reads the layer's own state through that URL, and
@@ -499,18 +530,21 @@ async function main() {
     check('and the hourly half, for the band the row is on',
       /08:00–08:59 — 30 départs\/h/.test(merged),
       merged.split('\n').find((line) => /départs\/h/.test(line)));
-    check('and names both licences, because the row now carries two',
-      /réseau ODbL 1\.0 · fréquence Licence Ouverte v2\.0/.test(merged));
+    check('and does NOT end on a licence line — that lives in the credits',
+      !/ODbL|Licence Ouverte/.test(merged),
+      merged.split('\n').slice(-1)[0]);
     check('the card the host was handed is the one that was clicked',
       viaPictogram?.selectedId === 'idfm:stop:23613', String(viaPictogram?.selectedId));
     const painted = await cardPaintRect(page, 'idfm-freq:23613');
     check('and it reaches pixels, not just the entry count',
       Number(painted?.w) > 0 && Number(painted?.h) > 0, JSON.stringify(painted));
 
-    const refOnly = String((await cardFor(page, 'idfm:stop:999001'))?.copy || '');
-    check('a referential stop outside the offer says WHICH half is missing',
-      /Aucun profil horaire publié/.test(refOnly) && !/départs\/h/.test(refOnly),
-      refOnly.split('\n').slice(1).join(' | '));
+    const noProfile = await cardFor(page, 'idfm:stop:999001');
+    const refOnly = String(noProfile?.copy || '');
+    check('a referential stop outside the offer asks, then says it is not there',
+      noProfile?.probe === 'empty'
+      && /Aucun profil horaire publié/.test(refOnly) && !/départs\/h/.test(refOnly),
+      `probe=${noProfile?.probe} · ${refOnly.split('\n').slice(1).join(' | ')}`);
     const offerOnly = String((await cardFor(page, 'idfm-freq:23997'))?.copy || '');
     check('an offer stop outside the referential quotes the offer’s own mode',
       /Bus · Paris \(75\)/.test(offerOnly) && !/zone 1/.test(offerOnly),
@@ -549,7 +583,11 @@ async function main() {
     check('and NOTHING was fetched — the 7 × 24 profile was already here',
       offerRequests === requestsBefore,
       `${offerRequests - requestsBefore} extra request(s)`);
-    check('the discs are still all on screen', after.discs === 4, `${after.discs} discs`);
+    // Four profiles, three of them drawn as badges — a repaint must not change
+    // which collection draws what.
+    check('the one disc with no badge is still on screen',
+      after.discs === 1 && after.yielded === 3,
+      `${after.discs} discs, ${after.yielded} yielded`);
     await shoot(page, '04-night.png');
 
     // ── vi. between the gates ──────────────────────────────────────────────
@@ -562,19 +600,73 @@ async function main() {
       wide = await layerProbe(page);
       if (wide.stats.regime !== 'arrets') break;
     }
-    check('the pictograms stay above the frequency gate', wide.billboards === 4,
-      `${wide.billboards} pictograms`);
-    check('the discs go', wide.discs === 0, `${wide.discs} discs`);
+    check('the badges stay above the frequency gate', wide.billboards === 4,
+      `${wide.billboards} badges`);
+    check('the discs go', wide.discs === 0 && wide.yielded === 0,
+      `${wide.discs} discs, ${wide.yielded} yielded`);
     check('the row says the offer is not read here, with a distance',
       /fréquence à partir/i.test(wide.stats.loadingLabel || ''), wide.stats.loadingLabel);
-    const wideCard = String((await cardFor(page, 'idfm:stop:23613'))?.copy || '');
-    check('and a card up here says so instead of showing a zero',
-      /Offre horaire non lue à cette altitude/.test(wideCard)
-      && !/départs\/h/.test(wideCard),
-      wideCard.split('\n').slice(1).join(' | '));
+    // The legend up here describes the badges, not a ramp of six zeros — which
+    // is what a reader was shown until 2026-09-10.
+    const modeLegend = (wide.controls?.legend || []).map((entry) => entry.label);
+    check('and the legend names the MODES, because that is what the fills say',
+      modeLegend.includes('Bus') && modeLegend.includes('Métro')
+      && (wide.controls?.legend || []).every((entry) => entry.count > 0),
+      modeLegend.join(' | '));
+
+    // THE GATE BOUNDS THE DRAWING, NOT THE ANSWER. A click names one
+    // coordinate, and one coordinate is affordable at any altitude.
+    const offerBefore = offerRequests;
+    // Back on a band this stop actually runs in — step v left the row at 01 h,
+    // where the honest answer is "aucun passage" and would prove nothing about
+    // whether the profile was fetched.
+    await page.evaluate(() => window.__godsEyeView.dataManager.layers
+      .get('idfm-network').module.setParams({ band: 8 }));
+    const wideClick = await cardFor(page, 'idfm:stop:23613');
+    const wideCard = String(wideClick?.copy || '');
+    check('and a click up here BUYS the profile instead of quoting the altitude',
+      wideClick?.probe === 'ok' && /départs\/h/.test(wideCard)
+      && !/altitude|approchez/.test(wideCard),
+      `probe=${wideClick?.probe} · ${wideCard.split('\n').slice(1).join(' | ')}`);
+    // At most one, not exactly one: a probe keeps every profile its box paid
+    // for, so the stop clicked in step iv already bought this one's cell.
+    check('paying for at most one box — a cell already bought is free',
+      offerRequests - offerBefore <= 1, `${offerRequests - offerBefore} boxes`);
+    // And the MAP did not move: one badge wearing a rate while the others wear
+    // their mode would read as a difference in service.
+    const afterClick = await layerProbe(page);
+    check('while the map stays on its mode fills',
+      afterClick.stats.charted === 0 && afterClick.discs === 0,
+      `charted=${afterClick.stats.charted} discs=${afterClick.discs}`);
+
     check('DETECT quotes no rate it has not read',
       wide.detectables === 0, `${wide.detectables} callouts`);
     await shoot(page, '05-wide.png');
+
+    // ── vii. the card can be dismissed ─────────────────────────────────────
+    // The reported bug: over a photorealistic globe every click lands on a 3D
+    // Tiles feature, so the handler's `!picked` test never fired and the card
+    // could not be closed. Asserted on the layer's own decision function
+    // rather than through a synthetic canvas click — `chrome-for-testing`
+    // cannot pick a Cesium entity at all under SwiftShader, so a real click
+    // would prove nothing either way.
+    console.log('[qa] vii. dismissing the card');
+    const dismissal = await page.evaluate(async (layerUrl) => {
+      const module = await import(layerUrl);
+      module._selectIdfmNetworkForTest('idfm:stop:23613');
+      const open = module._idfmNetworkSelectedIdForTest();
+      const onTileset = module.clickDecision({
+        primitive: { isCesium3DTileset: true }, content: {}, id: undefined,
+      });
+      const onStop = module.clickDecision({ id: 'idfm:stop:22154' });
+      return { open, onTileset, onStop };
+    }, MODULE_URLS.layer);
+    check('a card is open to dismiss', dismissal.open === 'idfm:stop:23613',
+      String(dismissal.open));
+    check('clicking the photorealistic ground closes it',
+      dismissal.onTileset?.action === 'close', JSON.stringify(dismissal.onTileset));
+    check('and clicking another stop moves the card rather than closing it',
+      dismissal.onStop?.action === 'select', JSON.stringify(dismissal.onStop));
 
     // ── console hygiene ────────────────────────────────────────────────────
     const relevant = consoleErrors.filter((entry) => !/favicon|Failed to load resource/i.test(entry));
