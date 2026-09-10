@@ -10,6 +10,7 @@ import {
 import { fetchFlowForBounds, getFlowSessionStats, resetFlowTileCache } from './flowTiles.js';
 import { matchFlowToRoads } from './flowMatch.js';
 import { flowBucket, flowSpeedScale, flowDensityMult } from './trafficFlowStyle.js';
+import { renderFlowRibbons, clearFlowRibbons } from './flowRibbons.js';
 import {
   trafficStyleProfile,
   presetDotRgba,
@@ -279,6 +280,21 @@ let _heatJamPrim = null;
 let _heatSlowPrim = null;
 /** @type {number} Heat-lines in the current render (stats). */
 let _heatLineCount = 0;
+/**
+ * The live-flow ribbon: TomTom's own polylines, draped on the ground.
+ *
+ * Independent of `_roads` on purpose. The dots need Overpass and the ribbon
+ * does not, so with the road graph slow or down the measurement still reaches
+ * the screen — which is the whole reason this exists (see `flowRibbons.js`).
+ * @type {?object}
+ */
+let _ribbonPrim = null;
+/** @type {{closure:number, jam:number, slow:number, free:number}} Ribbon tally for the legend. */
+let _ribbonCounts = { closure: 0, jam: 0, slow: 0, free: 0 };
+/** @type {Array} Segments the current ribbon was built from, for a preset restyle. */
+let _ribbonSegments = [];
+/** @type {'on'|'off'} User control over the ribbon (`FLUX TOMTOM` chip). */
+let _flowRibbon = 'on';
 /** @type {boolean|null} GroundPolylinePrimitive.isSupported, checked once. */
 let _heatSupported = null;
 /** @type {number} Altitude of the last render, for late-flow heat rebuilds. */
@@ -388,6 +404,7 @@ function restyleDotsInPlace() {
     applyOutline(dot.point, bucket);
   }
   rebuildHeatLines(visibleRoadsForAltitude(_roads, _lastRenderAltitude));
+  if (_ribbonSegments.length) paintFlowRibbon(_ribbonSegments);
 }
 
 /**
@@ -1164,6 +1181,7 @@ function onCameraChanged() {
   const tier = roadFetchTier(alt);
   if (!tier) {
     clearDots();
+    clearFlowRibbon();
     _lastBounds = null;
     _lastViewCenter = null;
     _lastTierId = null;
@@ -1230,9 +1248,28 @@ function cancelActiveFetch() {
 export function deriveTrafficFlowError(error) {
   if (!error || error.name === 'AbortError') return null;
   const message = String(error.message || error);
-  const status = Number(message.match(/HTTP (\d{3})/)?.[1]);
+  // `status`/`reason` are set by `flowTiles.flowTileError`; the message parse
+  // is the fallback for an error raised anywhere else.
+  const status = Number.isFinite(error.status)
+    ? error.status
+    : Number(message.match(/HTTP (\d{3})/)?.[1]);
   if (status === 503) return 'TomTom key unavailable';
-  if (status === 429) return 'TomTom daily budget reached';
+  if (status === 429) {
+    // A 429 has two authors and they cost different things to fix. Ours means
+    // the daily tile budget is spent and only tomorrow changes that. One
+    // raised in FRONT of the origin — the edge rule allows 30 requests per
+    // 10 s across ALL of /api — means the page asked too fast and clears in
+    // seconds. Reporting the second as the first sent a reader looking for a
+    // bill that does not exist.
+    //
+    // Three answers, not two: an unlabelled 429 did not come from
+    // `flowTiles.flowTileError` and we do not know whose it was, so it names
+    // the symptom and picks neither side. (English here to match the rest of
+    // this function — it is the chip line; the legend below is French.)
+    if (error.reason === 'budget') return 'TomTom daily budget reached';
+    if (error.reason === 'edge') return 'Rate limited by the server, not by TomTom';
+    return 'Flow rate limited (HTTP 429)';
+  }
   if (status === 502 || status === 504) return 'TomTom upstream unreachable';
   if (Number.isFinite(status)) return `TomTom flow error (HTTP ${status})`;
   return 'TomTom flow unavailable';
@@ -1328,6 +1365,108 @@ function ensureFlowStatus() {
 }
 
 /**
+ * Flow-tile zoom for a camera band.
+ *
+ * The band owns it (`trafficBounds.ROAD_FETCH_TIERS.flowZoom`) because the band
+ * owns the box span: the metro band's 0.30° box needs 30 tiles at z12 and 4 at
+ * z10. Falls back to 12, the street-band value and the module default.
+ *
+ * @param {?Object} tier - Camera band, or null.
+ * @returns {number} Tile zoom.
+ */
+function flowZoomFor(tier) {
+  return Number.isFinite(tier?.flowZoom) ? tier.flowZoom : 12;
+}
+
+/** Bucket → the CSS colour the active preset wants, or null for the shipped one. */
+function ribbonColorFor(bucket) {
+  const active = _activeBucketColors[bucket];
+  return active ? active.toCssColorString() : null;
+}
+
+/**
+ * @type {number} Road-class floor the CURRENT ribbon was built with.
+ * Held so a preset restyle rebuilds the same selection instead of silently
+ * widening it back to every street at 20 km up.
+ */
+let _ribbonMinClass = 0;
+
+/** Road-class floor for a camera band (0 = draw every class TomTom publishes). */
+function ribbonMinClassFor(tier) {
+  return Number.isFinite(tier?.ribbonMinClass) ? tier.ribbonMinClass : 0;
+}
+
+/**
+ * Rebuild the ground ribbon from a set of decoded flow segments.
+ *
+ * Idempotent and cheap to call twice with the same segments — which happens by
+ * design, since both the warm-up and the road matcher hand over whatever the
+ * decode cache gave them.
+ *
+ * @param {Array} segments - Decoded flow segments ([] clears the ribbon).
+ * @param {number} [minClass] - Road-class floor; defaults to the one the
+ *   current ribbon already uses, so a restyle cannot change the selection.
+ */
+function paintFlowRibbon(segments, minClass = _ribbonMinClass) {
+  if (!_viewer) return;
+  _ribbonSegments = Array.isArray(segments) ? segments : [];
+  _ribbonMinClass = minClass;
+  if (!_enabled || !_liveMode || _flowRibbon === 'off') {
+    _ribbonPrim = clearFlowRibbons(_viewer, _ribbonPrim);
+    _ribbonCounts = { closure: 0, jam: 0, slow: 0, free: 0 };
+    return;
+  }
+  const { primitive, counts } = renderFlowRibbons(_viewer, _ribbonPrim, _ribbonSegments, {
+    colorFor: ribbonColorFor,
+    minClassRank: _ribbonMinClass,
+  });
+  _ribbonPrim = primitive;
+  _ribbonCounts = counts;
+  _viewer.scene?.requestRender?.();
+}
+
+/** Drop the ribbon and everything it was built from. */
+function clearFlowRibbon() {
+  _ribbonPrim = clearFlowRibbons(_viewer, _ribbonPrim);
+  _ribbonCounts = { closure: 0, jam: 0, slow: 0, free: 0 };
+  _ribbonSegments = [];
+  _ribbonMinClass = 0;
+}
+
+/**
+ * Fetch the flow for a viewport and PAINT it, without waiting for Overpass.
+ *
+ * This replaced a fire-and-forget cache warm-up. The warm-up was already
+ * correct about the ordering — flow and roads have to be in the air together
+ * — it just threw the answer away, so the first thing a user could see still
+ * depended on the slowest feed in the layer. Measured on the hosted origin:
+ * the tiles land in ~200 ms, the road graph took 25 s and then 502'd.
+ *
+ * Failures are silent HERE by design: `applyFlowToRoads` runs the same fetch
+ * against the same decode cache and owns the honest error reporting, so
+ * surfacing it twice would race two writers onto one `_flowError`.
+ *
+ * @param {{south:number,west:number,north:number,east:number}} clamped - Fetch bounds.
+ * @param {?Object} tier - Camera band, for its `flowZoom`.
+ * @param {number} generation - `_loadGeneration` at call time.
+ * @returns {Promise<void>}
+ */
+async function loadFlowRibbon(clamped, tier, generation) {
+  _flowPending += 1;
+  try {
+    await _flowStatusPromise;
+    if (!_liveMode || !_enabled || generation !== _loadGeneration) return;
+    const segments = await fetchFlowForBounds(clamped, { zoom: flowZoomFor(tier) });
+    if (generation !== _loadGeneration || !_enabled) return;
+    paintFlowRibbon(segments, ribbonMinClassFor(tier));
+  } catch {
+    /* applyFlowToRoads settles the truth — see the note above. */
+  } finally {
+    _flowPending -= 1;
+  }
+}
+
+/**
  * Live mode only: fetch TomTom flow for the clamped bounds, match it onto the
  * parsed roads, and attach `road.flow` (`{level, closure}` or null).
  *
@@ -1341,9 +1480,10 @@ function ensureFlowStatus() {
  * @param {Array} roads - Parsed road objects (mutated: `road.flow`).
  * @param {{south:number,west:number,north:number,east:number}} clamped - Fetch bounds.
  * @param {number} generation - `_loadGeneration` at call time.
+ * @param {?Object} [tier] - Camera band, for its `flowZoom`.
  * @returns {Promise<void>}
  */
-async function applyFlowToRoads(roads, clamped, generation) {
+async function applyFlowToRoads(roads, clamped, generation, tier = null) {
   // Claim the work synchronously, before the first await, so `stats.loading`
   // covers this request from the same tick the caller started it — the
   // loading batch must not be able to close underneath an in-flight fetch.
@@ -1358,8 +1498,15 @@ async function applyFlowToRoads(roads, clamped, generation) {
       // Cached paths reach here without a live controller; the fetch paths
       // reuse theirs so one cancel covers both roads and flow.
       if (!_activeFetchAbort) _activeFetchAbort = new AbortController();
-      const segments = await fetchFlowForBounds(clamped, { signal: _activeFetchAbort.signal });
+      const segments = await fetchFlowForBounds(clamped, {
+        signal: _activeFetchAbort.signal,
+        zoom: flowZoomFor(tier),
+      });
       if (generation !== _loadGeneration) return;
+      // The ribbon warm-up usually painted these already; this covers the
+      // path where the roads arrived first (a cached viewport) and is free —
+      // same decode-cache entry, same segments, no second request.
+      paintFlowRibbon(segments, ribbonMinClassFor(tier));
       const { matches, matchedCount, candidateCount } = matchFlowToRoads(roads, segments);
       for (let i = 0; i < roads.length; i++) {
         roads[i].flow = matches[i];
@@ -1402,17 +1549,18 @@ const FLOW_RENDER_RACE_MS = 250;
  * @param {number} generation - `_loadGeneration` at call time.
  * @param {number} altitude - Camera altitude in meters.
  * @param {string} label - Render log label.
+ * @param {?Object} tier - Camera band, for its `flowZoom`.
  * @param {Object|null} [trace=null] - Development-only correlated load trace.
  * @returns {Promise<boolean>} True if this generation rendered.
  */
-async function applyFlowThenRender(roads, clamped, generation, altitude, label, trace = null) {
+async function applyFlowThenRender(roads, clamped, generation, altitude, label, tier, trace = null) {
   const state = TRAFFIC_TIMING_ENABLED && trace
     ? trafficTimingRenderState(trace, label)
     : null;
   const flowRaceStart = state ? trafficTimingMark(state, 'flow-render-race-start', {
     deadlineMs: FLOW_RENDER_RACE_MS,
   }) : null;
-  const flowJob = applyFlowToRoads(roads, clamped, generation);
+  const flowJob = applyFlowToRoads(roads, clamped, generation, tier);
   const outcome = await Promise.race([
     flowJob.then(() => 'flow'),
     new Promise((resolve) => setTimeout(() => resolve('timeout'), FLOW_RENDER_RACE_MS)),
@@ -2058,6 +2206,7 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
   const tier = roadFetchTier(altitude);
   if (!tier) {
     clearDots();
+    clearFlowRibbon();
     return;
   }
   const clamped = clampBounds(bounds, tier);
@@ -2065,14 +2214,12 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
   // Cache key: fixed-precision bounding-box string for deterministic lookups
   const cacheKey = `${clamped.south.toFixed(4)},${clamped.west.toFixed(4)},${clamped.north.toFixed(4)},${clamped.east.toFixed(4)}`;
 
-  // Live mode: warm the flow-tile cache CONCURRENTLY with the Overpass road
-  // fetch — sequential fetches doubled first-paint latency (field-test
-  // round 1). Failures are irrelevant; applyFlowToRoads settles the truth.
-  ensureFlowStatus().then(() => {
-    if (_liveMode && _enabled && generation === _loadGeneration) {
-      fetchFlowForBounds(clamped, {}).catch(() => { /* warm-up only */ });
-    }
-  });
+  // Live mode: fetch the flow CONCURRENTLY with the Overpass road fetch, and
+  // paint what comes back as soon as it lands. Sequential fetches doubled
+  // first-paint latency (field-test round 1); waiting for the roads before
+  // showing the flow at all made the layer only as fast as its slowest feed,
+  // which on the hosted origin meant 25 s and a 502.
+  ensureFlowStatus().then(() => loadFlowRibbon(clamped, tier, generation));
 
   _fetching = true;
   // Only COMMIT these on success. Committing up-front means a failed Overpass
@@ -2105,7 +2252,7 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
     // FLOW_RENDER_RACE_MS either way; late flow recolors in place.
     if (cache.full) {
       renderedSomething = await applyFlowThenRender(
-        cache.full, clamped, generation, altitude, 'Cache full', trace
+        cache.full, clamped, generation, altitude, 'Cache full', tier, trace
       );
       return;
     }
@@ -2113,7 +2260,7 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
     // Intermediate path: render cached major roads while fetching the rest
     if (cache.major) {
       if (!await applyFlowThenRender(
-        cache.major, clamped, generation, altitude, 'Cache major', trace
+        cache.major, clamped, generation, altitude, 'Cache major', tier, trace
       )) return;
       renderedSomething = true;
     } else {
@@ -2129,7 +2276,7 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
       if (generation !== _loadGeneration) return;
       cache.major = _parseRoads(majorData, trace);
       if (!await applyFlowThenRender(
-        cache.major, clamped, generation, altitude, 'Loaded major', trace
+        cache.major, clamped, generation, altitude, 'Loaded major', tier, trace
       )) return;
       renderedSomething = true;
     }
@@ -2151,7 +2298,7 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
 
     cache.full = _parseRoads(fullData, trace);
     if (!await applyFlowThenRender(
-      cache.full, clamped, generation, altitude, 'Loaded full', trace
+      cache.full, clamped, generation, altitude, 'Loaded full', tier, trace
     )) return;
     renderedSomething = true;
 
@@ -2323,6 +2470,7 @@ const trafficLayer = {
     cancelActiveFetch();
     _loadGeneration++;
     clearDots();
+    clearFlowRibbon();
     _lastViewCenter = null;
     _lastBounds = null;
     _lastTierId = null;
@@ -2396,6 +2544,15 @@ const trafficLayer = {
         restyleDotsInPlace();
       }
     }
+    // The ground ribbon (TomTom's own polylines). Applies IMMEDIATELY from
+    // the segments already decoded — turning it back on must not have to wait
+    // for the next camera move to show anything.
+    if (params.flowRibbon === 'on' || params.flowRibbon === 'off') {
+      if (params.flowRibbon !== _flowRibbon) {
+        _flowRibbon = params.flowRibbon;
+        paintFlowRibbon(_ribbonSegments);
+      }
+    }
   },
 
   /**
@@ -2409,6 +2566,7 @@ const trafficLayer = {
       uncoveredRoads: _uncoveredMode,
       jamViz: _jamViz,
       presetDots: _presetDots,
+      flowRibbon: _flowRibbon,
     };
   },
 
@@ -2471,6 +2629,7 @@ const trafficLayer = {
       _pointCollection = null;
     }
     removeHeatLines();
+    clearFlowRibbon();
     _tileCache.clear();
     resetFlowTileCache();
     _count = 0;
@@ -2509,7 +2668,22 @@ const trafficLayer = {
       mode: feed.mode,
       error: feed.error,
       flowCoveragePct: _flowCoveragePct,
-      tilesFetched: getFlowSessionStats().tilesFetched,
+      // Tile accounting: `tilesJoined` is the duplicate requests the in-flight
+      // table now absorbs instead of issuing, `cooldownMs` what is left of a
+      // 429 parking. Both were invisible when they were costing the most.
+      ...(() => {
+        const flow = getFlowSessionStats();
+        return {
+          tilesFetched: flow.tilesFetched,
+          tilesJoined: flow.tilesJoined,
+          flowCooldownMs: flow.cooldownMs,
+          flowCooldownReason: flow.cooldownReason,
+        };
+      })(),
+      // Ribbon segments on screen, by bucket. Non-zero with ZERO dots is the
+      // Overpass-down case the ribbon exists for, and the legend reads it.
+      flowRibbon: _flowRibbon,
+      ribbonCounts: { ..._ribbonCounts },
       ...(TRAFFIC_TIMING_ENABLED ? { trafficTiming: getTrafficTimingDiagnostics() } : {}),
       // Per-bucket rendered-dot counts (sim = white ambient). Drives the
       // qa-traffic color assertions and the sync-chip mode label below.
@@ -2562,9 +2736,26 @@ const trafficLayer = {
       // Only meaningful in live mode: without a flow feed there is nothing
       // measured to keep, and hiding the rest would empty the layer.
       disabled: !_liveMode,
+    }, {
+      id: 'flow-ribbon',
+      label: 'FLUX TOMTOM',
+      active: _flowRibbon === 'on',
+      state: _flowRibbon === 'on' ? 'active' : 'idle',
+      title: _flowRibbon === 'on'
+        ? 'Masque le débit mesuré et ne garde que les points animés'
+        : 'Trace le débit mesuré par TomTom sur sa propre géométrie — '
+          + 'il s’affiche sans attendre le graphe routier',
+      params: { flowRibbon: _flowRibbon === 'on' ? 'off' : 'on' },
+      disabled: !_liveMode,
     }];
     const legend = [];
-    const buckets = _bucketCounts || {};
+    // The dots' tally normally. But the ribbon can be the ONLY thing on screen
+    // — that is what it is for — and a key that reads zero over a painted map
+    // describes a layer that is not the one running. So when there are no dots
+    // to count, the key counts what the ribbon drew.
+    const buckets = (_bucketCounts.free || _bucketCounts.slow || _bucketCounts.jam)
+      ? _bucketCounts
+      : { ..._bucketCounts, ..._ribbonCounts };
     // Swatches come from `_activeBucketColors`, not from the shipped palette:
     // this layer is the one place in the repo that already recolours itself on
     // `gev:style-change` (NVG/FLIR discard hue, so congestion is re-encoded in
@@ -2593,11 +2784,12 @@ const trafficLayer = {
         });
       }
     }
-    if (_closedRoads) {
+    const closed = _closedRoads || _ribbonCounts.closure;
+    if (closed) {
       legend.push({
         label: 'Route fermée',
         color: '#ff3b30',
-        count: _closedRoads,
+        count: closed,
         blurb: 'Fermeture publiée par TomTom — aucun point n’y circule.',
       });
     }

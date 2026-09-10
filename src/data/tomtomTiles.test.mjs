@@ -9,6 +9,7 @@ import {
   utcDayKey,
   normalizeBudget,
   isOverBudget,
+  secondsToUtcMidnight,
 } from './tomtomTiles.js';
 
 // Downtown Austin — the verified TomTom fixture tile (z12 x935 y1686).
@@ -149,4 +150,22 @@ test('isOverBudget: at or above the limit is over, below is not', () => {
 test('isOverBudget: non-positive or invalid limit never blocks', () => {
   assert.equal(isOverBudget({ date: 'x', count: 1e9 }, 0), false);
   assert.equal(isOverBudget({ date: 'x', count: 1e9 }, NaN), false);
+});
+
+// ── Retry-After for the budget 429 ──────────────────────────
+
+test('secondsToUtcMidnight: counts to the next UTC day boundary', () => {
+  assert.equal(secondsToUtcMidnight(Date.parse('2026-09-10T23:59:00Z')), 60);
+  assert.equal(secondsToUtcMidnight(Date.parse('2026-09-10T00:00:00Z')), 86_400);
+});
+
+test('secondsToUtcMidnight: never says "retry now" for a limit that has not moved', () => {
+  assert.ok(secondsToUtcMidnight(Date.parse('2026-09-10T23:59:59.999Z')) >= 1);
+});
+
+test('secondsToUtcMidnight: the boundary it counts to is the budget key’s', () => {
+  const now = Date.parse('2026-09-10T18:30:00Z');
+  const after = now + secondsToUtcMidnight(now) * 1000;
+  assert.notEqual(utcDayKey(after), utcDayKey(now));
+  assert.equal(utcDayKey(after - 1000), utcDayKey(now));
 });

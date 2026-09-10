@@ -10,6 +10,7 @@ import {
   tilesForBounds,
   getFlowSessionStats,
   resetFlowTileCache,
+  retryAfterMs,
 } from './flowTiles.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -158,5 +159,147 @@ test('fetchFlowForBounds: non-OK tile responses reject when nothing succeeds', a
     await assert.rejects(fetchFlowForBounds(FIXTURE_BOUNDS));
   } finally {
     restore();
+  }
+});
+
+// ── In-flight dedup (the warm-up and the road matcher race for the same tiles) ──
+
+test('fetchFlowForBounds: concurrent callers for one tile issue ONE request', async () => {
+  resetFlowTileCache();
+  let calls = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const restore = stubFetch(async () => {
+    calls += 1;
+    await gate;
+    return new Response(loadFixture(), { status: 200 });
+  });
+  try {
+    const both = Promise.all([
+      fetchFlowForBounds(FIXTURE_BOUNDS),
+      fetchFlowForBounds(FIXTURE_BOUNDS),
+    ]);
+    release();
+    const [first, second] = await both;
+    assert.equal(calls, 1, 'the second caller must join the in-flight tile');
+    assert.equal(second.length, first.length);
+    assert.ok(getFlowSessionStats().tilesJoined >= 1);
+  } finally {
+    restore();
+  }
+});
+
+test('fetchFlowForBounds: a joined tile still lands in the cache after an abort', async () => {
+  resetFlowTileCache();
+  let calls = 0;
+  const restore = stubFetch(async () => {
+    calls += 1;
+    return new Response(loadFixture(), { status: 200 });
+  });
+  try {
+    const controller = new AbortController();
+    const aborted = fetchFlowForBounds(FIXTURE_BOUNDS, { signal: controller.signal });
+    controller.abort();
+    await assert.rejects(aborted, (err) => err.name === 'AbortError');
+    // The tile fetch is deliberately signal-free, so the work already paid for
+    // is available to the load that supersedes this one.
+    const segments = await fetchFlowForBounds(FIXTURE_BOUNDS);
+    assert.equal(calls, 1, 'the superseding load must reuse the aborted load’s tile');
+    assert.ok(segments.length > 50);
+  } finally {
+    restore();
+  }
+});
+
+// ── 429: whose limit was it, and how long to wait ───────────
+
+test('retryAfterMs: delta-seconds, HTTP date, and junk', () => {
+  assert.equal(retryAfterMs('10'), 10_000);
+  assert.equal(retryAfterMs('0'), 0);
+  const now = Date.parse('2026-09-10T10:00:00Z');
+  assert.equal(retryAfterMs('Thu, 10 Sep 2026 10:00:30 GMT', now), 30_000);
+  assert.equal(retryAfterMs('soon'), null);
+  assert.equal(retryAfterMs(null), null);
+  assert.equal(retryAfterMs(''), null);
+});
+
+test('fetchFlowForBounds: our budget 429 is labelled budget (x-tomtom-limit)', async () => {
+  resetFlowTileCache();
+  const restore = stubFetch(async () => new Response(JSON.stringify({ error: 'budget' }), {
+    status: 429,
+    headers: { 'Content-Type': 'application/json', 'x-tomtom-limit': 'budget', 'Retry-After': '1' },
+  }));
+  try {
+    await assert.rejects(fetchFlowForBounds(FIXTURE_BOUNDS), (err) => {
+      assert.equal(err.status, 429);
+      assert.equal(err.reason, 'budget');
+      return true;
+    });
+  } finally {
+    restore();
+    resetFlowTileCache();
+  }
+});
+
+test('fetchFlowForBounds: an edge 429 (no origin header) is labelled edge', async () => {
+  resetFlowTileCache();
+  const restore = stubFetch(async () => new Response('error code: 1015', {
+    status: 429,
+    headers: { 'Content-Type': 'text/html' },
+  }));
+  try {
+    await assert.rejects(fetchFlowForBounds(FIXTURE_BOUNDS), (err) => {
+      assert.equal(err.status, 429);
+      assert.equal(err.reason, 'edge');
+      return true;
+    });
+    assert.ok(getFlowSessionStats().cooldownMs > 0, 'a 429 must arm the cooldown');
+    assert.equal(getFlowSessionStats().cooldownReason, 'edge');
+  } finally {
+    restore();
+    resetFlowTileCache();
+  }
+});
+
+test('fetchFlowForBounds: the cooldown stops asking, and resetting clears it', async () => {
+  resetFlowTileCache();
+  let calls = 0;
+  const restore = stubFetch(async () => {
+    calls += 1;
+    return new Response('error code: 1015', { status: 429 });
+  });
+  try {
+    await assert.rejects(fetchFlowForBounds(FIXTURE_BOUNDS));
+    assert.equal(calls, 1);
+    await assert.rejects(fetchFlowForBounds(FIXTURE_BOUNDS));
+    assert.equal(calls, 1, 'the second attempt must not reach the network');
+  } finally {
+    restore();
+    resetFlowTileCache();
+  }
+  assert.equal(getFlowSessionStats().cooldownMs, 0);
+});
+
+test('fetchFlowForBounds: a cooldown serves the stale decode rather than failing', async () => {
+  resetFlowTileCache();
+  let mode = 'ok';
+  const restore = stubFetch(async () => (mode === 'ok'
+    ? new Response(loadFixture(), { status: 200 })
+    : new Response('error code: 1015', { status: 429 })));
+  try {
+    const good = await fetchFlowForBounds(FIXTURE_BOUNDS);
+    assert.ok(good.length > 50);
+    // Age the cached decode past its TTL so the next call would refetch, then
+    // arm a cooldown on a DIFFERENT viewport.
+    mode = '429';
+    await assert.rejects(fetchFlowForBounds({
+      south: 0.01, west: 0.01, north: 0.02, east: 0.02,
+    }));
+    // The first viewport still has a decode, so it keeps painting.
+    const stale = await fetchFlowForBounds(FIXTURE_BOUNDS);
+    assert.equal(stale.length, good.length);
+  } finally {
+    restore();
+    resetFlowTileCache();
   }
 });

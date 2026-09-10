@@ -82,9 +82,12 @@ export function tileToBBox(z, x, y) {
 /**
  * List the tiles covering a lat/lon bounding box at the given zoom.
  *
- * Traffic fetch bounds are clamped to a 0.05° span, so this is 1–4 tiles at
- * the default z12 in practice; `maxTiles` is a defensive truncation cap for
- * malformed/oversized inputs (row-major from the northwest corner).
+ * Traffic fetch bounds are clamped to their camera band's span, and the band
+ * picks the zoom to match (`trafficBounds.ROAD_FETCH_TIERS.flowZoom`): a 0.05°
+ * box is 1–2 tiles at z12, the metro band's 0.30° box is 4 at z10. Passing z12
+ * for a 0.30° box asks for 30, which is what the edge rate limit counts.
+ * `maxTiles` is a defensive truncation cap for malformed/oversized inputs
+ * (row-major from the northwest corner).
  *
  * @param {{south:number, west:number, north:number, east:number}} bounds - Degrees.
  * @param {number} [zoom=12] - Tile zoom level.
@@ -149,4 +152,23 @@ export function normalizeBudget(state, dayKey) {
 export function isOverBudget(state, limit) {
   if (!Number.isFinite(limit) || limit <= 0) return false;
   return state.count >= limit;
+}
+
+/**
+ * Seconds until the budget counter rolls, for a `Retry-After` on the 429.
+ *
+ * The daily cap is bucketed on the UTC calendar day (`utcDayKey`), so the
+ * honest answer to "when is it worth asking again" is the next UTC midnight
+ * and nothing sooner. Floored at 1 so the header never says "retry now" for a
+ * limit that has not moved.
+ *
+ * @param {number} [epochMs=Date.now()] - Timestamp in ms.
+ * @returns {number} Whole seconds until 00:00 UTC, at least 1.
+ */
+export function secondsToUtcMidnight(epochMs = Date.now()) {
+  const now = new Date(epochMs);
+  const midnight = Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0,
+  );
+  return Math.max(1, Math.ceil((midnight - epochMs) / 1000));
 }

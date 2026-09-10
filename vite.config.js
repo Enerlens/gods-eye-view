@@ -73,6 +73,7 @@ import {
   utcDayKey as tomtomUtcDayKey,
   normalizeBudget as normalizeTomTomBudget,
   isOverBudget as isTomTomOverBudget,
+  secondsToUtcMidnight,
 } from './src/data/tomtomTiles.js';
 import {
   QTV_MEASUREMENTS_URL,
@@ -2860,11 +2861,28 @@ function tomtomProxy() {
           });
           res.end(JSON.stringify(obj));
         };
-        const sendTile = (buf, cacheStatus) => {
+        /**
+         * Serve a tile, and let the BROWSER hold it for the rest of its life.
+         *
+         * `no-store` was costing the same tile twice on a single pan and again
+         * on every revisit inside its own freshness window — requests that the
+         * edge rule in front of the hosted origin counts (30 per 10 s across
+         * ALL of `/api`, so a wide viewport could throttle the whole page).
+         * `private` is deliberate over `public`: staging sits behind Basic
+         * auth, and only the browser that authenticated should be able to
+         * replay a tile — no shared cache, no risk of serving one past the gate.
+         *
+         * The max-age is what is LEFT of this copy's 120 s, floored at 15 s so
+         * a tile served at 119 s old still spares the double fetch, and 0 for a
+         * stale body, which by definition has no freshness left to promise.
+         */
+        const sendTile = (buf, cacheStatus, ageMs = 0) => {
           if (res.headersSent) return;
+          const fresh = cacheStatus !== 'STALE-BUDGET' && cacheStatus !== 'STALE-ERROR';
+          const remainingSec = Math.max(15, Math.round((TILE_TTL_MS - ageMs) / 1000));
           res.writeHead(200, {
             'Content-Type': 'application/x-protobuf',
-            'Cache-Control': 'no-store',
+            'Cache-Control': fresh ? `private, max-age=${remainingSec}` : 'private, max-age=0',
             'x-tomtom-cache': cacheStatus,
           });
           res.end(buf);
@@ -2908,7 +2926,7 @@ function tomtomProxy() {
           }
           // Fresh cache hit — never counts against the budget.
           if (entry && now - entry.at < TILE_TTL_MS) {
-            sendTile(entry.buf, 'HIT');
+            sendTile(entry.buf, 'HIT', now - entry.at);
             return;
           }
 
@@ -2917,7 +2935,16 @@ function tomtomProxy() {
             if (entry) {
               sendTile(entry.buf, 'STALE-BUDGET');
             } else {
-              sendJson(429, { error: 'budget' });
+              // `x-tomtom-limit` is how the client tells THIS 429 from one
+              // raised in front of us. Nothing between the browser and this
+              // handler can forge it, so its absence on a 429 means the
+              // request never arrived — an edge throttle, not a TomTom bill.
+              // Retry-After is the rest of today: the budget resets on the
+              // UTC day boundary and nothing sooner will change the answer.
+              sendJson(429, { error: 'budget' }, {
+                'x-tomtom-limit': 'budget',
+                'Retry-After': String(secondsToUtcMidnight()),
+              });
             }
             return;
           }
@@ -2939,7 +2966,7 @@ function tomtomProxy() {
           }
           const fresh = await inflight.get(key);
           if (fresh) {
-            sendTile(fresh.buf, 'MISS');
+            sendTile(fresh.buf, 'MISS', Date.now() - fresh.at);
           } else if (entry) {
             sendTile(entry.buf, 'STALE-ERROR'); // upstream down — stale beats empty
           } else {

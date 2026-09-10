@@ -40,6 +40,59 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   navale 3, champ de tir 2, terrain militaire 39.
 
 ### Changed
+- **Le trafic live n'attend plus le graphe routier : TomTom se dessine
+  lui-même, et le conteneur retrouve Overpass.** « Ça prend très, très
+  longtemps à s'afficher, voire ça ne s'affiche pas du tout » — le coupable
+  n'était pas TomTom. Mesuré le 2026-09-10 sur l'origine hébergée : une tuile
+  TomTom répond en 32–174 ms, quatre en parallèle en 86 ms, et le décodage
+  coûte 5–10 ms. Pendant ce temps `/api/overpass` rendait **502 après 25,4 s**.
+
+  **La cause était une adresse.** `overpass-api.de` et `lz4.overpass-api.de`
+  ne répondent à ce VPS qu'en **IPv6** : leurs deux adresses IPv4
+  (162.55.144.139, 65.109.112.52) refusent la connexion en 16 ms, tandis que
+  la même requête en IPv6 rend 200 avec 1 056 ways. Le pont Docker par défaut
+  est IPv4 seul, donc *dans le conteneur* la paire FOSSGIS était injoignable et
+  tout le trafic routier retombait sur `overpass.private.coffee`, qui répond
+  429. `deploy/vps/docker-compose.yml` déclare maintenant un réseau IPv6 (ULA
+  NATé vers l'adresse globale de l'hôte) : `/api/overpass` est repassé à
+  **200 / 1 056 ways en 1,0 s**.
+
+  **Et la couche ne dépend plus de ça pour montrer une mesure.** Les points
+  animés roulent sur des polylignes OSM et TomTom n'en décidait que la
+  COULEUR — donc sans Overpass, les tuiles arrivaient, décodaient, et n'avaient
+  rien à peindre. `src/data/flowRibbons.js` dessine désormais la géométrie de
+  TomTom elle-même, en un seul `GroundPolylinePrimitive` batché (l'idiome de
+  `roadStatusFrance.js` : couleur ET largeur par instance). La couche a deux
+  moitiés qui se dégradent séparément : le RUBAN n'a besoin que de TomTom, les
+  POINTS ont encore besoin d'Overpass, et chacun peut être à l'écran sans
+  l'autre. Paris, palier rue : 2 tuiles, 78 Ko, 3 942 segments, **9,4 ms** de
+  construction. La puce `FLUX TOMTOM` le coupe.
+
+  **Le zoom des tuiles suit enfin le palier de caméra.** `fetchFlowForBounds`
+  était figé à z12 : sur la boîte de 0,30° du palier `metro` cela demandait
+  **30 tuiles** pour une seule vue, contre une règle d'edge qui n'en autorise
+  30 que par tranche de dix secondes pour TOUT `/api`. Le palier porte
+  maintenant son `flowZoom` (z10 au large, 4 tuiles) et son `ribbonMinClass` :
+  une tuile de flux ne s'éclaircit pas avec l'altitude, les quatre tuiles z10
+  de Paris décodent 27 080 segments dont l'essentiel est sous-pixel à 20 km.
+
+  **Deux requêtes sur quatre n'étaient qu'un doublon.** Le cache de décodage
+  n'enregistrait une tuile qu'une fois RÉSOLUE, donc le préchauffage et
+  l'appariement aux routes manquaient tous les deux et partaient tous les deux.
+  Une table des requêtes en vol les fusionne (`tilesJoined` le compte), et les
+  tuiles portent enfin un `Cache-Control: private, max-age=<reste des 120 s>`
+  au lieu de `no-store` — `private` parce que le préprod est derrière une
+  authentification et qu'aucun cache partagé ne doit pouvoir rejouer une tuile
+  au-delà du portillon.
+
+  **Enfin, un 429 dit de qui il vient.** N'importe quel 429 se lisait
+  « TomTom daily budget reached » ; celui de l'edge — 30 requêtes/10 s, qui
+  se vide en secondes et ne coûte rien — envoyait donc chercher une facture qui
+  n'existe pas. Le proxy estampille le sien (`x-tomtom-limit: budget`, avec un
+  `Retry-After` jusqu'à la bascule UTC), le client obéit au `Retry-After` en
+  servant son dernier décodage plutôt qu'en martelant, et un 429 non étiqueté
+  ne prend le parti de personne.
+
 - **La légende des bouées marines cesse de plaider et se contente de nommer :
   douze lignes et 692 px deviennent huit et 219.** Le bloc de droite portait
   388 mots pour une seule couche. Quatre de ces lignes étaient une RÈGLE

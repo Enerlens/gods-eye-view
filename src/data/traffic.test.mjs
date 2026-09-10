@@ -30,11 +30,33 @@ test('a superseded flow fetch is not an outage', () => {
 test('flow failures map onto short, specific reasons', () => {
   const reason = (message) => deriveTrafficFlowError(new Error(message));
   assert.equal(reason('flow tile 12/1/1: HTTP 503'), 'TomTom key unavailable');
-  assert.equal(reason('flow tile 12/1/1: HTTP 429'), 'TomTom daily budget reached');
+  assert.equal(reason('flow tile 12/1/1: HTTP 429'), 'Flow rate limited (HTTP 429)');
   assert.equal(reason('flow tile 12/1/1: HTTP 502'), 'TomTom upstream unreachable');
   assert.equal(reason('flow tile 12/1/1: HTTP 504'), 'TomTom upstream unreachable');
   assert.equal(reason('flow tile 12/1/1: HTTP 418'), 'TomTom flow error (HTTP 418)');
   assert.equal(reason('flow fetch failed'), 'TomTom flow unavailable');
+});
+
+test('a 429 names WHOSE limit it was, or refuses to guess', () => {
+  const typed = (status, why) => {
+    const err = new Error(`flow tile 12/1/1: HTTP ${status}`);
+    err.status = status;
+    err.reason = why;
+    return deriveTrafficFlowError(err);
+  };
+  // Ours: the daily tile budget, and only tomorrow changes it.
+  assert.equal(typed(429, 'budget'), 'TomTom daily budget reached');
+  // The edge rule in front of the origin: seconds, and no bill anywhere.
+  assert.equal(typed(429, 'edge'), 'Rate limited by the server, not by TomTom');
+  // Unlabelled — it must not send a reader looking for a bill.
+  assert.match(typed(429, null), /HTTP 429/);
+  assert.doesNotMatch(typed(429, null), /budget/i);
+});
+
+test('the typed status wins over the message it was formatted into', () => {
+  const err = new Error('flow tile 12/1/1: HTTP 429');
+  err.status = 503;
+  assert.equal(deriveTrafficFlowError(err), 'TomTom key unavailable');
 });
 
 test('keyless traffic names the mode and the remedy, loading or idle', () => {

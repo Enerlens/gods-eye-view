@@ -44,6 +44,12 @@ const ARTERIAL_CLASSES = Object.freeze(['motorway', 'trunk', 'primary']);
  *
  * `minShiftKm` scales with the band for the same reason the box does: 350 m of
  * pan is a new neighbourhood at street scale and a rounding error at 25 km.
+ *
+ * `flowZoom` is the TomTom flow-tile zoom the band asks for, and it exists
+ * because the box span does. A 0.05° box is 2 tiles at z12; the SAME z12 over
+ * the metro band's 0.30° box is 30 — thirty requests, against an edge rule
+ * that allows 30 per ten seconds for the whole page, to colour arterials that
+ * are a few pixels wide at 20 km up. z10 covers that box in 4.
  */
 export const ROAD_FETCH_TIERS = Object.freeze([
   Object.freeze({
@@ -52,6 +58,8 @@ export const ROAD_FETCH_TIERS = Object.freeze([
     spanDeg: 0.05,
     pullKm: 12,
     minShiftKm: 0.35,
+    flowZoom: 12,
+    ribbonMinClass: 0,
     classes: MAJOR_CLASSES,
     fullClasses: LOCAL_CLASSES,
   }),
@@ -61,6 +69,8 @@ export const ROAD_FETCH_TIERS = Object.freeze([
     spanDeg: 0.05,
     pullKm: 12,
     minShiftKm: 0.35,
+    flowZoom: 12,
+    ribbonMinClass: 0,
     classes: MAJOR_CLASSES,
     fullClasses: null,
   }),
@@ -70,6 +80,8 @@ export const ROAD_FETCH_TIERS = Object.freeze([
     spanDeg: 0.30,
     pullKm: 45,
     minShiftKm: 3,
+    flowZoom: 10,
+    ribbonMinClass: 4,
     classes: ARTERIAL_CLASSES,
     fullClasses: null,
   }),
