@@ -610,6 +610,7 @@ import {
   indexAlerts,
   indexTripUpdates,
   scheduleForVehicle,
+  stopsAhead,
   summarizeSchedule,
 } from './src/data/transitSchedule.js';
 import {
@@ -13808,12 +13809,66 @@ async function panFeedSchedule(feed, outcome) {
     nowMs,
     tripIndex: trips?.length ? indexTripUpdates(trips) : null,
     tripCount: trips?.length || 0,
+    // Where this network's stops ARE, when a previous click has already had
+    // its geometry built. Absent is ordinary and costs nothing but a fleet
+    // drawn at its reported positions — see {@link panStopsIndex}.
+    stops: trips?.length ? await panStopsIndex(feed.id) : null,
     alertIndex: alerts?.length ? indexAlerts(alerts, { nowMs, isActive: alertIsActive }) : null,
     // The count BEFORE the active-period filter, so "12 published, 3 in force"
     // stays sayable rather than collapsing to one number.
     alertsPublished: alerts?.length || 0,
     error: tripsError || alertsError || null,
   };
+}
+
+/**
+ * The next few stops of a run, as a flat array the browser can project along.
+ *
+ * `[lon, lat, arrivalDeltaS, dwellS, …]`, four numbers per stop, times measured
+ * in SECONDS FROM THE VEHICLE'S OWN FIX. Flat and relative because this rides
+ * on every vehicle of every viewport answer: against `{"lon":…,"arrivalMs":…}`
+ * per stop it is roughly a third of the bytes, and the client already holds the
+ * clock the deltas are against.
+ *
+ * Returns null unless everything needed is present — a timestamp to measure
+ * from, a matched run, this network's stop coordinates, and at least two placed
+ * stops. Every one of those is ordinary to be missing, and missing means the
+ * vehicle is drawn where it reported.
+ *
+ * @param {Object} vehicle Decoded position record.
+ * @param {?Object} trip The matched trip update.
+ * @param {?Object} schedule The feed's schedule context.
+ * @returns {?number[]}
+ */
+function panWireNextStops(vehicle, trip, schedule) {
+  const fixMs = vehicle?.timestampMs;
+  const stopsIndex = schedule?.stops;
+  if (!trip || !stopsIndex || !Number.isFinite(fixMs)) return null;
+
+  const ahead = stopsAhead(trip, {
+    stopSequence: Number.isFinite(vehicle.stopSequence) ? vehicle.stopSequence : null,
+    nowMs: schedule.nowMs,
+    limit: PAN_STOPS_AHEAD,
+  });
+  if (ahead.length < 2) return null;
+
+  const flat = [];
+  for (const stop of ahead) {
+    const point = stop.stopId ? stopsIndex[stop.stopId] : null;
+    if (!point) continue;
+    const arrival = stop.arrivalMs ?? stop.departureMs;
+    if (!Number.isFinite(arrival)) continue;
+    const departure = stop.departureMs ?? arrival;
+    flat.push(
+      Number(point[0].toFixed(5)),
+      Number(point[1].toFixed(5)),
+      Math.round((arrival - fixMs) / 1000),
+      Math.max(0, Math.round((departure - arrival) / 1000)),
+    );
+  }
+  // One placed stop is a direction, not a run: the projection needs a segment
+  // to travel along and a second time to travel it in.
+  return flat.length >= 8 ? flat : null;
 }
 
 /** Trim a decoded record to the fields the layer renders, dropping empties. */
@@ -13874,6 +13929,11 @@ function panWireVehicle(vehicle, feed, schedule = null) {
     }
     if (state.nextStopEtaMs) wire.nextStopEtaMs = state.nextStopEtaMs;
     if (state.matchedBy) wire.tripMatch = state.matchedBy;
+    // Where this run goes next, as GEOMETRY — the one thing the browser cannot
+    // work out for itself, and the thing that lets it draw a bus along its line
+    // instead of leaving it where it last reported. See `transitProjection.js`.
+    const nextStops = panWireNextStops(vehicle, state.trip, schedule);
+    if (nextStops) wire.nextStops = nextStops;
   }
   const alert = schedule?.alertIndex ? alertForVehicle(vehicle, schedule.alertIndex) : null;
   if (alert) {
@@ -14015,12 +14075,42 @@ const PAN_GEO_DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Indexed networks held in memory. Bordeaux's index is 2.4 MB. */
 const PAN_GEO_MEMORY_MAX = 3;
 
+/**
+ * Stop coordinates alone, split out of the indexed conversion.
+ *
+ * WHY A SECOND CACHE FOR A SUBSET OF THE FIRST. The viewport pass needs where
+ * the next few stops of every visible run ARE, so the browser can draw a bus
+ * along its line instead of where it last reported. It does NOT need the
+ * traces, and the traces are the whole cost: measured on Normandy's aggregate,
+ * the indexed conversion is 21.4 MB of which 20.4 MB is 1.0 million shape
+ * points, and the stops are 1.0 MB. Reading the big one on the fleet path would
+ * put a 21 MB parse and three networks' worth of resident shape geometry behind
+ * every poll, to answer a question 1 MB can answer.
+ *
+ * It is written as a by-product of {@link panRouteGeometry}, so a network whose
+ * line has been clicked once is a network whose whole fleet can be projected.
+ */
+const PAN_STOPS_CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'pan-gtfs-stops');
+/** Networks whose stops stay resident. 1 MB each at the worst measured. */
+const PAN_STOPS_MEMORY_MAX = 8;
+/**
+ * How many stops of a run go on the wire per vehicle.
+ *
+ * Four. Replayed against 22 minutes of the Normandy aggregate the drawn error
+ * does not move between four stops and twelve (median 165 m either way),
+ * because the projection is capped long before it runs out of them.
+ */
+const PAN_STOPS_AHEAD = 4;
+
 /** @type {?{feeds: Object, generatedAt: string}} */
 let _panStaticIndex = null;
 let _panStaticIndexPromise = null;
 /** feedId -> {index, source, fetchedAt} — insertion-ordered, oldest evicted. */
 const _panGeoMemory = new Map();
 const _panGeoInFlight = new Map();
+/** feedId -> stops object, or null once a feed is known to have none cached. */
+const _panStopsMemory = new Map();
+const _panStopsInFlight = new Map();
 
 /**
  * Load the companion index once. Absent is not fatal: the layer keeps drawing
@@ -14066,6 +14156,63 @@ function trimPanGeoMemory() {
   }
 }
 
+/** Disk path for one network's stop coordinates. */
+function panStopsCachePath(feedId) {
+  return path.join(PAN_STOPS_CACHE_DIR, `${String(feedId).replace(/[^\w.-]/g, '_')}.json`);
+}
+
+/**
+ * Write the stops sidecar beside a freshly indexed conversion.
+ *
+ * Failure costs nothing but a fleet that is not projected until the next time
+ * this network's geometry is built, so it is logged and swallowed.
+ *
+ * @param {string} feedId
+ * @param {Object} stops `{ [stopId]: [lon, lat, name, code] }`.
+ * @returns {Promise<void>}
+ */
+async function writePanStopsSidecar(feedId, stops) {
+  if (!stops || typeof stops !== 'object') return;
+  _panStopsMemory.set(feedId, stops);
+  while (_panStopsMemory.size > PAN_STOPS_MEMORY_MAX) {
+    const oldest = _panStopsMemory.keys().next().value;
+    if (oldest === undefined) break;
+    _panStopsMemory.delete(oldest);
+  }
+  try {
+    await fsp.mkdir(PAN_STOPS_CACHE_DIR, { recursive: true });
+    await fsp.writeFile(panStopsCachePath(feedId), JSON.stringify(stops), 'utf8');
+  } catch (error) {
+    console.warn('[PAN Transit] stops sidecar write failed:', error?.message || error);
+  }
+}
+
+/**
+ * One network's stop coordinates, or null.
+ *
+ * NEVER FETCHES. The sidecar is a by-product of a geometry build, and a
+ * network nobody has clicked a bus on has none — in which case its fleet is
+ * drawn at its reported positions, which is what the layer did before any of
+ * this existed. A viewport answer must not wait on a 69 MB download.
+ *
+ * `null` is cached like a value, so a cold network costs one failed stat per
+ * process rather than one per poll.
+ *
+ * @param {string} feedId
+ * @returns {Promise<?Object>}
+ */
+async function panStopsIndex(feedId) {
+  if (_panStopsMemory.has(feedId)) return _panStopsMemory.get(feedId);
+  return coalesceProxyRequest(_panStopsInFlight, feedId, async () => {
+    let stops = null;
+    try {
+      stops = JSON.parse(await fsp.readFile(panStopsCachePath(feedId), 'utf8'));
+    } catch { /* no sidecar: this network has never had its geometry built */ }
+    _panStopsMemory.set(feedId, stops);
+    return stops;
+  }).promise;
+}
+
 /**
  * One network's line geometry, indexed: memory, then disk, then the PAN.
  *
@@ -14102,6 +14249,9 @@ async function panRouteGeometry(feedId, entry) {
         const record = { index: cached.index, source: cached.source, fetchedAt: cached.fetchedAt };
         _panGeoMemory.set(feedId, record);
         trimPanGeoMemory();
+        // A checkout that predates the sidecar has the big cache and not the
+        // small one; writing it here means one click, not one re-download.
+        if (!_panStopsMemory.get(feedId)) void writePanStopsSidecar(feedId, cached.index.stops);
         return record;
       }
     } catch { /* no usable cache — fetch it */ }
@@ -14142,6 +14292,11 @@ async function panRouteGeometry(feedId, entry) {
 
     _panGeoMemory.set(feedId, record);
     trimPanGeoMemory();
+    // The stops alone, so the FLEET pass can place this network's runs without
+    // ever reading the traces back. Not awaited with the geometry: a click is
+    // waiting on this function, and a sidecar that lands a moment later is
+    // still there for the next poll.
+    void writePanStopsSidecar(feedId, index.stops);
     try {
       await fsp.mkdir(PAN_GEO_CACHE_DIR, { recursive: true });
       await fsp.writeFile(cachePath, JSON.stringify(record), 'utf8');

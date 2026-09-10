@@ -92,6 +92,12 @@ import { vehicleKindColor, vehicleKindLabel } from './transitVehicleKind.js';
 import { transitHeadingPointer, transitVehicleGlyph } from './transitVehicleIcons.js';
 import { transitCoverageNotice } from './transitCoverage.js';
 import {
+  advanceAlongRun,
+  runFromRoutePayload,
+  runFromWireVehicle,
+  stopsPassed,
+} from './transitProjection.js';
+import {
   clearTransitRoute,
   destroyTransitRouteView,
   initTransitRouteView,
@@ -145,6 +151,25 @@ const RETRY_MAX_MS = POLL_INTERVAL_MS;
  */
 const TWEEN_MIN_MS = 3_000;
 const TWEEN_MAX_MS = 90_000;
+/**
+ * How often a projected vehicle is re-placed on its run, ms.
+ *
+ * Twice a second, not per frame: the target moves a few metres between ticks
+ * and the smoother below carries the glyph the rest of the way, so a fleet of
+ * three hundred buses costs three hundred curve reads a second instead of
+ * eighteen thousand.
+ */
+const PROJECTION_TICK_MS = 500;
+/**
+ * Time constant of the smoother that follows a projected target, ms.
+ *
+ * One exponential chase replaces the fix-to-fix tween for a projected vehicle,
+ * because the two things it has to absorb are of very different sizes: a few
+ * metres between ticks, and the correction when a real fix lands. A tween would
+ * need a duration per case; a time constant handles both without one, and
+ * cannot overshoot.
+ */
+const PROJECTION_SMOOTH_MS = 800;
 /** A fix older than this is dropped: the vehicle stopped reporting. */
 const MAX_FIX_AGE_MS = 10 * 60 * 1000;
 /** Hard cap on rendered glyphs, independent of what the proxy returns. */
@@ -279,6 +304,11 @@ let _cameraChangedAttached = false;
 let _cameraDebounceTimer = null;
 let _preRenderRemover = null;
 let _lastCameraPoseSignature = '';
+/** Clock of the projection pass, which runs far slower than the render. */
+let _lastProjectionTick = 0;
+let _lastFrameMs = 0;
+/** How many vehicles are currently drawn ahead of their own reported fix. */
+let _projectedCount = 0;
 let _selectedId = null;
 let _routeInFlight = null;
 let _routeGeneration = 0;
@@ -580,6 +610,31 @@ export function transitAlertReadout(vehicle) {
 }
 
 /**
+ * Where the glyph is, when that is no longer where the vehicle reported.
+ *
+ * The one line that keeps this layer honest about the projection. A viewer who
+ * reads "fix 4m ago" and sees a bus moving is entitled to know that the motion
+ * is the operator's own prediction being drawn, not a stream of positions — so
+ * the distance is named, and the stops it has been carried past are named,
+ * because "two stops further on" is the version of 640 metres a rider holds.
+ *
+ * Returns null for a vehicle drawn exactly where it said it was, which is every
+ * vehicle on a network that reports often enough not to need this.
+ *
+ * @param {Object} record Render record.
+ * @returns {?string}
+ */
+export function transitProjectionReadout(record) {
+  if (!record?.projected) return null;
+  const metres = Math.round(record.advanceM || 0);
+  if (metres < 10) return null;
+  const distance = metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${metres} m`;
+  const stops = Number(record.advanceStops) || 0;
+  const carried = stops > 0 ? `${distance}, ${stops} stop${stops === 1 ? '' : 's'} on` : distance;
+  return `➟ drawn ${carried} — projected along its run, not reported`;
+}
+
+/**
  * Build the multi-line label for the selected vehicle's card.
  * Every line is a value the feed published; nothing is inferred.
  *
@@ -633,6 +688,14 @@ export function transitVehicleReadout(record, nowMs = Date.now()) {
     fixAgeSec: Number.isFinite(vehicle.timestampMs)
       ? Math.max(0, Math.round((nowMs - vehicle.timestampMs) / 1000))
       : null,
+    // `lat`/`lon` above are where the glyph IS, which for a vehicle carried
+    // along its run is not where it reported. Both facts travel together: a
+    // spoken answer that gives a position must be able to qualify it, and one
+    // that cannot see the qualifier would state a projection as a sighting.
+    positionProjected: Boolean(record.projected),
+    projectedM: record.projected ? Math.round(record.advanceM || 0) : null,
+    reportedLat: num(vehicle.lat),
+    reportedLon: num(vehicle.lon),
     source: feed.network ? `GTFS-RT — ${feed.network}` : 'GTFS-RT',
   };
 }
@@ -687,6 +750,12 @@ export function buildTransitSelectionLabel(record, nowMs = Date.now()) {
     const ageSec = Math.max(0, Math.round((nowMs - vehicle.timestampMs) / 1000));
     details.push(ageSec < 60 ? `⏱ fix ${ageSec}s ago` : `⏱ fix ${Math.round(ageSec / 60)}m ago`);
   }
+
+  // And WHERE IT IS DRAWN, when that is no longer the same thing. A glyph
+  // carried along its run by the operator's own predictions is not reporting
+  // from there, and the card is where that stops being implied and gets said.
+  const projection = transitProjectionReadout(record);
+  if (projection) details.push(projection);
 
   // What it IS, then how the layer knows — a class read from the operator's
   // own `route_type` and a class inferred from a single-mode network are not
@@ -810,6 +879,10 @@ async function loadSelectedRoute(record) {
     if (generation !== _routeGeneration || record.id !== _selectedId) return;
 
     record.route = payload;
+    // The trace beats the stops: the same projection, but along the road the
+    // operator publishes rather than along the straight lines between the four
+    // stops the viewport answer could afford to send.
+    record.run = runFromRoutePayload(payload, vehicle) || record.run;
     showTransitRoute(payload, {
       vehicleStopSequence: vehicle.stopSequence,
       fallbackColor: transitVehicleColor(vehicle),
@@ -889,12 +962,55 @@ function installClickHandler(viewer) {
 }
 
 /**
- * Per-frame glide + icon-orientation pass.
+ * Re-place every projected vehicle on its run.
  *
- * Two jobs, both cheap: advance each record along the segment between its two
- * most recent REPORTED fixes, and — only when the camera pose actually changed
- * — recompute the screen-space rotation that points a chevron along its
- * real-world bearing.
+ * Runs at {@link PROJECTION_TICK_MS}, not per frame. A record with no run, or
+ * whose run has nothing to say at this instant — a fix under half a minute
+ * old, a prediction that lags the fix, a vehicle sitting at a cap — loses its
+ * target and falls straight back to the fix-to-fix glide, which is what the
+ * layer did before any of this existed.
+ *
+ * @param {number} nowMs
+ * @returns {number} How many vehicles are being drawn ahead of their own fix.
+ */
+function projectFleet(nowMs) {
+  let projected = 0;
+  for (const record of _records.values()) {
+    if (!record.run) {
+      record.projected = false;
+      continue;
+    }
+    const out = advanceAlongRun(record.run, nowMs, undefined, record.projection);
+    if (!out) {
+      record.projected = false;
+      continue;
+    }
+    projected += 1;
+    record.projected = true;
+    record.advanceM = out.advanceM;
+    // Stops gone by, counted here rather than in the card builder: the card is
+    // rebuilt every frame and this walks the run's whole stop list.
+    record.advanceStops = stopsPassed(record.run, out.alongM);
+    // The floor under the PROJECTED point, falling back to the one under the
+    // fix. The cells are coarse enough that a few hundred metres along a
+    // street is usually the same cell; a miss would otherwise drop the glyph
+    // to the ellipsoid, which in Rouen is 40 m underground.
+    const floor = cachedGroundFloor(out.lat, out.lon);
+    if (Number.isFinite(floor)) record.floorM = floor;
+    const height = (Number.isFinite(record.floorM) ? record.floorM : 0) + GLYPH_LIFT_M;
+    Cesium.Cartesian3.fromDegrees(out.lon, out.lat, height, undefined, record.target);
+  }
+  return projected;
+}
+
+/**
+ * Per-frame motion + icon-orientation pass.
+ *
+ * Three jobs, all cheap. Advance each record — either along the segment between
+ * its two most recent REPORTED fixes, or, when its run has placed it further
+ * on, towards that projected target with an exponential chase. Then, only when
+ * the camera pose actually changed, recompute the screen-space rotation that
+ * points a chevron along its real-world bearing.
  */
 function onPreRender() {
   if (!_enabled || !_records.size) return;
@@ -903,6 +1019,14 @@ function onPreRender() {
   if (!scene || !camera) return;
 
   const now = Date.now();
+  if (now - _lastProjectionTick >= PROJECTION_TICK_MS) {
+    _projectedCount = projectFleet(now);
+    _lastProjectionTick = now;
+  }
+  const frameMs = _lastFrameMs ? Math.min(500, now - _lastFrameMs) : 16;
+  _lastFrameMs = now;
+  const chase = 1 - Math.exp(-frameMs / PROJECTION_SMOOTH_MS);
+
   const poseSignature = cameraPoseSignature(camera);
   const poseChanged = poseSignature !== _lastCameraPoseSignature;
   if (poseChanged) _lastCameraPoseSignature = poseSignature;
@@ -917,7 +1041,20 @@ function onPreRender() {
     if (!billboard) continue;
     const pointer = record.pointer;
 
-    if (record.tweenMs > 0 && record.from && record.to) {
+    if (record.projected) {
+      // The chase, not the tween: the target is being re-read twice a second
+      // and moves a few metres each time, so what is wanted is a follower with
+      // no end state rather than a glide with a duration.
+      if (!Cesium.Cartesian3.equalsEpsilon(record.renderPosition, record.target, 0, 0.25)) {
+        Cesium.Cartesian3.lerp(record.renderPosition, record.target, chase, record.renderPosition);
+        billboard.position = record.renderPosition;
+        if (pointer) pointer.position = record.renderPosition;
+      }
+      // A projected vehicle is always in motion as far as the render governor
+      // is concerned: its target moves on the next tick whether or not it has
+      // arrived at this one.
+      moving = true;
+    } else if (record.tweenMs > 0 && record.from && record.to) {
       const t = Math.min(1, (now - record.tweenStart) / record.tweenMs);
       if (t < 1) moving = true;
       Cesium.Cartesian3.lerp(record.from, record.to, t, record.renderPosition);
@@ -1055,6 +1192,17 @@ function reconcile(vehicles, feedsById, nowMs) {
         tweenStart: nowMs,
         tweenMs: 0,
         fixMs: Number.isFinite(vehicle.timestampMs) ? vehicle.timestampMs : null,
+        // --- Projection state, all owned by `projectFleet` ------------------
+        /** The run this vehicle is on, prepared once per fix. */
+        run: runFromWireVehicle(vehicle),
+        /** Where the run says it is now. */
+        target: position.clone(),
+        /** Scratch the projection writes into, so no frame allocates. */
+        projection: {},
+        projected: false,
+        advanceM: 0,
+        advanceStops: 0,
+        floorM: null,
       };
       _records.set(id, record);
       syncHeadingPointer(record, POINTER_PX);
@@ -1095,6 +1243,11 @@ function reconcile(vehicles, feedsById, nowMs) {
       record.billboard.color = color;
       if (record.pointer) record.pointer.color = color;
     }
+    // Re-anchor the run on the fix that just arrived. The trace of a SELECTED
+    // vehicle is the better path and is kept when it still fits this trip; for
+    // everyone else the run is rebuilt from the stops the answer carried.
+    record.run = (id === _selectedId && runFromRoutePayload(record.route, vehicle))
+      || runFromWireVehicle(vehicle);
     if (moved) {
       Cesium.Cartesian3.clone(record.renderPosition, record.from);
       Cesium.Cartesian3.clone(position, record.to);
@@ -1102,8 +1255,12 @@ function reconcile(vehicles, feedsById, nowMs) {
       record.tweenMs = glideDurationMs(previousFixMs, nextFixMs);
     } else {
       record.tweenMs = 0;
-      Cesium.Cartesian3.clone(position, record.renderPosition);
-      record.billboard.position = record.renderPosition;
+      // A projected vehicle is being drawn away from its fix on purpose; only
+      // a vehicle the projection has let go is snapped back onto it.
+      if (!record.projected) {
+        Cesium.Cartesian3.clone(position, record.renderPosition);
+        record.billboard.position = record.renderPosition;
+      }
     }
     if (nextFixMs !== null) record.fixMs = nextFixMs;
   }
@@ -1130,6 +1287,9 @@ function clearFleet() {
   if (_pointers) _pointers.removeAll();
   _records.clear();
   _count = 0;
+  // The tally belongs to the records that are gone; leaving it would put a
+  // "12 projected" on a panel row describing an empty viewport.
+  _projectedCount = 0;
 }
 
 /**
@@ -1369,6 +1529,11 @@ function buildLoadingLabel() {
   // at all: Rennes types 27 vehicles, gives a delay for none of them, and says
   // 16 of their runs will skip a stop.
   if (_schedule?.skipped) parts.push(`${_schedule.skipped} skipping stops`);
+  // How much of what is on screen is being DRAWN rather than reported. The
+  // projection is the only thing in this layer that moves a contact away from
+  // a published position, so it is the only thing that has to be counted in
+  // the open — a viewer must be able to see it without clicking a bus.
+  if (_projectedCount) parts.push(`${_projectedCount} projected`);
   if (_feedsTruncated) parts.push(`${_feedsMatched} in range`);
   if (_vehiclesTruncated || _renderTruncated) parts.push('capped');
   const stale = _feedSummaries.filter((feed) => feed.stale).length;
@@ -1425,6 +1590,9 @@ const transitFranceLayer = {
     _verdictBox = '';
     cancelRetry();
     _altitudeGateOpen = false;
+    _projectedCount = 0;
+    _lastProjectionTick = 0;
+    _lastFrameMs = 0;
 
     _overlayHost.setVisible(TRANSIT_FR_OVERLAY_SOURCE_ID, false);
     // The drawn run belongs to the selected vehicle and shares its lifecycle.

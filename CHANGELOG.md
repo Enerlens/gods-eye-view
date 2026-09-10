@@ -286,6 +286,46 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `src/reasonableDefaults.test.mjs`. Un lien de partage, ou la main de
   l'opérateur, l'emporte toujours : `dm=OFF` restaure toujours OFF.
 
+- **Les bus de Normandie cessent de sprinter puis de se garer : ils roulent, à
+  la vitesse que leur propre exploitant publie.** Le point GTFS-RT est une
+  déclaration sur le PASSÉ, et sur la plupart des réseaux français une
+  déclaration vieille. Mesuré le 2026-09-10 sur l'agrégat Atoumod (239
+  véhicules) : le point médian affiché a **189 s** (p90 350 s), et le flux ne
+  publie **aucune vitesse**. Ce qui se voyait à l'écran n'était donc pas un bus
+  qui avance : c'était un bus figé pendant deux minutes, puis traîné sur 200 m
+  à 1,8 km en 90 secondes, puis figé de nouveau.
+
+  **Le même exploitant savait déjà où il était.** Son autre message, le
+  `TripUpdate` qu'on télécharge déjà pour afficher le retard, place la course
+  **2 à 3 arrêts plus loin** en médiane (p90 : 5 à 7) que son propre flux de
+  positions. Le bus n'était pas seulement en retard d'affichage : il était en
+  retard d'une information qu'on avait sous la main.
+
+  **Alors on le fait avancer sur SA ligne, jamais au cap.** Pas de navigation à
+  l'estime — un bus extrapolé sur un cap traverse la Seine, et il n'y a de
+  toute façon pas de vitesse à extrapoler. Le chemin est le tracé de la ligne
+  (ou la droite entre ses prochains arrêts), et la vitesse n'est pas estimée :
+  elle tombe de deux heures prédites et de la distance entre les deux arrêts
+  auxquels elles appartiennent, retard compris. Le point réel reste l'ancre :
+  le glyphe ne recule jamais derrière le dernier endroit où l'exploitant l'a vu.
+
+  **Deux réglages sortent d'un rejeu, pas d'un goût.** 22 minutes du vrai flux
+  enregistrées, 6 314 instants où un point réel POSTÉRIEUR existait à moins de
+  45 s — donc jamais dans l'entrée. L'erreur de la position dessinée passe de
+  **292 m à 165 m en médiane** et de 807 m à 707 m en p90, et **72 %** des
+  véhicules projetés sont plus près de la vérité qu'avant. On n'engage que
+  **70 %** de l'avance prévue : à 100 % la médiane est meilleure mais la p90
+  devient PIRE que de ne rien faire, parce que les prédictions dépassent — et
+  un bus dessiné après un carrefour qu'il n'a pas atteint est la panne qu'on
+  voit. Rien n'est touché sous **30 s** d'âge.
+
+  **Et ça se dit.** La ligne de la couche compte les véhicules concernés
+  (`14 projected`), et la fiche imprime la distance et le nombre d'arrêts
+  franchis à côté de l'âge du vrai point : `⏱ fix 4m ago` puis `➟ drawn 642 m,
+  2 stops on — projected along its run, not reported`. C'est la seule chose de
+  cette couche qui déplace un contact loin d'une position publiée, donc la
+  seule qui doive être annoncée.
+
 - **Un bus, un glyphe : la Seine-Eure cesse d'être comptée deux fois.** Le
   détecteur de doublons compare des FLOTTES ENTIÈRES, et il est donc aveugle à
   un flux qui est un sous-ensemble strict d'un autre. Mesuré le 2026-09-10 :
