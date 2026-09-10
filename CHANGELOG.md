@@ -6,6 +6,41 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-10
 
 ### Fixed
+- **Le Pays Basque affichait 561 punaises dont 447 disaient « rien ici », et
+  toutes portaient le même mot.** Sur la vue de Biarritz, la couche **Vélos et
+  véhicules partagés** étiquetait chaque point `basque_country_parking`, et la
+  fiche d'une punaise annonçait `basque_country_parking_71849_zidUNB5KA8I —
+  0 avail`, alors que Pony a bien des vélos dans cette agglomération.
+
+  **UN NOM QUI RÉPÈTE SA CLÉ N'EST PAS UN NOM.** Dix systèmes Pony publient le
+  `station_id` dans le champ `name` — **4 959 lignes** sur le catalogue vivant,
+  mesuré le 2026-09-10 (Angers 1 451, Perpignan 1 040, Pays Basque 539). GEV
+  l'imprimait tel quel. L'écho est maintenant refusé au seul point de lecture
+  du texte GBFS, et le point retombe sur ce qui est encore connu : son
+  exploitant. « Pony Bay » remplace un identifiant que personne ne peut lire.
+  Les vrais toponymes du même flux survivent — « Gare de Bayonne » et « Route
+  des Cimes » restent affichés.
+
+  **UNE BAIE PEINTE VIDE N'EST PAS UN DOCK VIDE.** Une station virtuelle est un
+  polygone dessiné sur une carte : ni borne, ni matériel, rien où marcher. Vide,
+  elle dit ce que le reste de la carte dit déjà. Un dock PHYSIQUE vide dit
+  l'inverse — une borne Vélib' sans vélo est une information sur laquelle on
+  agit — et il reste dessiné. Mesuré le 2026-09-10 : **7 077 baies virtuelles
+  vides contre 476 docks physiques vides**. Seul un zéro PUBLIÉ compte : une
+  station absente de `station_status`, ou un flux d'état en panne, garde son
+  point, parce que « on ne sait pas » ne doit pas se peindre en « c'est vide ».
+
+  **L'ÂGE DU RELEVÉ REVIENT SUR 56 SYSTÈMES.** GBFS 3.0 a changé le type de
+  `last_reported` — entier POSIX → chaîne RFC3339 — et la moitié du catalogue
+  français a suivi. Un lecteur qui n'acceptait qu'un nombre laissait tomber le
+  champ sur **11 110 véhicules de 56 systèmes sur 106**, et une carte sans âge
+  se lit « à l'instant », soit l'inverse de ce que ces flux disent.
+
+  **CE QUE ÇA DONNE À L'ÉCRAN.** Sur la vue de la capture (Biarritz, 6 300 m) :
+  **95 objets au lieu de 561**, tous tenant au moins un véhicule, et le
+  sous-titre de la couche dit ce qu'il a caché — « 2 operators · 392 empty bays
+  hidden ». Aucune étiquette n'est plus un identifiant de flux.
+
 - **Une fiche se referme en cliquant la carte — sur trois couches de plus, et
   la carte redevient cliquable sur sept autres.** Le correctif posé sur les
   arrêts IDFM (#162) était le même bug à quatre endroits, et le balayage l'a

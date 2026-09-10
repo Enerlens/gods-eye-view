@@ -69,8 +69,10 @@ const DOCK_SYSTEM = {
 const FLOAT_SYSTEM = {
   id: 'gbfs-float', name: 'Pony Nantes', area: 'Nantes Métropole', kind: 'free-floating',
   licence: 'Licence Ouverte 2.0', publisher: 'Pony', pageUrl: null, datasetUrl: null,
-  // The number this harness exists to keep visible.
-  stationsSuppressed: 2480, retrievedAt: new Date().toISOString(), stale: false, error: null,
+  // The two numbers this harness exists to keep visible: the municipal bays
+  // merged out across operators, and the operator's own bays that held nothing.
+  stationsSuppressed: 2480, baysHidden: 392,
+  retrievedAt: new Date().toISOString(), stale: false, error: null,
 };
 /** A second operator in the same street — the case the colour channel exists for. */
 const FLOAT_SYSTEM_B = {
@@ -96,8 +98,25 @@ function objectsPayload() {
       capacity: known ? 20 : null,
       renting: true,
       byKind: known ? { bike: 4, ebike: 2 } : null,
+      virtual: false,
     });
   }
+  // A Pony bay whose feed published `station_id` in the name field, so the
+  // parser dropped the echo and it arrives here nameless. It must be labelled
+  // by its OPERATOR, never by an identifier the reader cannot use.
+  stations.push({
+    id: 'gbfs-float:bay-1',
+    system: FLOAT_SYSTEM.id,
+    lat: Number((CITY.lat - 0.002).toFixed(5)),
+    lon: Number((CITY.lon - 0.018).toFixed(5)),
+    name: null,
+    virtual: true,
+    available: 2,
+    docks: null,
+    capacity: null,
+    renting: true,
+    byKind: { ebike: 2 },
+  });
   const vehicles = [];
   const kinds = ['ebike', 'scooter', 'bike', 'moped'];
   for (let i = 0; i < 20; i++) {
@@ -123,8 +142,8 @@ function objectsPayload() {
     stations,
     vehicles,
     systems: [
-      { ...DOCK_SYSTEM, stationsInView: stations.length, vehiclesInView: 0 },
-      { ...FLOAT_SYSTEM, stationsInView: 0, vehiclesInView: vehicles.filter((v) => v.system === FLOAT_SYSTEM.id).length },
+      { ...DOCK_SYSTEM, stationsInView: stations.length - 1, vehiclesInView: 0 },
+      { ...FLOAT_SYSTEM, stationsInView: 1, vehiclesInView: vehicles.filter((v) => v.system === FLOAT_SYSTEM.id).length },
       { ...FLOAT_SYSTEM_B, stationsInView: 0, vehiclesInView: vehicles.filter((v) => v.system === FLOAT_SYSTEM_B.id).length },
     ],
     systemsMatched: 3,
@@ -299,8 +318,8 @@ async function main() {
       if (objectRequests >= 1 && !loaded.stats.loading && loaded.stats.count > 0) break;
     }
     check('the viewport request is issued once inside the gate', objectRequests >= 1, `${objectRequests}`);
-    check('one point per object', loaded.rendered === 32, `${loaded.rendered} for 12 stations + 20 vehicles`);
-    check('stations and vehicles are both drawn', loaded.stats.count === 32, `count=${loaded.stats.count}`);
+    check('one point per object', loaded.rendered === 33, `${loaded.rendered} for 13 stations + 20 vehicles`);
+    check('stations and vehicles are both drawn', loaded.stats.count === 33, `count=${loaded.stats.count}`);
     await shoot(page, '02-city.png');
 
     // ── ii-bis. the fleet stands on the ground ─────────────────────────────
@@ -328,7 +347,7 @@ async function main() {
       + `${lowest === null ? 'n/a' : lowest.toFixed(1)}-${highest === null ? 'n/a' : highest.toFixed(1)} m `
       + `ellipsoidal, ${buried} on the ellipsoid`);
     check('every drawn object is placed on the ground, not on the ellipsoid',
-      anchorHeights.length === 32 && buried === 0,
+      anchorHeights.length === 33 && buried === 0,
       `${buried} of ${anchorHeights.length} still at ellipsoid height`
       + ` (range ${lowest === null ? 'n/a' : lowest.toFixed(1)}`
       + `-${highest === null ? 'n/a' : highest.toFixed(1)} m)`);
@@ -343,7 +362,7 @@ async function main() {
     // ── iii. the legend counts what is on screen ───────────────────────────
     console.log('[qa] iii. row legend');
     const byLabel = Object.fromEntries(loaded.legend);
-    check('the legend has a Stations entry matching the fixture', byLabel.Stations === 12, JSON.stringify(loaded.legend));
+    check('the legend has a Stations entry matching the fixture', byLabel.Stations === 13, JSON.stringify(loaded.legend));
     check('and one entry per vehicle kind in view',
       byLabel['E-bike'] === 5 && byLabel.Scooter === 5 && byLabel.Bike === 5 && byLabel.Moped === 5,
       JSON.stringify(loaded.legend));
@@ -355,6 +374,18 @@ async function main() {
     check('the layer reports the shared bays it did not draw', suppressed === 2480, `${suppressed}`);
     check('and says so in the control row',
       /shared bays merged out/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
+    const emptyBays = loaded.systems.reduce((sum, system) => sum + (system.baysHidden || 0), 0);
+    check('the layer reports the empty painted bays the proxy dropped', emptyBays === 392, `${emptyBays}`);
+    check('and says that in the control row too',
+      /392 empty bays hidden/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
+    // The screen-facing half of the same fix: a bay whose feed published an
+    // identifier instead of a name is labelled by its operator, and no HUD
+    // label anywhere is a raw GBFS `station_id`.
+    check('a nameless bay is labelled by its operator, not by its station_id',
+      loaded.detections.includes('PONY BAY'), loaded.detections.slice(0, 6).join(' | '));
+    check('and no detection label is a raw feed identifier',
+      !loaded.detections.some((id) => /_ZID[A-Z0-9]{6,}|_PARKING_/.test(id)),
+      loaded.detections.filter((id) => /_ZID|_PARKING_/.test(id)).join(' | '));
 
     // ── v. SHAPE says what an object is ────────────────────────────────────
     console.log('[qa] v. shape channel');
@@ -388,13 +419,16 @@ async function main() {
     check('the two channels are independent — one operator, four silhouettes, one hue',
       ponyShapes.size === 4 && new Set(pony).size === 1,
       `${ponyShapes.size} shape(s), ${new Set(pony).size} hue(s)`);
-    const stationHues = new Set(loaded.dots.map((dot) => dot.outline));
+    // The Naolib docks only — the Pony bay is ringed in ITS operator's hue,
+    // which is the whole point of the channel and would break a "one hue" read.
+    const dockDots = loaded.dots.filter((dot) => dot.id.startsWith('gbfs-dock:'));
+    const stationHues = new Set(dockDots.map((dot) => dot.outline));
     check('a station is RINGED in its operator hue',
-      loaded.dots.length === 12 && stationHues.size === 1 && stationHues.has([...stationHues][0]),
+      dockDots.length === 12 && stationHues.size === 1 && stationHues.has([...stationHues][0]),
       JSON.stringify([...stationHues]));
     check('while its FILL still answers availability, not ownership',
-      new Set(loaded.dots.map((dot) => dot.color)).size >= 3,
-      JSON.stringify([...new Set(loaded.dots.map((dot) => dot.color))]));
+      new Set(dockDots.map((dot) => dot.color)).size >= 3,
+      JSON.stringify([...new Set(dockDots.map((dot) => dot.color))]));
     check('the legend names every operator in view',
       ['Naolib', 'Pony', 'Lime'].every((name) => loaded.legendRows.some((row) => row.label === name)),
       JSON.stringify(loaded.legendRows.map((row) => row.label)));

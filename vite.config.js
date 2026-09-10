@@ -570,6 +570,7 @@ import { projectPeDepartements } from './src/data/petiteEnfanceDepartements.js';
 import {
   gbfsBoxKey,
   gbfsBoxContains,
+  isEmptyVirtualBay,
   mergeGbfsBounds,
   padGbfsBox,
   parseGbfsStationStatus,
@@ -14863,17 +14864,26 @@ async function gbfsFrSystemObjects(system, clip) {
   const drawStations = system.drawStations !== undefined
     ? system.drawStations === true
     : systemDrawsStations(system);
+  let baysHidden = 0;
   for (const station of info.value || []) {
     observed.push(station);
     if (!drawStations) continue;
     if (!scoped || !gbfsBoxContains(scoped, station.lat, station.lon)) continue;
     const availability = status.value?.get(station.id) || null;
+    // A painted bay with nothing in it is not infrastructure — see
+    // `isEmptyVirtualBay`. An empty physical dock stays drawn.
+    if (isEmptyVirtualBay(station, availability)) {
+      baysHidden += 1;
+      continue;
+    }
     stations.push({
       id: `${system.id}:${station.id}`,
       system: system.id,
       lat: Number(station.lat.toFixed(5)),
       lon: Number(station.lon.toFixed(5)),
       name: station.name || null,
+      // A bay and a dock are not the same object, and the card says which.
+      virtual: station.virtual === true,
       available: availability?.available ?? null,
       docks: availability?.docks ?? null,
       capacity: station.capacity ?? null,
@@ -14913,6 +14923,7 @@ async function gbfsFrSystemObjects(system, clip) {
     stations,
     vehicles,
     stationsSuppressed,
+    baysHidden,
     stale: info.stale || status.stale || fleet.stale,
     error: errors[0] || null,
     retrievedAt: timestamps.length ? new Date(Math.min(...timestamps)).toISOString() : null,
@@ -14979,6 +14990,7 @@ async function refreshGbfsFrViewport(box, key) {
       vehiclesInView: outcome.vehicles.length,
       // Honest about what this system contributes and what it withholds.
       stationsSuppressed: outcome.stationsSuppressed,
+      baysHidden: outcome.baysHidden,
       retrievedAt: outcome.retrievedAt,
       stale: outcome.stale,
       error: outcome.error,

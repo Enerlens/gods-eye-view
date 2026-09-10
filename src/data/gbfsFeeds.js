@@ -174,6 +174,32 @@ export function isSentinelStation(station) {
 }
 
 /**
+ * Whether a station is an empty PAINTED BAY — a dot worth nothing on screen.
+ *
+ * AN EMPTY BAY IS NOT AN EMPTY DOCK. A virtual station is a polygon the
+ * operator drew on a map: no rack, no hardware, nothing to walk to. Empty, it
+ * says "there is nothing here", which is what the rest of the map already
+ * says. An empty PHYSICAL dock is the opposite — a Vélib' stand with no bikes
+ * is a fact someone acts on — so it is never touched by this.
+ *
+ * Measured over the live French catalog on 2026-09-10: 7,077 empty virtual
+ * bays against 476 empty physical docks. Pony Pays Basque alone put 446 of
+ * them over Biarritz, 82% of its dots saying nothing, which is what buried the
+ * 94 bays that actually held a bike.
+ *
+ * Only a PUBLISHED zero counts. A station absent from `station_status`, or a
+ * status feed that failed, leaves availability null and stays drawn: "we do
+ * not know" must not be rendered as "we know it is empty".
+ *
+ * @param {{virtual:?boolean}} station Row from {@link parseGbfsStations}.
+ * @param {?{available:?number}} availability Row from {@link parseGbfsStationStatus}.
+ * @returns {boolean}
+ */
+export function isEmptyVirtualBay(station, availability) {
+  return station?.virtual === true && availability?.available === 0;
+}
+
+/**
  * Fraction of a system's station positions that OTHER systems also report.
  *
  * @param {Set<string>} places The system's own station signature.
@@ -328,13 +354,63 @@ function finiteNumber(value) {
 }
 
 /**
+ * Read a GBFS timestamp as epoch SECONDS.
+ *
+ * GBFS 3.0 changed `last_reported` from a POSIX integer to an RFC3339 string,
+ * and half the French catalog has moved. A numbers-only reader silently drops
+ * the field on those feeds — measured 2026-09-10: 11,110 of 55,743 vehicles
+ * across 56 of 106 systems. The card would then print no age at all on the
+ * very operators whose fixes are oldest, which reads as "just now".
+ *
+ * @param {*} value Raw `last_reported` / `last_updated`.
+ * @returns {?number} Epoch seconds, or null.
+ */
+export function gbfsTimestampSeconds(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  // A bare integer arrives as a string on some 2.x feeds.
+  if (/^\d+$/.test(text)) return Number(text);
+  const ms = Date.parse(text);
+  return Number.isFinite(ms) ? Math.round(ms / 1000) : null;
+}
+
+/**
+ * A station's display name, or null when the feed published an identifier
+ * instead of a name.
+ *
+ * Ten Pony systems set `name` to a verbatim copy of `station_id` —
+ * `basque_country_parking_71849_zidUNB5KA8I`, 4,959 rows nationwide measured
+ * 2026-09-10. That is a primary key, not a place: it fills the HUD with
+ * `basque_country_parking` repeated across a whole city while telling the
+ * reader nothing. The same feeds DO publish real names where they have one
+ * ("Gare de Bayonne"), so refusing the echo loses nothing and keeps every
+ * genuine toponym.
+ *
+ * @param {*} row Row of `station_information.json`.
+ * @returns {?string}
+ */
+export function gbfsStationName(row) {
+  const name = localizedText(row?.name);
+  if (!name) return null;
+  const id = String(row?.station_id ?? '').trim();
+  if (id && name === id) return null;
+  return name;
+}
+
+/**
  * Parse `station_information.json` into positioned stations.
  *
  * Handles the 3.0 localized `name` array — a 2.x-only reader renders every
  * station as `[object Object]`.
  *
+ * `virtual` is carried through because a virtual station is not a dock: it is
+ * a painted bay with no hardware, and an empty one is not the same fact as an
+ * empty dock (see the bay filter in the viewport proxy).
+ *
  * @param {*} payload Parsed feed.
- * @returns {Array<{id:string, name:?string, lat:number, lon:number, capacity:?number}>}
+ * @returns {Array<{id:string, name:?string, lat:number, lon:number,
+ *   capacity:?number, virtual:boolean}>}
  */
 export function parseGbfsStations(payload) {
   const rows = payload?.data?.stations;
@@ -348,10 +424,11 @@ export function parseGbfsStations(payload) {
     if (lat === 0 && lon === 0) continue;
     stations.push({
       id,
-      name: localizedText(row?.name),
+      name: gbfsStationName(row),
       lat,
       lon,
       capacity: finiteNumber(row?.capacity),
+      virtual: gbfsBool(row?.is_virtual_station, false),
     });
   }
   return stations;
@@ -436,7 +513,7 @@ export function parseGbfsVehicles(payload, kinds = {}) {
       // Spec default: a system with no vehicle-types file runs plain bicycles.
       kind: kinds[typeId] || (typeId ? 'other' : 'bike'),
       rangeMeters: finiteNumber(row?.current_range_meters),
-      lastReported: finiteNumber(row?.last_reported),
+      lastReported: gbfsTimestampSeconds(row?.last_reported),
     });
   }
   return vehicles;
