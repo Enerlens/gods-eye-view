@@ -1008,6 +1008,10 @@ export class DataLayerManager {
           const initialized = await entry.module.init(this.viewer, { signal });
           if (initialized === false) throw lifecycleRejectedError(layerId, 'init');
           entry.initialized = true;
+          // The module exists NOW. Its row was built against a lazy stub that
+          // had no `setRowControlsListener`, so this is the first moment the
+          // callback can actually be delivered — see the method's own note.
+          this._installRowControlsListener(layerId);
         } catch (e) {
           if (signal?.aborted || isAbortError(e)) {
             return finishCancelledEnable('init', isAbortError(e) && !signal?.aborted);
@@ -2419,12 +2423,10 @@ export class DataLayerManager {
     // Optional per-layer sub-controls (chips + color legend). The click
     // listener is delegated and attached once here, so it survives
     // _refreshTogglePanel — which only rewrites the container's contents.
-    const rowModule = this.layers.get(layer.id)?.module;
-    const companions = this._fusionCompanions(layer.id);
     {
       // The container is built for EVERY row, and that is a fix rather than a
       // simplification. It used to be gated on
-      // `typeof rowModule.getRowControls === 'function'`, and at the moment
+      // `typeof module.getRowControls === 'function'`, and at the moment
       // rows are built every module is a lazy STUB — `getRowControls` is
       // deliberately not one of `LAZY_LAYER_CAPABILITIES` (see lazyLayer.js),
       // so the stub does not have it. Rows survived only because they had
@@ -2442,13 +2444,10 @@ export class DataLayerManager {
       // that can also fail) pushes a re-render through this; nothing else
       // would repaint the row before its next scheduled refresh. The
       // companions register the same listener, for the same reason: their
-      // chips are painted on THIS row.
-      rowModule?.setRowControlsListener?.(() => this._refreshTogglePanel());
-      for (const companion of companions) {
-        this.layers.get(companion.id)?.module?.setRowControlsListener?.(
-          () => this._refreshTogglePanel(),
-        );
-      }
+      // chips are painted on THIS row. See `_installRowControlsListener`,
+      // which is why it has to be installed a SECOND time after the module
+      // behind the row actually loads.
+      this._installRowControlsListener(layer.id);
       const controls = document.createElement('div');
       controls.className = 'data-toggle-controls';
       controls.addEventListener('click', (event) => {
@@ -2477,6 +2476,37 @@ export class DataLayerManager {
     }
 
     return row;
+  }
+
+  /**
+   * Hand a row's layer — and every companion painted on that row — the
+   * "your controls changed, repaint me" callback.
+   *
+   * CALLED TWICE PER ROW, AND THE SECOND CALL IS THE ONE THAT WORKS. Panels are
+   * built once, at boot, by `_renderToggles()`; at that moment every layer is a
+   * LAZY STUB (`lazyLayer.js`), and `setRowControlsListener` is deliberately not
+   * one of `LAZY_LAYER_CAPABILITIES`, so the stub does not have the method and
+   * the optional call silently does nothing. The real module only appears when
+   * the layer is first switched on, and `adopt()` republishes its methods on
+   * the stub then — so the install has to be repeated after `init()`.
+   *
+   * Until this existed, EVERY lazy layer that pushes its own repaints had a
+   * dead listener: measured on `gironde-megafire-2026`, whose replay ran ten
+   * days of fire behind a chip strip frozen on whatever it said when the reader
+   * pressed play, including a Pause button on a replay that had already
+   * finished. It is the same shape of defect as the missing chip CONTAINER
+   * fixed just before it, and for the same underlying reason — a row is built
+   * against a stub and lives against a module.
+   *
+   * @param {string} layerId Primary layer id of the row.
+   * @returns {void}
+   */
+  _installRowControlsListener(layerId) {
+    const repaint = () => this._refreshTogglePanel();
+    this.layers.get(layerId)?.module?.setRowControlsListener?.(repaint);
+    for (const companion of this._fusionCompanions(layerId)) {
+      this.layers.get(companion.id)?.module?.setRowControlsListener?.(repaint);
+    }
   }
 
   /**
