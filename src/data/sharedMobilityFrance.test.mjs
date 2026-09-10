@@ -300,10 +300,18 @@ test('the row legend carries both channels — shapes, then the operators in vie
   assert.equal(new Set(operatorRows.map((item) => item.color)).size, 3, 'three operators, three hues');
 
   // The two caveats a colour cannot carry.
-  assert.match(legend.find((item) => item.label === 'Stations').blurb, /Municipal bays/);
-  assert.match(legend.find((item) => item.label === 'E-bike').blurb, /never publishes a vehicle during a rental/);
+  assert.match(legend.find((item) => item.label === 'Stations').blurb, /places municipales que tous republient/);
+  assert.match(legend.find((item) => item.label === 'E-bike').blurb, /jamais un véhicule pendant une location/);
   // A derived hue says it is derived rather than passing itself off as livery.
-  assert.match(operatorRows.find((item) => item.label === 'Naolib').blurb, /no French feed publishes a brand colour/);
+  assert.match(operatorRows.find((item) => item.label === 'Naolib').blurb, /aucun flux français ne publie sa couleur de marque/);
+  // A CURATED hue carries no per-row sentence at all: "one hue nationwide" is
+  // true of the whole channel and would print once per operator in view.
+  assert.equal(operatorRows.find((item) => item.label === 'Lime').blurb, null);
+
+  // Each entry names the CHANNEL it answers, so two counts of the same 84
+  // objects cannot be read as 168.
+  assert.deepEqual([...new Set(kindRows.map((item) => item.channel))], ['forme = quoi']);
+  assert.deepEqual([...new Set(operatorRows.map((item) => item.channel))], ['couleur = qui']);
 
   _setSharedMobilityStateForTest({ viewer: null, records: [] });
   assert.deepEqual(sharedMobilityFranceLayer.getRowControls().legend, []);
@@ -326,7 +334,7 @@ test('a crowded viewport names six operators and declares the tail it did not na
   assert.deepEqual(operatorRows.slice(0, 6).map((item) => item.label),
     ['Lime', 'Dott', 'Voi', 'Pony', 'Bird', 'Citiz']);
   const tail = operatorRows[6];
-  assert.equal(tail.label, '+2 operators');
+  assert.equal(tail.label, '+2 exploitants');
   assert.equal(tail.count, 2 + 1, 'the tail counts the objects it stands for');
   assert.match(tail.blurb, /Cityscoot/);
   assert.match(tail.blurb, /YEGO/);

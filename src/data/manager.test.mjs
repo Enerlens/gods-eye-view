@@ -12,7 +12,13 @@
 import { test } from 'node:test';
 import { fusionMemberChipFor } from './layerFusions.js';
 import assert from 'node:assert/strict';
-import { DataLayerManager, layerFeedState } from './manager.js';
+import {
+  DataLayerManager,
+  layerFeedState,
+  legendBarWidths,
+  legendScopeLabel,
+  legendScopeOf,
+} from './manager.js';
 import {
   contextSnapshotLayerIds,
   shouldCaptureContextSession,
@@ -4306,6 +4312,152 @@ test('the key is grouped by PANEL ROW, and only a split row grows a second tier'
   assert.equal(orphan.length, 1);
   assert.equal(orphan[0].title, 'Trafic routier', 'the row is nameable with its primary off');
   assert.equal(orphan[0].split, true);
+});
+
+test('a legend block states its own extent, and silence is not a claim', () => {
+  // A key that says nothing about where it applies gets read as if it applied
+  // HERE. Measured over Biarritz 2026-09-10: `velo-pulse-fr` printed six
+  // classes over 561 sites, every one of them 700 km away.
+  assert.equal(legendScopeLabel(legendScopeOf({ inView: 84 })), ' · 84 ici');
+  assert.equal(legendScopeLabel(legendScopeOf({ inView: 0, where: 'Paris et Lyon' })),
+    ' · Paris et Lyon, hors de cette vue');
+  assert.equal(legendScopeLabel(legendScopeOf({ inView: 0 })), ' · hors de cette vue');
+  // A count and a place together: the count is the answer, the place is noise.
+  assert.equal(legendScopeLabel(legendScopeOf({ inView: 84, where: 'Paris et Lyon' })), ' · 84 ici');
+  // Nothing measured is NOT zero measured.
+  assert.equal(legendScopeLabel(legendScopeOf({ where: 'Paris et Lyon' })), ' · Paris et Lyon');
+  assert.equal(legendScopeOf(null), null);
+  assert.equal(legendScopeOf({}), null);
+  assert.equal(legendScopeLabel(null), '');
+});
+
+test('a member that declares nothing on screen sinks below one that does', () => {
+  const mgr = new DataLayerManager({});
+  mgr._registrationTaxonomy = new Map([['bikeshare', { label: 'Vélos et véhicules partagés' }]]);
+  const member = (id, scope) => ({
+    layer: { id, label: id, fusedInto: 'bikeshare' },
+    entries: [{ label: id, color: '#fff', count: 1 }],
+    scope: legendScopeOf(scope),
+  });
+
+  const rows = mgr._legendRows([
+    member('velo-pulse-fr', { inView: 0, where: 'Paris et Lyon' }),
+    member('shared-mobility-fr', { inView: 84 }),
+  ]);
+  assert.deepEqual(rows[0].members.map((m) => m.layer.id), ['shared-mobility-fr', 'velo-pulse-fr']);
+
+  // Silence is not a demotion — a layer that never measured its extent keeps
+  // the order it arrived in.
+  const quiet = mgr._legendRows([member('velo-pulse-fr', null), member('shared-mobility-fr', { inView: 84 })]);
+  assert.deepEqual(quiet[0].members.map((m) => m.layer.id), ['velo-pulse-fr', 'shared-mobility-fr']);
+
+  // Two members both off screen keep their arrival order rather than shuffling.
+  const bothOff = mgr._legendRows([
+    member('velo-pulse-fr', { inView: 0 }),
+    member('shared-mobility-fr', { inView: 0 }),
+  ]);
+  assert.deepEqual(bothOff[0].members.map((m) => m.layer.id), ['velo-pulse-fr', 'shared-mobility-fr']);
+});
+
+test('a distribution bar fills its track once and never hides a class', () => {
+  // The live pulse ramp over Biarritz, 2026-09-10.
+  const widths = legendBarWidths([
+    { count: 129 }, { count: 225 }, { count: 125 }, { count: 60 }, { count: 18 }, { count: 4 },
+  ]);
+  assert.equal(widths.length, 6);
+  assert.ok(Math.abs(widths.reduce((sum, w) => sum + w, 0) - 100) < 1e-9, 'the bar fills its track exactly once');
+  // The darkest ramp step measures 1.83:1 against the cockpit glass: at its
+  // true 0.7 % it would be a hairline of a colour that is already almost the
+  // background, so a non-empty class is never thinner than the floor.
+  assert.ok(widths[5] >= 3.5, `smallest class kept a readable share, got ${widths[5]}`);
+  // The floor is paid for by the classes above it, and order still reads.
+  assert.ok(widths[1] > widths[0] && widths[0] > widths[2] && widths[2] > widths[3]);
+  // An empty class takes NO width — it is listed with its zero, never drawn.
+  assert.equal(legendBarWidths([{ count: 5 }, { count: 0 }])[1], 0);
+  // Nothing counted draws no bar at all rather than an equal-parts fiction.
+  assert.deepEqual(legendBarWidths([{ count: 0 }, { count: 0 }]), []);
+  assert.deepEqual(legendBarWidths([]), []);
+  assert.deepEqual(legendBarWidths(null), []);
+});
+
+test('an ordered key draws one bar and lays its classes side by side', async () => {
+  const originalDocument = globalThis.document;
+  const host = makeControlElement();
+  const items = makeControlElement();
+  globalThis.document = {
+    createElement: makeControlElement,
+    createDocumentFragment: () => {
+      const fragment = makeControlElement();
+      fragment.isFragment = true;
+      return fragment;
+    },
+    getElementById: (id) => (id === 'map-legend' ? host : id === 'map-legend-items' ? items : null),
+  };
+  const mgr = new DataLayerManager({});
+  const layer = makeRowControlLayer();
+  layer.module.getRowControls = () => ({
+    chips: [],
+    legend: [
+      { label: '< 20 %', color: '#e6ecf2', count: 129 },
+      { label: '≥ 80 %', color: '#7d1230', count: 18 },
+    ],
+    legendBar: true,
+    legendScope: { inView: 0, where: 'Paris et Lyon' },
+  });
+  mgr.register(layer.module);
+  const container = makeControlElement();
+
+  try {
+    mgr.buildTogglePanel(container);
+    assert.equal(await mgr.setEnabled('satellites', true), true);
+    mgr._refreshTogglePanel();
+
+    const bars = collectByClass(items, 'map-legend-bar');
+    assert.equal(bars.length, 1, 'one track for the whole distribution');
+    assert.equal(collectByClass(items, 'map-legend-bar-segment').length, 2);
+    // The bar is decoration over counts that are printed either way, so it
+    // hands a screen reader the same classes in the same order.
+    assert.match(bars[0].attributes['aria-label'], /< 20 %.*≥ 80 %/);
+    // The classes themselves go side by side, and keep their exact counts.
+    assert.equal(collectByClass(items, 'map-legend-inline').length, 1);
+    assert.equal(collectByClass(items, 'map-legend-swatch').length, 2);
+    // The block says where it is: none of it is on this screen.
+    const scopes = collectByClass(items, 'map-legend-scope');
+    assert.equal(scopes.length, 1);
+    assert.equal(scopes[0].textContent, ' · Paris et Lyon, hors de cette vue');
+
+    // A CHANNEL name groups its own entries and is printed once above them.
+    layer.module.getRowControls = () => ({
+      chips: [],
+      legend: [
+        { label: 'Stations', color: '#cbd5e1', count: 76, channel: 'forme = quoi' },
+        { label: 'E-bike', color: '#cbd5e1', count: 8, channel: 'forme = quoi' },
+        { label: 'Pony', color: '#ff8a5c', count: 77, channel: 'couleur = qui', blurb: 'teinte dérivée' },
+      ],
+    });
+    mgr._refreshTogglePanel();
+    const channels = collectByClass(items, 'map-legend-channel');
+    assert.deepEqual(channels.map((node) => node.textContent), ['forme = quoi', 'couleur = qui']);
+    assert.equal(collectByClass(items, 'map-legend-inline').length, 2, 'one lane per channel');
+    assert.equal(collectByClass(items, 'map-legend-bar').length, 0, 'no bar without legendBar');
+    // Side by side there is no column to hang a sentence under, so a blurb
+    // reaches the pointer instead of breaking the lane.
+    assert.equal(collectByClass(items, 'map-legend-blurb').length, 0);
+    assert.equal(collectByClass(items, 'map-legend-entry').filter((n) => n.title === 'teinte dérivée').length, 1);
+
+    // A key with neither flag renders exactly as it always has.
+    layer.module.getRowControls = () => ({
+      chips: [], legend: [{ label: 'NAV', color: '#4fd8ff', count: 2, blurb: 'stacked' }],
+    });
+    mgr._refreshTogglePanel();
+    assert.equal(collectByClass(items, 'map-legend-inline').length, 0);
+    assert.equal(collectByClass(items, 'map-legend-blurb').length, 1);
+    assert.equal(collectByClass(items, 'map-legend-scope').length, 0);
+  } finally {
+    await mgr.destroyAll();
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+  }
 });
 
 test('a block can carry BOTH asides, and they are never the same line', async () => {
