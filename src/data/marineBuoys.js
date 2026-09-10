@@ -6,10 +6,11 @@ import {
 } from '../overlays/worldOverlay.js';
 import { publishJoin } from './layerJoins.js';
 // The prism module is pure arithmetic and strings; only its legend primitives
-// are borrowed here. `prismHeightGlyph` draws the bar swatch whose HEIGHT is
-// the datum, and the graphite is deliberately one constant colour so a ruler
-// tick cannot smuggle in a second encoding (A3). Nothing else about a
-// départemental prism applies to a buoy: no base polygon, no rate fill.
+// are borrowed here. `prismHeightGlyph` draws the bar swatch, and the graphite
+// is deliberately one constant colour so the stem rows cannot smuggle in a
+// second encoding (A3) — the hue rows below them are where colour means
+// something. Nothing else about a départemental prism applies to a buoy: no
+// base polygon, no rate fill.
 import {
   PRISM_HEIGHT_SWATCH_COLOR,
   prismHeightGlyph,
@@ -80,12 +81,23 @@ import { ensureGeoidReady, geoidHeight } from './geoid.js';
  *  3. 266 constant-pixel bars over the western Atlantic would fuse into a
  *     picket fence at every zoom. World-unit stems thin out with the view.
  *
- * THE EXAGGERATION, PUBLISHED IN THE LEGEND
- * -----------------------------------------
+ * THE EXAGGERATION, AND WHERE IT IS PUBLISHED
+ * -------------------------------------------
  * ×10 000 — one metre of swell draws ten kilometres of stem. At true scale an
  * 8 m sea on a 6 371 km globe is 1.3 millionths of the radius, i.e. nothing;
- * so the factor is a READING SCALE, the legend says so in those words, and it
- * is LINEAR, so a stem twice as tall is twice the swell. Apparent heights,
+ * so the factor is a READING SCALE rather than a measurement, and it is
+ * LINEAR, so a stem twice as tall is twice the swell.
+ *
+ * THE FACTOR IS ON THE GLOBE; THE ARGUMENT FOR IT IS HERE. `CARTOGRAPHIE.md`
+ * F7(a) is P0 and requires the REGISTER to be named in the legend in full
+ * words, so the stem row reads "Échelle de lecture, pas une hauteur réelle :
+ * 1 m de houle dessine 10 km de tige" — fourteen words. What went is the
+ * hundred that followed it, and the three ruler marks and the floor row below:
+ * 99 words teaching an inversion no reader performs, because the card on the
+ * buoy already prints `1.0 m` and the cohort that gets a card is sorted by Hs
+ * (`selectBuoyOverlayCohort`). What the stem carries on screen is the relief
+ * and the order; why the scale is shaped this way is for whoever changes it.
+ * Apparent heights,
  * computed with `choroplethPrism.prismApparentPx()` (viewport 1000 px, aspect
  * 1.6, fov π/3), for a stem seen side-on:
  *
@@ -182,8 +194,11 @@ import { ensureGeoidReady, geoidHeight } from './geoid.js';
  * of the angle between the stem and the view ray — so at top-down framing the
  * colour is the ONLY surviving reading. (b) They are not the same statement:
  * the height is the continuous metre value, the hue is the named WMO class a
- * mariner actually speaks ("mer forte"). The legend says this out loud rather
- * than letting a reader discover a doubled channel.
+ * mariner actually speaks ("mer forte"). The legend no longer says this out
+ * loud — a reader who sees one colour per stem is not harmed by not being told
+ * it is deliberate, and the sentence cost 83 words of the right-hand rail. It
+ * is a claim about the DESIGN, addressed to whoever changes the design, so it
+ * is stated here.
  *
  * A5 · THE FLOOR AND THE CEILING, BOTH COUNTED
  * --------------------------------------------
@@ -191,13 +206,18 @@ import { ensureGeoidReady, geoidHeight } from './geoid.js';
  * measured value below 0.2 m is drawn at 2 km and says "measured", not "how
  * much". The NDBC field is quantised to the decimetre, so the floor covers
  * exactly the 0.0 and 0.1 m readings: 24 of 266 wave stations on 2026-09-03
- * (9 %). It costs 1.4 % of the scale, and the count is in the legend.
+ * (9 %). It costs 1.4 % of the scale. The floor has NO legend row — it is a
+ * 1.4 % distortion at the bottom of a channel whose whole job is the order of
+ * the big values — but it is still counted, in `getStats().swell.floored`.
  * CEILING — the domain is frozen at 14 m, the top of the last NAMED band of
  * the WMO ladder, so the two channels clip at the same place for the same
  * published reason. Above it the stem stays at 140 km and switches to DASHES,
- * the repo's existing sign for "this attribute is not being asserted", and the
- * legend counts the clipped stations. The frozen bound is never re-derived
- * from a poll (C1): the same buoy is the same height in every share link.
+ * the repo's existing sign for "this attribute is not being asserted". That
+ * one DOES keep a legend row, with a dashed swatch to match, because dashes on
+ * a stem are a mark a reader can see and cannot decode — and the row appears
+ * only when a station is actually clipped. The frozen bound is never
+ * re-derived from a poll (C1): the same buoy is the same height in every
+ * share link.
  *
  * PERF
  * ----
@@ -486,7 +506,15 @@ export const SWELL_STEM_SCALE = Object.freeze({
   widthPx: 2,
   /** Dash length for a clipped stem, in pixels. */
   clippedDashLength: 12,
-  /** Legend ruler marks, metres of Hs, descending. */
+  /**
+   * Cumulative histogram bounds, metres of Hs, descending.
+   *
+   * These were the legend's three ruler marks. The legend no longer prints a
+   * ruler (see {@link buoyLegend}), and they stayed because
+   * {@link summarizeSwellStems} still walks them into `atOrAbove`, which
+   * `getStats().swell` publishes: "how many buoys are at 2 m or more" is a
+   * reading worth having, it is simply not one a key on a globe delivers.
+   */
   ticksM: Object.freeze([8, 2, 0.5]),
 });
 
@@ -533,6 +561,12 @@ export function swellStemIsFloored(waveHeightM) {
  * be on screen: the legend has to describe the layer, and a tally that moved
  * with the camera would make two readers of the same share link see two
  * different keys (D2).
+ *
+ * WIDER THAN THE LEGEND, ON PURPOSE. `floored` and `atOrAbove` no longer reach
+ * a legend row — `getStats().swell` is where they surface now. A5 asks for the
+ * distortions at both ends of the scale to be COUNTABLE, not to be printed on
+ * the globe, and a caller that wants them (the analyst seam, a QA harness, a
+ * future card) reads them from the same tally the key does.
  *
  * @param {Array<object>} stations Parsed NDBC observations.
  * @returns {{stations:number, stems:number, noStem:number, floored:number,
@@ -615,14 +649,31 @@ export function buoyRingGlyph() {
   return uri;
 }
 
+/**
+ * The dashed stem, for the row that says a reading left the scale.
+ *
+ * The clipped stem is DRAWN in dashes on the map — this repo's sign for "this
+ * attribute is not being asserted" — so the swatch has to be dashed too. It
+ * used to be the same solid bar as every other stem row, which had the key
+ * describing a mark the map does not draw. Same 16-unit box as the prism
+ * glyphs, so the two sit at one weight in the rail.
+ * @returns {string} `data:image/svg+xml;base64,…`
+ */
+export function buoyDashedStemGlyph() {
+  const cached = _glyphCache.get('dashed-stem');
+  if (cached) return cached;
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+    + '<line x1="8" y1="1" x2="8" y2="15" stroke="#000" stroke-width="6" '
+    + 'stroke-dasharray="3 2.5"/>'
+    + '</svg>';
+  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
+  _glyphCache.set('dashed-stem', uri);
+  return uri;
+}
+
 /** French number, flattened so the legend measures and wraps identically everywhere. */
 function fr(value) {
   return Number(value).toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ');
-}
-
-/** Round metres as kilometres, for a height blurb. */
-function km(metres) {
-  return `${fr(Math.round(metres / 1000))} km`;
 }
 
 /** French range label for one WMO band, from the frozen boundaries. */
@@ -637,108 +688,138 @@ export function seaStateBandLabel(index) {
 }
 
 /**
- * The two-part key this layer publishes through `getRowControls().legend`,
- * which `manager.js` mounts BOTH in the panel row and in the on-map block —
- * the second one being the mount D1 actually requires, since the panel ships
- * collapsed and a share link ignores the recipient's panel preference.
+ * The key this layer publishes through `getRowControls().legend`, which
+ * `manager.js` mounts in the on-map block — the mount D1 actually requires,
+ * since the panel ships collapsed and a share link ignores the recipient's
+ * stored panel preference.
  *
- * Height first: it is the channel that just changed, and it is the one a size
- * without a ruler makes illegible. Three numbered marks, per D1, plus the
- * floor and (when it bites) the ceiling, both counted per A5.
+ * ── WHAT THIS BLOCK USED TO BE ──────────────────────────────────────────────
  *
- * Every entry carries a finite `count` ON PURPOSE. The panel-row renderer
- * appends `_formatCount(item.count)` unconditionally and `_formatCount(
- * undefined)` returns the string "undefined" (`manager.js:2470`, a known
- * pre-existing defect that `choroplethPrism.prismLegend` documents and lives
- * with). Giving every row a real tally sidesteps it here without touching a
- * file this layer does not own — and the tallies are worth reading: the ruler
- * ticks double as a cumulative histogram of the report.
+ * Eleven rows and 388 words on a calm report; seventeen rows on a rough one,
+ * enough to overflow the rail and push the layer's own name off the top. Four
+ * of those rows were a graduated RULER — 8 m, 2 m, 0,5 m, and the floor — 99
+ * words spent teaching a reader to invert ×10 000 by eye. Three more carried
+ * this layer's design defence: `ÉCHELLE DE LECTURE`, `REDONDANCE DÉLIBÉRÉE`,
+ * `Domaine gelé`, `Coût : 1,4 % de l'échelle`.
+ *
+ * THE RULER WENT BECAUSE THE MAP ALREADY PRINTS THE METRES. Up to
+ * {@link BUOY_OVERLAY_COHORT_LIMIT} = 96 stations carry a card, and
+ * {@link selectBuoyOverlayCohort} sorts that cohort by `priority`, which is Hs
+ * — so the tallest stems on screen are precisely the ones with their exact
+ * reading written beside them, `1.0 m · Slight`. A scale nobody has to invert
+ * needs no marks. What the stem still carries is the RELIEF and the ORDER, and
+ * an order is decoded off the marks themselves: the Biscay storm towers over
+ * the Channel beside it whether or not a key prints "8 m". That is the
+ * argument `airportsPack.airportMarkLegend` makes for the disc diameters, in
+ * the one other place this repo spent a legend on a size ladder.
+ *
+ * THE DEFENCE WENT BECAUSE IT WAS NEVER ADDRESSED TO THE READER. Every one of
+ * those statements is still true and still frozen (C1); they are argued at
+ * length in this module's header, where the person who can act on them reads.
+ * The counts they came with are not lost either — `getStats().swell` publishes
+ * the whole tally, `floored` and `atOrAbove` included, which is where A5's
+ * "countable" belongs. Printed on the globe, they were answering a question
+ * the reader had not asked. The reader needs to know that a stick means waves.
+ *
+ * ── WHAT SURVIVES, AND WHY EACH ONE HAD TO ──────────────────────────────────
+ *
+ * Three drawn marks no reader can decode unaided, and the colour ladder:
+ *
+ *   the STEM    a vertical bar rising out of the sea is not self-evident on a
+ *               globe; nothing else on screen says it means waves.
+ *   the RING    hollow = no wave sensor. A shape, per A1 — the only channel
+ *               separating "measured a flat sea" from "never measured", and
+ *               the one that survives the NVG and FLIR passes (D3).
+ *   the DASHES  off the top of the frozen domain. A shape again, and a row
+ *               that appears only when a station is actually in that state.
+ * AND WHY THE TWO SHAPE ROWS SURVIVED WHERE THE AIRPORTS' DID NOT. #138 struck
+ * "Piste tracée" and "Emprise au sol" on the grounds that a shape is decoded
+ * without a key — "a line laid along a runway IS a runway". That test is about
+ * ICONICITY, and it is the right one: those marks resemble what they name.
+ * Neither of these does. Nothing about a hollow ring says "no wave sensor", and
+ * nothing about a dash says "past 14 metres"; both are arbitrary signs, and an
+ * arbitrary sign is exactly the case D1 reserves a key for. A future pass
+ * tidying legends by symmetry with the airports would be removing the rows that
+ * carry the layer's two silent failure modes.
+ *
+ *   the HUE     the WMO ladder, with its counts — which are the reading of the
+ *               day ("144 buoys in a slight sea, 12 in a moderate one") and
+ *               the reason the bands stay one row each rather than collapsing
+ *               into a gradient strip that could carry no tally.
+ *
+ * ── ONE ROW KEEPS A `blurb`, AND IT IS NOT OPTIONAL ────────────────────────
+ *
+ * `CARTOGRAPHIE.md` F7(a), P0: a vertical length belongs to one of four
+ * REGISTERS, nothing on screen distinguishes them, and the register is to be
+ * named "in full words, in the module header AND in the legend" — the document
+ * says "ÉCHELLE DE LECTURE" and "hauteur réelle" must never be left to be
+ * guessed. This layer is register (3), a published convention, and it shares
+ * the globe with register (1) layers that draw metres at 1:1.
+ *
+ * So the stem row carries fourteen words. Not the hundred and one it used to:
+ * F7(a) asks for the register to be NAMED, and the argument for the register —
+ * why ×10 000, why linear, why 14 m — is what belongs to this header. The
+ * factor rides along because it is the shortest thing that makes "échelle de
+ * lecture" concrete, and because F7(b) does the real work here anyway: the
+ * shortest stem is 2 km, above every world height in the repo, so the two
+ * registers cannot be confused by amplitude even before a word is read.
+ *
+ * Every other row is its own whole message, which is what lets it survive at
+ * any rail width and reach a screen reader as one string rather than as a
+ * heading trailed by a paragraph.
+ *
+ * Every entry still carries a finite `count` ON PURPOSE. The panel-row
+ * renderer appends `_formatCount(item.count)` unconditionally and
+ * `_formatCount(undefined)` renders the string "undefined" (`manager.js`, a
+ * known pre-existing defect that `choroplethPrism.prismLegend` documents and
+ * lives with). Giving every row a real tally sidesteps it here without
+ * touching a file this layer does not own.
  *
  * @param {ReturnType<typeof summarizeSwellStems>} summary Render tally.
- * @returns {Array<{label:string, color:?string, count:number, glyph?:string, blurb?:string}>}
+ * @returns {Array<{label:string, color:?string, count:number, glyph?:string}>}
  */
 export function buoyLegend(summary) {
   if (!summary || !Number.isFinite(summary.stations) || summary.stations <= 0) return [];
-  const scale = SWELL_STEM_SCALE;
   const entries = [];
 
-  const tallest = Number.isFinite(summary.tallestHsM)
-    ? ` Plus haut relevé du rapport en cours : ${fr(summary.tallestHsM)} m.`
-    : '';
-
   entries.push({
-    label: 'Hauteur — houle significative (Hs)',
-    color: null,
-    count: summary.stems,
-    blurb: `Une tige verticale, en unités monde : 1 m de houle dessine `
-      + `${km(scale.exaggeration)} de tige, soit une exagération verticale `
-      + `×${fr(scale.exaggeration)}. C'est une ÉCHELLE DE LECTURE, pas une mesure à `
-      + `l'échelle — à l'échelle réelle, 8 m de mer sur un globe de 6 371 km ne font `
-      + `rien de visible. Échelle linéaire : une tige deux fois plus haute vaut deux `
-      + `fois plus de houle. Domaine gelé à ${fr(scale.domainMaxM)} m, jamais recalculé `
-      + `depuis le relevé en cours ; au-delà la tige reste à ${km(scale.maxStemM)} et `
-      + `passe en tirets.${tallest}`,
-  });
-
-  scale.ticksM.forEach((tick, index) => {
-    const heightM = swellStemHeightM(tick);
-    entries.push({
-      label: `${fr(tick)} m`,
-      color: PRISM_HEIGHT_SWATCH_COLOR,
-      glyph: prismHeightGlyph((heightM ?? 0) / scale.maxStemM),
-      count: summary.atOrAbove[index] ?? 0,
-      blurb: `Tige de ${km(heightM ?? 0)}. Le compte est celui des bouées à `
-        + `${fr(tick)} m ou plus.`,
-    });
-  });
-
-  entries.push({
-    label: `sous ${fr(scale.minStemM / scale.exaggeration)} m — tige au plancher`,
+    label: 'Une tige = des vagues mesurées. Plus haute, plus grosses',
     color: PRISM_HEIGHT_SWATCH_COLOR,
-    glyph: prismHeightGlyph(scale.minStemM / scale.maxStemM),
-    count: summary.floored,
-    blurb: `Sous ${fr(scale.minStemM / scale.exaggeration)} m la tige passerait sous le `
-      + `pixel : elle est posée à son plancher de ${km(scale.minStemM)} et dit « mesuré », `
-      + `pas « combien ». Le champ NDBC est quantifié au décimètre, donc ce plancher ne `
-      + `couvre que les relevés à 0,0 et 0,1 m. Coût : `
-      + `${fr(Math.round((scale.minStemM / scale.maxStemM) * 1000) / 10)} % de l'échelle.`,
+    glyph: prismHeightGlyph(1),
+    count: summary.stems,
+    // F7(a), P0 — the register, in full words, on the map. The factor is
+    // derived from the frozen scale rather than typed, so a key that drifted
+    // from what the renderer draws is not expressible.
+    blurb: `Échelle de lecture, pas une hauteur réelle : 1 m de houle dessine `
+      + `${fr(SWELL_STEM_SCALE.exaggeration / 1000)} km de tige.`,
   });
 
-  if (summary.clipped) {
-    entries.push({
-      label: `au-dessus de ${fr(scale.domainMaxM)} m — tige écrêtée`,
-      color: PRISM_HEIGHT_SWATCH_COLOR,
-      glyph: prismHeightGlyph(1),
-      count: summary.clipped,
-      blurb: `Relevé supérieur au domaine gelé : la tige reste à ${km(scale.maxStemM)} `
-        + `et passe en TIRETS pour dire qu'elle ne mesure plus. La valeur exacte reste `
-        + `dans la fiche. Le domaine ne bouge pas : c'est ce qui garantit qu'une même `
-        + `houle fait la même hauteur d'une session à l'autre.`,
-    });
-  }
-
   entries.push({
-    label: 'Pas de capteur de houle — aucune tige',
+    label: 'Cercle creux = bouée sans capteur de vagues',
     color: NO_SEA_STATE_CSS,
     glyph: buoyRingGlyph(),
     count: summary.noStem,
-    blurb: `Cercle creux gris, et rien au-dessus. Une station sans capteur de vague `
-      + `n'est pas une station qui rapporte une mer plate : elle n'a pas une tige de `
-      + `hauteur nulle, elle n'a pas de tige. À l'inverse, une mer mesurée à 0,0 m a `
-      + `bien sa tige, au plancher.`,
   });
 
+  // A5 — the ceiling is a STATE, so its row exists exactly when something is
+  // in it. On a calm day the dashes are not on the map, and a key that
+  // described them anyway would be describing a mark the reader cannot find.
+  if (summary.clipped) {
+    entries.push({
+      label: `Tige en tirets = mer au-delà de ${fr(SWELL_STEM_SCALE.domainMaxM)} m, hors échelle`,
+      color: PRISM_HEIGHT_SWATCH_COLOR,
+      glyph: buoyDashedStemGlyph(),
+      count: summary.clipped,
+    });
+  }
+
+  // `color: null` renders the "not drawn here" slot — this row names the
+  // channel, the nine below it are the channel. A swatch would imply the
+  // heading itself was mapped to something.
   entries.push({
-    label: 'Couleur — état de mer OMM',
+    label: "Couleur = état de la mer, le nom qu'en donnent les marins",
     color: null,
     count: summary.stems,
-    blurb: `La teinte suit l'échelle d'état de mer de l'OMM et porte, comme la hauteur, `
-      + `la houle significative. REDONDANCE DÉLIBÉRÉE : une tige verticale vue à la `
-      + `verticale n'a plus aucune longueur apparente, donc au nadir la couleur est la `
-      + `seule lecture qui subsiste. Et les deux ne disent pas la même chose — la `
-      + `hauteur donne le continu en mètres, la teinte donne la classe nommée que les `
-      + `marins emploient. L'échelle compte neuf classes ; seules celles présentes dans `
-      + `le relevé sont listées.`,
   });
 
   summary.bands.forEach((band, index) => {

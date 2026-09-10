@@ -12,6 +12,7 @@ import {
   SEA_STATE_LABELS_FR,
   SWELL_STEM_SCALE,
   buoyInView,
+  buoyDashedStemGlyph,
   buoyLegend,
   buoyOverlayCopy,
   buoyRingGlyph,
@@ -194,7 +195,9 @@ test('the stem scale is internally consistent and inside the parser bound', () =
   // height have to clip at the same place.
   assert.ok(SEA_STATE_BANDS.some((band) => band.maxM === SWELL_STEM_SCALE.domainMaxM));
   assert.equal(Object.isFrozen(SWELL_STEM_SCALE), true);
-  assert.equal(SWELL_STEM_SCALE.ticksM.length, 3, 'D1 asks for two or three marks');
+  // No longer legend marks: these are the cumulative-histogram bounds
+  // `getStats().swell.atOrAbove` publishes.
+  assert.equal(SWELL_STEM_SCALE.ticksM.length, 3);
 });
 
 // The exaggeration is linear, so it must be invertible by eye at every tick.
@@ -279,62 +282,92 @@ test('band indices and their French labels follow the frozen ladder', () => {
 });
 
 // ---------------------------------------------------------------------------
-// D1 — a size without a ruler is unreadable
+// D1 — the key names the marks, and stops there
 // ---------------------------------------------------------------------------
 
-test('the legend publishes the exaggeration, the domain and three marks', () => {
+// The block used to run eleven rows and 388 words. Four of them were a ruler
+// the card on the buoy makes unnecessary, three were this layer's design
+// defence. What is left is one line per DRAWN MARK, plus the hue ladder.
+test('the key is one line per drawn mark', () => {
   const legend = buoyLegend(summarizeSwellStems(REPORT));
-  const height = legend[0];
-  assert.match(height.label, /^Hauteur/);
-  assert.match(height.blurb, /×10 000/, 'the factor is published as a number');
-  assert.match(height.blurb, /ÉCHELLE DE LECTURE/, 'and named as a reading scale');
-  assert.match(height.blurb, /linéaire/);
-  assert.match(height.blurb, /14 m/, 'the frozen domain top is published');
-  assert.match(height.blurb, /17 m/, 'and the tallest reading of the report in hand');
-
-  const ticks = legend.filter((entry) => /^\d+(,\d+)? m$/.test(entry.label));
-  assert.equal(ticks.length, 3);
-  assert.deepEqual(ticks.map((entry) => entry.label), ['8 m', '2 m', '0,5 m']);
-  for (const tick of ticks) {
-    assert.match(tick.glyph, /^data:image\/svg\+xml;base64,/);
-    assert.equal(tick.color, ticks[0].color, 'one constant colour on the ruler (A3)');
-  }
-  assert.deepEqual(ticks.map((entry) => entry.count), [2, 3, 4]);
+  const marks = legend.filter((entry) => !/·/.test(entry.label));
+  assert.deepEqual(marks.map((entry) => entry.label), [
+    'Une tige = des vagues mesurées. Plus haute, plus grosses',
+    'Cercle creux = bouée sans capteur de vagues',
+    'Tige en tirets = mer au-delà de 14 m, hors échelle',
+    "Couleur = état de la mer, le nom qu'en donnent les marins",
+  ]);
 });
 
-test('the legend counts the floor, the clip and the stations with no stem', () => {
+// F7(a), P0 — the vertical register is named in the legend, in full words, and
+// exactly once. Every other row is its label and nothing else.
+test('one row names the reading scale, and only that row carries prose', () => {
   const legend = buoyLegend(summarizeSwellStems(REPORT));
-  const floored = legend.find((entry) => /plancher/.test(entry.label));
-  assert.equal(floored.count, 2);
-  assert.match(floored.label, /sous 0,2 m/);
+  const withBlurb = legend.filter((entry) => entry.blurb);
+  assert.equal(withBlurb.length, 1);
+  assert.match(withBlurb[0].label, /^Une tige/);
+  assert.match(withBlurb[0].blurb, /Échelle de lecture/);
+  assert.match(withBlurb[0].blurb, /pas une hauteur réelle/);
+  // Derived from the frozen scale, never typed: a legend that drifted from
+  // what the renderer draws is not expressible.
+  assert.match(
+    withBlurb[0].blurb,
+    new RegExp(`${(SWELL_STEM_SCALE.exaggeration / 1000).toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ')} km`),
+  );
+  assert.ok(withBlurb[0].blurb.split(/\s+/).length < 20, 'fourteen words, not a hundred');
+});
 
-  const clipped = legend.find((entry) => /écrêtée/.test(entry.label));
+// The ruler and the design defence are held out of the block by what they were
+// made of, not by a recopied string: the floor and the ticks are constants, so
+// a legend that started printing them again would fail here.
+test('the ruler and the design defence stay off the globe', () => {
+  const printed = buoyLegend(summarizeSwellStems(REPORT))
+    .map((entry) => `${entry.label} ${entry.blurb || ''}`)
+    .join(' ');
+  assert.ok(!/REDONDANCE|domaine gelé|plancher/i.test(printed));
+  // The floor: its threshold in metres never reaches the globe.
+  const floorHs = SWELL_STEM_SCALE.minStemM / SWELL_STEM_SCALE.exaggeration;
+  assert.ok(!printed.includes(String(floorHs).replace('.', ',')));
+  // Nor the ruler marks: three rows whose whole label was a metre value.
+  for (const tick of SWELL_STEM_SCALE.ticksM) {
+    assert.ok(!new RegExp(`(^| )${String(tick).replace('.', ',')} m( |$)`).test(printed));
+  }
+});
+
+// A5 — the distortions at both ends of the scale left the key, not the layer.
+// The floor is countable from the stats seam; the ceiling keeps a row because
+// DASHES are a mark a reader can see and cannot decode.
+test('the floor is counted without a row, the clip keeps its row', () => {
+  const summary = summarizeSwellStems(REPORT);
+  assert.equal(summary.floored, 2, 'still tallied for getStats().swell');
+  assert.deepEqual(summary.atOrAbove, [2, 3, 4]);
+
+  const legend = buoyLegend(summary);
+  assert.equal(legend.find((entry) => /plancher|0,2 m/.test(entry.label)), undefined);
+
+  const clipped = legend.find((entry) => /tirets/.test(entry.label));
   assert.equal(clipped.count, 1);
-  assert.match(clipped.blurb, /TIRETS/, 'the clipped mark declares itself on the map too');
+  assert.equal(clipped.glyph, buoyDashedStemGlyph(), 'the swatch is dashed too');
+  assert.match(clipped.label, new RegExp(`${SWELL_STEM_SCALE.domainMaxM} m`));
+});
 
-  const noStem = legend.find((entry) => /Pas de capteur/.test(entry.label));
+// A1 — the sensorless row is the one that cannot be inferred from anything
+// else on screen, so it keeps its line and its shape.
+test('the sensorless row keeps a shape rather than a tint', () => {
+  const legend = buoyLegend(summarizeSwellStems(REPORT));
+  const noStem = legend.find((entry) => /Cercle creux/.test(entry.label));
   assert.equal(noStem.count, 2);
   assert.equal(noStem.color, NO_SEA_STATE_CSS);
   assert.equal(noStem.glyph, buoyRingGlyph(), 'a shape, not a tint (D3)');
-  assert.match(noStem.blurb, /pas de tige/);
 });
 
 // A5 again: the ceiling row is a count of a state, so it appears only when
-// something is actually in that state — but the ceiling itself is announced in
-// the height blurb regardless, or a calm day would hide the clip entirely.
-test('the clip row appears only when it bites, the ceiling is always stated', () => {
+// something is in that state. On a calm day the dashes are not on the map, and
+// a key describing a mark the reader cannot find is a key that misleads.
+test('the clip row appears only when it bites', () => {
   const calm = buoyLegend(summarizeSwellStems([{ station: 'A', waveHeightM: 1.2 }]));
-  assert.equal(calm.find((entry) => /écrêtée/.test(entry.label)), undefined);
-  assert.match(calm[0].blurb, /14 m/);
-  assert.match(calm[0].blurb, /tirets/);
-});
-
-// A3 — the doubled channel is declared in the legend, not left to be found.
-test('the legend declares the hue/height redundancy and argues it', () => {
-  const legend = buoyLegend(summarizeSwellStems(REPORT));
-  const colour = legend.find((entry) => /^Couleur/.test(entry.label));
-  assert.match(colour.blurb, /REDONDANCE DÉLIBÉRÉE/);
-  assert.match(colour.blurb, /nadir/, 'and gives the globe-specific reason');
+  assert.equal(calm.find((entry) => /tirets/.test(entry.label)), undefined);
+  assert.equal(calm.length, 4, 'stem, ring, colour heading, one band');
 });
 
 test('only the sea-state bands actually drawn get a legend row', () => {
@@ -359,16 +392,23 @@ test('every legend row carries a finite count', () => {
   }
 });
 
-// C1 — the ruler is a property of the layer, never of the sample. Two very
-// different reports must yield the same marks, or two readers of one share
-// link would read two different keys.
-test('the ruler does not move with the sample', () => {
+// C1 — the key is a property of the layer, never of the sample. Two very
+// different reports must name the same marks, or two readers of one share link
+// would read two different keys. Only the counts and the hue rows may move.
+test('the marks do not move with the sample', () => {
   const calm = buoyLegend(summarizeSwellStems([{ station: 'A', waveHeightM: 0.3 }]));
-  const storm = buoyLegend(summarizeSwellStems([{ station: 'B', waveHeightM: 12 }]));
+  const storm = buoyLegend(summarizeSwellStems([{ station: 'B', waveHeightM: 8.2 }]));
   const marks = (legend) => legend
-    .filter((entry) => /^\d+(,\d+)? m$/.test(entry.label))
-    .map((entry) => [entry.label, entry.glyph]);
+    .filter((entry) => !/·/.test(entry.label))
+    .map((entry) => [entry.label, entry.glyph ?? null, entry.color]);
   assert.deepEqual(marks(calm), marks(storm));
+});
+
+test('the dashed stem glyph is a stable, cached data URI', () => {
+  assert.match(buoyDashedStemGlyph(), /^data:image\/svg\+xml;base64,/);
+  assert.equal(buoyDashedStemGlyph(), buoyDashedStemGlyph());
+  const svg = Buffer.from(buoyDashedStemGlyph().split(',')[1], 'base64').toString('utf8');
+  assert.match(svg, /stroke-dasharray/, 'the swatch draws the dashes it names');
 });
 
 test('the ring glyph is a stable, cached data URI', () => {
