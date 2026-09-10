@@ -11,7 +11,7 @@
  *   · `comptages-fr`   — 2 977 Paris loop arcs × 168 hours, folded by the
  *     publisher into two day-types (`comptagesRhythm.js`);
  *   · `velo-pulse-fr`  — 561 docking stations × 168 hours, Paris and Lyon;
- *   · `idfm-frequency` — 36 502 Île-de-France stops × 7 days × 24 bands.
+ *   · `idfm-network` — 36 502 Île-de-France stops × 7 days × 24 bands.
  *
  * They live on THREE DIFFERENT ROWS of the panel after the 2026-09 fusion —
  * *Trafic routier*, *Vélos et véhicules partagés*, *Transports en commun* — so
@@ -28,7 +28,7 @@
  * *"les trois encodent aujourd'hui leur heure séparément et des liens déjà
  * envoyés en dépendent"*. That turned out to be false, and checking it is what
  * made the module small. In `layerState.js`, `comptages-fr` (`cr`) and
- * `idfm-frequency` (`fq`) are both `enabled-only` — **neither has ever put its
+ * `idfm-network` (`if`) are both `enabled-only` — **neither has ever put its
  * hour in a link** — and `velo-pulse-fr` (`vp`) encodes a three-value MODE
  * enum (`now` / `week` / `peak`), not an hour. So no link in the wild carries
  * an hour of the week, and there is nothing to stay compatible with.
@@ -52,7 +52,7 @@
  *   | layer            | its own unit           | lossless? |
  *   |------------------|------------------------|-----------|
  *   | `velo-pulse-fr`  | slot 0–167             | yes       |
- *   | `idfm-frequency` | (day name, band 4–27)  | yes       |
+ *   | `idfm-network`   | (day name, band 4–27)  | yes       |
  *   | `comptages-fr`   | (day-TYPE, hour)       | no — see below |
  *
  * **The lossy edge is named rather than hidden.** `comptages-fr` publishes a
@@ -122,7 +122,7 @@ function isCursor(value) {
  *
  * `null` is the DEFAULT and it is not "midnight": it means nobody has pinned
  * an hour, so each layer follows whatever it followed before this module
- * existed — the Paris clock for `velo-pulse-fr` and `idfm-frequency`, the
+ * existed — the Paris clock for `velo-pulse-fr` and `idfm-network`, the
  * weekday mean for `comptages-fr`.
  *
  * @returns {?{day: number, hour: number}} A frozen copy, or null.
@@ -255,7 +255,7 @@ export function weekHourFromDayType(dayType, hour, previous = null) {
 }
 
 /**
- * `{day, hour}` → the `idfm-frequency` operating slot.
+ * `{day, hour}` → the `idfm-network` operating slot.
  *
  * The OPERATING day, not the calendar one: that network files 01 h on a
  * Wednesday as Tuesday's band 25, which is why `IDFM_FREQ_MOMENTS` has a chip
@@ -273,7 +273,7 @@ export function weekHourToOperatingSlot(cursor) {
 }
 
 /**
- * An `idfm-frequency` operating slot back to a cursor.
+ * An `idfm-network` operating slot back to a cursor.
  * @param {number|string} day Day index 0–6, or one of {@link WEEK_HOUR_DAYS}.
  * @param {number} band 4–27.
  * @returns {?{day:number, hour:number}}

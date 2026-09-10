@@ -49,7 +49,7 @@
  * at 18 h as they are on that average, and only **124 (7.2 %)** hold one band
  * across all 48 slots. The single number misfiled 798 streets.
  *
- * So the panel row carries seven chips — the same mechanism `idfm-frequency`
+ * So the panel row carries seven chips — the same mechanism `idfm-network`
  * proved, transposed — and they move the map through `mean`, `clock`, and four
  * pinned (day-type x hour) slots. `comptagesRhythm.js` owns the tokens, the
  * parsing and the labels; this file owns the repaint.
@@ -1405,7 +1405,7 @@ const comptagesParisLayer = {
    *
    * An unknown token is IGNORED rather than clamped or defaulted: a chip that
    * silently moved the reader to 04:00 because a caller sent nonsense would be
-   * worse than a chip that did nothing — the same rule `idfm-frequency` wrote
+   * worse than a chip that did nothing — the same rule `idfm-network` wrote
    * down for its bands.
    */
   setParams(params = {}) {

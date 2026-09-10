@@ -76,7 +76,6 @@ export const LAYER_MANIFEST_SOURCES = Object.freeze([
   { module: './anfrFrance.js' },
   { module: './fraicheurParis.js' },
   { module: './sitadelFrance.js' },
-  { module: './idfmFrequency.js' },
   { module: './bruitFrance.js' },
   { module: './amenitiesFrance.js' },
   { module: './petiteEnfanceFrance.js' },

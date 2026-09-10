@@ -497,10 +497,12 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // link that silently enables the wrong one. 1-8 are gas-fr, power-grid,
   // rte-generation, fr-hydro-plants, bdtopo-buildings, local-airports,
   // road-status-fr and road-events-fr, so IRVE takes `9`.
-  // `fq` for fréquence. `if` next door is idfm-network, and these two draw the
-  // SAME stops — so the tokens are deliberately unalike, because a share link
-  // that enabled the wrong one of a stacked pair would be invisible.
-  Object.freeze({ id: 'idfm-frequency', token: 'fq', disposition: 'enabled-only' }),
+  // `fq` was `idfm-frequency` and is RETIRED, not reassigned: the two layers
+  // drew the same stops and became one on 2026-09-10, so `if` now carries the
+  // network AND its hourly offer. The token is left unclaimed rather than
+  // handed to the next layer — a link in the wild that still says `fq` is
+  // rejected whole by `decodeLayerStateParams`, which is the honest outcome,
+  // and giving `fq` to a different subject would silently draw that one instead.
   Object.freeze({ id: 'idfm-network', token: 'if', disposition: 'enabled-only' }),
   // `im`, alphabetically between `idfm-network` and `irve-fr`. The registry is
   // asserted sorted, so position here is not a preference.

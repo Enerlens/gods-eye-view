@@ -117,10 +117,11 @@ const CATEGORY_LABELS = new Map(LAYER_CATEGORIES.map((entry) => [entry.id, entry
 const SPOKEN_ALIASES = Object.freeze({
   'military-installations': ['sites militaires', 'bases militaires', 'base militaire', 'installations militaires', 'military bases', 'military installations', 'casernes'],
   'road-status-fr': ['état du réseau routier', 'etat des routes', 'état des routes', 'réseau routier', 'reseau routier', 'road status', 'viabilité', 'viabilite', 'routes fermées', 'routes fermees'],
-  'idfm-network': ['réseau idfm', 'reseau idfm', 'idfm', 'métro parisien', 'metro parisien', 'réseau parisien', 'reseau parisien', 'ratp', 'lignes de métro', 'lignes de metro'],
+  // One layer, so one vocabulary: the frequency synonyms moved here on
+  // 2026-09-10 when `idfm-frequency` was folded into the network row.
+  'idfm-network': ['réseau idfm', 'reseau idfm', 'idfm', 'métro parisien', 'metro parisien', 'réseau parisien', 'reseau parisien', 'ratp', 'lignes de métro', 'lignes de metro', 'fréquence des transports', 'frequence des transports', 'fréquence idfm', 'frequence idfm', 'passages par heure', 'desserte'],
   'velo-pulse-fr': ['pouls vélo', 'pouls velo', 'semaine type vélo', 'semaine type velo', 'usage vélo', 'usage velo', 'bike pulse'],
   'road-events-fr': ['événements routiers', 'evenements routiers', 'incidents routiers', 'chantiers', 'travaux routiers', 'accidents', 'bouchons signalés', 'road events', 'roadworks'],
-  'idfm-frequency': ['fréquence des transports', 'frequence des transports', 'fréquence idfm', 'frequence idfm', 'passages par heure', 'desserte'],
   'france-energy': ['mix électrique', 'mix electrique', 'mix énergétique', 'mix energetique', 'production électrique', 'production electrique', 'électricité française', 'electricite francaise', 'electricity mix'],
   'edf-power-plants': ['centrales edf', 'centrales nucléaires', 'centrales nucleaires', 'parc edf', 'réacteurs edf', 'reacteurs edf', 'edf plants'],
   'fr-hydro-plants': ['petite hydro', 'hydroélectricité', 'hydroelectricite', 'centrales hydro', 'hydroélectriques', 'hydroelectriques', 'small hydro'],

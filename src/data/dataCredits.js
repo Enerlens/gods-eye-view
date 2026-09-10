@@ -565,7 +565,7 @@ export const DATA_CREDITS = [
   {
     key: 'idfm-frequency',
     html:
-      "Paris-region service frequency (average departures per stop, per line and per one-hour band): <a href=\"https://data.iledefrance-mobilites.fr/explore/dataset/offre_hebdomadaire_moyenne_hors_vacances/\" target=\"_blank\" rel=\"noopener\">&Icirc;le-de-France Mobilit&eacute;s &mdash; Offre hebdomadaire moyenne hors vacances</a> (<a href=\"https://www.etalab.gouv.fr/wp-content/uploads/2017/04/ETALAB-Licence-Ouverte-v2.0.pdf\" target=\"_blank\" rel=\"noopener\">Licence Ouverte v2.0 &mdash; Etalab</a>). 1 311 578 rows, reference year 2025, edition 2026-08-18. A DIFFERENT licence from the ODbL 1.0 stop geometry credited above: the frequency figures are Licence Ouverte and carry no share-alike. D&eacute;partement outlines: <a href=\"https://geo.api.gouv.fr/decoupage-administratif\" target=\"_blank\" rel=\"noopener\">IGN / API D&eacute;coupage administratif</a>.",
+      "Paris-region service frequency (average departures per stop, per line and per one-hour band): <a href=\"https://data.iledefrance-mobilites.fr/explore/dataset/offre_hebdomadaire_moyenne_hors_vacances/\" target=\"_blank\" rel=\"noopener\">&Icirc;le-de-France Mobilit&eacute;s &mdash; Offre hebdomadaire moyenne hors vacances</a> (<a href=\"https://www.etalab.gouv.fr/wp-content/uploads/2017/04/ETALAB-Licence-Ouverte-v2.0.pdf\" target=\"_blank\" rel=\"noopener\">Licence Ouverte v2.0 &mdash; Etalab</a>). 1 311 578 rows, reference year 2025, edition 2026-08-18. A DIFFERENT licence from the ODbL 1.0 stop geometry credited beside it: the frequency figures are Licence Ouverte and carry no share-alike. Both are drawn by ONE layer, and its card names both licences.",
   },
   {
     key: 'bruit-fr',

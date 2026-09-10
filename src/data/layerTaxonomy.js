@@ -320,6 +320,11 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // of 135 French operators across every mode there. "Vélos en libre-service" /
   // "Véhicules partagés" would say that; "Stations vélos" describes what the
   // row draws. Left as-is until it is decided, and nothing reads `label` yet.
+
+  // ONE row for the Paris offer, since 2026-09-10: the stop referential and
+  // the hourly frequency file were two rows drawing the same 37 956 stops, and
+  // the reader was left to do the join. `idfm-frequency` is gone as an id; the
+  // dimension it carried lives on this layer's card and its ladder legend.
   Object.freeze({
     id: 'idfm-network',
     category: 'ground-mobility',
@@ -327,7 +332,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     // the difference between a layer that looks broken elsewhere and one that
     // declares its own edge.
     coverage: 'cities',
-    label: 'Réseau IDFM (Paris)',
+    label: 'Réseau et fréquence IDFM (Paris)',
     kind: 'dataset',
     auth: 'none',
     cadence: 'periodic',
@@ -398,20 +403,6 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // 'live' is load-bearing: the feed is a nightly batch that lands the day
   // before yesterday, and calling it live anywhere would be the layer's first
   // lie.
-  // Beside `idfm-network`, which draws the same 37 956 stops as a static
-  // referential. That layer says WHAT serves a stop; this one says HOW MUCH,
-  // which is the dimension this repo did not have at all. The two are adjacent
-  // so the panel makes the pairing obvious rather than hiding it.
-  Object.freeze({
-    id: 'idfm-frequency',
-    category: 'ground-mobility',
-    label: "Fréquence des transports (Paris)",
-    kind: 'dataset',
-    coverage: 'fr',
-    auth: 'none',
-    cadence: 'periodic',
-  }),
-
   Object.freeze({
     id: 'comptages-fr',
     category: 'ground-mobility',

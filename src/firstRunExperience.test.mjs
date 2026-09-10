@@ -708,10 +708,18 @@ test('the voice TOOL SCHEMA is byte-identical to main — the mission mapping is
   // the pack holds in full. +238 bytes, one cache bust. It is NOT in the
   // `analyst_query` or `get_entity_context` enums: the layer publishes no
   // queryable per-entity records, only perimeters and a clock.
-  assert.equal(block.length, 38264, 'tool schema byte length drifted from the frozen baseline');
+  //
+  // Re-frozen an EIGHTH time, and only the second edit that SHRINKS the schema:
+  // `idfm-frequency` left both layer enums because it stopped being a layer —
+  // it and `idfm-network` drew the same Paris stops and were merged into one
+  // module on 2026-09-10. One clause of common-name mapping was added in its
+  // place, so "la fréquence des transports" and "la desserte" still resolve,
+  // now onto `idfm-network`. Net −5 bytes, one cache bust. A voice-reachable
+  // subject must never disappear because its implementation was merged.
+  assert.equal(block.length, 38259, 'tool schema byte length drifted from the frozen baseline');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '05bd6a49779714a17138ab1797b4d9f25d76ee69fffacacab5ccbcf28cf631f0',
+    '7df6a65bef6e7d64952169dfbfaf8d24328a15e3dfa6104aa8cd1dbf65aec837',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
 

@@ -160,11 +160,12 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   // layer branch bumps it on its own branch, so a merge always leaves it at
   // whichever side won and the correct answer is neither. Proven five times
   // now. THIS branch: the registry stood at 58, `avis-valeur` landed on main as
-  // the fifty-ninth, `comparables-fr` made 60, and `gironde-megafire-2026`
-  // makes 61. The number is COUNTED off the registry at each step of a rebase,
-  // never taken from either side.
-  assert.equal(REGISTERED_LAYER_IDS.length, 61);
-  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 61);
+  // the fifty-ninth, `comparables-fr` made 60, `gironde-megafire-2026` made 61,
+  // and `idfm-frequency` was folded into `idfm-network` on 2026-09-10 — the
+  // first time this count has gone DOWN — leaving 60. The number is COUNTED off
+  // the registry at each step of a rebase, never taken from either side.
+  assert.equal(REGISTERED_LAYER_IDS.length, 60);
+  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 60);
   assert.deepEqual(REGISTERED_LAYER_IDS, [...REGISTERED_LAYER_IDS].sort());
   assert.throws(
     () => validateLayerStateRegistry([...LAYER_STATE_REGISTRY, LAYER_STATE_REGISTRY[0]]),

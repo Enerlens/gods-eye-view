@@ -1,9 +1,23 @@
 /**
  * @module idfmFrequencyDepartements
  *
- * The wide regime of `idfm-frequency`: a whole région folded onto eight
- * polygons, so the question the layer exists to ask — *how often does anything
- * stop here at this hour* — still has an answer above the rooftops.
+ * A whole région folded onto eight polygons — the average departures per hour
+ * PER STOP in each département, in the same unit and on the same ladder as a
+ * single stop's rate.
+ *
+ * NOT DRAWN ANY MORE, AND THE REASON IS WORTH KEEPING. This was the wide regime
+ * of the `idfm-frequency` row: above the viewport gate the map painted these
+ * eight polygons instead of stop discs. On 2026-09-10 that half was cut. Eight
+ * choropleth polygons need an alpha low enough for the satellite imagery
+ * underneath to survive (0.26 → 0.60 here), and at the altitude where they were
+ * the only thing on screen the result read as a faint wash over half of France
+ * rather than as a reading — while the question a reader actually has at that
+ * altitude is "where do I zoom", not "what is the mean of Seine-et-Marne".
+ *
+ * The FOLD survives because it is the proxy's product, not the map's: it still
+ * backs `GET /api/idfm-frequency/region` and the `region` block of that proxy's
+ * `/status`, and it is 14 719 bytes raw for the whole région. Nothing in the
+ * browser imports this file.
  *
  * `idfmFrequencyFeed.js` measured why there is no national pack: one viewport's
  * worth of full profiles is 744 B a stop, and the whole région would be 26.7 MB

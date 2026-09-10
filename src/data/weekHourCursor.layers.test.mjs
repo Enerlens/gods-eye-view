@@ -24,10 +24,10 @@ import {
   _comptagesSlotForTest,
 } from './comptagesParis.js';
 import {
-  _idfmFrequencyFollowWeekHourForTest,
-  _idfmFrequencySetParamsForTest,
-  _idfmFrequencySlotForTest,
-} from './idfmFrequency.js';
+  _idfmNetworkFollowWeekHourForTest,
+  _idfmNetworkSetParamsForTest,
+  _idfmNetworkSlotForTest,
+} from './idfmNetwork.js';
 import {
   _pulseFollowWeekHourForTest,
   _pulseSeekForTest,
@@ -45,21 +45,21 @@ import {
  */
 function followAll() {
   _comptagesFollowWeekHourForTest(false);
-  _idfmFrequencyFollowWeekHourForTest(false);
+  _idfmNetworkFollowWeekHourForTest(false);
   _pulseFollowWeekHourForTest(false);
   _comptagesSetParamsForTest({ slot: 'mean' });
-  _idfmFrequencySetParamsForTest({ band: 'now' });
+  _idfmNetworkSetParamsForTest({ band: 'now' });
   _pulseSetParamsForTest({ mode: 'now' });
   _resetWeekHourForTest();
   _comptagesFollowWeekHourForTest(true);
-  _idfmFrequencyFollowWeekHourForTest(true);
+  _idfmNetworkFollowWeekHourForTest(true);
   _pulseFollowWeekHourForTest(true);
 }
 
 test.beforeEach(followAll);
 test.afterEach(() => {
   _comptagesFollowWeekHourForTest(false);
-  _idfmFrequencyFollowWeekHourForTest(false);
+  _idfmNetworkFollowWeekHourForTest(false);
   _pulseFollowWeekHourForTest(false);
   _resetWeekHourForTest();
 });
@@ -69,7 +69,7 @@ test('an hour pressed on the traffic row reaches the métro and the bicycles', (
   // The day-type chip says "a typical weekday at 08 h" and nothing about which
   // day, so the cursor takes the representative one.
   assert.deepEqual(getWeekHour(), { day: 1, hour: 8 });
-  const idfm = _idfmFrequencySlotForTest();
+  const idfm = _idfmNetworkSlotForTest();
   assert.equal(idfm.day, 'mardi');
   assert.equal(idfm.band, 8);
   const pulse = _pulseStateForTest();
@@ -81,7 +81,7 @@ test('an hour pressed on the traffic row reaches the métro and the bicycles', (
 test('the weekend chip lands the other two on a weekend day', () => {
   _comptagesSetParamsForTest({ slot: 'e18' });
   assert.deepEqual(getWeekHour(), { day: 5, hour: 18 });
-  assert.equal(_idfmFrequencySlotForTest().day, 'samedi');
+  assert.equal(_idfmNetworkSlotForTest().day, 'samedi');
   assert.equal(_pulseStateForTest().slot, 5 * 24 + 18);
 });
 
@@ -89,13 +89,13 @@ test('a scrub of the bicycle week moves the traffic and the métro', () => {
   _pulseSeekForTest(3 * 24 + 17); // Thursday 17 h
   assert.deepEqual(getWeekHour(), { day: 3, hour: 17 });
   assert.equal(_comptagesSlotForTest().token, 'w17');
-  const idfm = _idfmFrequencySlotForTest();
+  const idfm = _idfmNetworkSlotForTest();
   assert.equal(idfm.day, 'jeudi');
   assert.equal(idfm.band, 17);
 });
 
 test('an IDFM band travels as the hour the layer is drawing', () => {
-  _idfmFrequencySetParamsForTest({ band: 22 });
+  _idfmNetworkSetParamsForTest({ band: 22 });
   const cursor = getWeekHour();
   assert.equal(cursor.hour, 22);
   // The day is today's — the chip names a band and never a day — and the other
@@ -107,13 +107,13 @@ test('an IDFM band travels as the hour the layer is drawing', () => {
 test('the 01 h band is filed on the previous operating day and still means 01 h', () => {
   // `b01` carries band 25, which IDFM files on the PREVIOUS day. The cursor
   // must carry 01 h on the day the reader means, not 25 h on the day before.
-  _idfmFrequencySetParamsForTest({ band: 25 });
+  _idfmNetworkSetParamsForTest({ band: 25 });
   const cursor = getWeekHour();
   assert.equal(cursor.hour, 1);
   assert.equal(_pulseStateForTest().slot % 24, 1);
   assert.equal(_comptagesSlotForTest().hour, 1);
   // And the layer itself is still drawing band 25, on the operating day.
-  assert.equal(_idfmFrequencySlotForTest().band, 25);
+  assert.equal(_idfmNetworkSlotForTest().band, 25);
 });
 
 test('a comptages hour chip keeps the day another row already chose', () => {
@@ -122,7 +122,7 @@ test('a comptages hour chip keeps the day another row already chose', () => {
   // Wednesday is a weekday, so nothing has to be invented: the hour moves and
   // the day stays where the reader put it.
   assert.deepEqual(getWeekHour(), { day: 2, hour: 18 });
-  assert.equal(_idfmFrequencySlotForTest().day, 'mercredi');
+  assert.equal(_idfmNetworkSlotForTest().day, 'mercredi');
 });
 
 test('«À cette heure» and «Maintenant» release the cursor rather than pinning one', () => {
@@ -131,9 +131,9 @@ test('«À cette heure» and «Maintenant» release the cursor rather than pinni
   _comptagesSetParamsForTest({ slot: 'clock' });
   assert.equal(getWeekHour(), null, 'following the clock is a behaviour, not a position');
 
-  _idfmFrequencySetParamsForTest({ band: 12 });
+  _idfmNetworkSetParamsForTest({ band: 12 });
   assert.notEqual(getWeekHour(), null);
-  _idfmFrequencySetParamsForTest({ band: 'now' });
+  _idfmNetworkSetParamsForTest({ band: 'now' });
   assert.equal(getWeekHour(), null);
 });
 
@@ -150,7 +150,7 @@ test('a released cursor leaves every layer where the reader last put it', () => 
   // Releasing means "nobody is pinning an hour", NOT "go back to now": the
   // bicycles keep drawing the hour they were on.
   assert.equal(_pulseStateForTest().slot, pulseBefore);
-  assert.equal(_idfmFrequencySlotForTest().band, 8);
+  assert.equal(_idfmNetworkSlotForTest().band, 8);
 });
 
 test('a running week drives nobody — 168 hours at one every 520 ms is not a broadcast', () => {
@@ -161,11 +161,11 @@ test('a running week drives nobody — 168 hours at one every 520 ms is not a br
 });
 
 test('a layer that comes on later adopts the hour already on screen', () => {
-  _idfmFrequencyFollowWeekHourForTest(false);
+  _idfmNetworkFollowWeekHourForTest(false);
   _comptagesSetParamsForTest({ slot: 'e04' });
-  assert.equal(_idfmFrequencySlotForTest().band !== 4 || _idfmFrequencySlotForTest().day !== 'samedi', true);
-  _idfmFrequencyFollowWeekHourForTest(true);
-  const idfm = _idfmFrequencySlotForTest();
+  assert.equal(_idfmNetworkSlotForTest().band !== 4 || _idfmNetworkSlotForTest().day !== 'samedi', true);
+  _idfmNetworkFollowWeekHourForTest(true);
+  const idfm = _idfmNetworkSlotForTest();
   assert.equal(idfm.day, 'samedi');
   assert.equal(idfm.band, 4);
 });

@@ -299,6 +299,53 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   désormais `OpenStreetMap` tout court : chaque marque à l'écran vient d'un tag.
 
 ### Changed
+- **Le réseau IDFM et sa fréquence ne sont plus deux puces : c'est une couche,
+  et un clic sur un arrêt donne enfin les deux.** Île-de-France Mobilités
+  publie son offre deux fois — le référentiel des arrêts (37 956 arrêts,
+  2 121 lignes avec leur livrée officielle, ODbL 1.0) et l'offre horaire
+  moyenne (1 311 578 lignes de courses par arrêt et par tranche d'une heure,
+  Licence Ouverte v2.0). Le dépôt en avait fait deux couches, deux puces sur la
+  ligne « Transports en commun », deux fiches. Elles dessinaient LES MÊMES
+  arrêts : mesuré le 2026-09-02, **34 903 des 36 502 arrêts de l'offre (95,6 %)
+  se joignent sur `arrets.arrid`**. Le lecteur venu poser une seule question —
+  *qu'est-ce qui dessert cette adresse, et à quelle fréquence* — devait savoir
+  qu'il fallait appuyer deux fois, et le clic répondait avec la moitié que le
+  hasard du picking avait attrapée.
+
+  **Une puce, une fiche, deux publications.** `idfm-frequency` n'est plus une
+  couche du tout : son module est fondu dans `idfmNetwork.js`, qui garde son
+  identifiant, son jeton de partage `if` et sa ligne dans le panneau. Un clic
+  sur un arrêt — sur le pictogramme de mode comme sur le disque de fréquence
+  posé au même point — ouvre UNE fiche : mode, arrondissement, zone tarifaire
+  et accessibilité du référentiel, puis les départs par heure de la tranche
+  choisie, la courbe de la journée, premier/pointe/dernier, le total du jour,
+  la même tranche sur les sept jours, et les DEUX licences. Les sept puces
+  d'heure et l'échelle de couleurs déménagent avec.
+
+  **Ce qui manque est nommé, jamais chiffré à zéro.** Un arrêt du référentiel
+  absent du fichier d'offre — **3 053 des 37 956, soit 8,0 %** — le dit ; un
+  arrêt regardé de trop haut dit que l'offre horaire n'est pas lue à cette
+  altitude ; les **549 arrêts (1,50 %) sans coordonnée publiée** restent
+  comptés dans la légende et jamais placés. Un zéro, ici, est une mesure.
+
+- **L'aplat par département de la fréquence est retiré de la carte.** C'était
+  le régime large de l'ancienne couche : au-dessus de sa porte de vue, huit
+  polygones portant la moyenne de départs par heure et par arrêt. Un aplat doit
+  laisser passer l'imagerie satellite en dessous, donc son alpha plafonne à
+  0,60 — et à l'altitude où ces polygones étaient la seule chose à l'écran, le
+  résultat se lisait comme un lavis pâle sur la moitié de la France plutôt que
+  comme une lecture. Le pli survit côté serveur, à
+  `GET /api/idfm-frequency/region` (356 lignes d'agrégat + 17 recensements
+  d'arrêts → 14 719 octets bruts / 5 864 gzippés) ; plus rien dans le
+  navigateur ne l'importe.
+
+  Le jeton de partage `fq` est **retiré et non réattribué** : un lien déjà
+  parti qui le porte est rejeté en entier, ce qui est le comportement honnête,
+  et le donner à un autre sujet ferait allumer silencieusement la mauvaise
+  couche. `npm run qa:idfm-network` prouve les six comportements de la fusion
+  dans l'application réelle, fiche peinte comprise.
+
+### Changed
 - **« Brancher un jeu de données » rendait la liste des couches inutilisable :
   244 px de formulaire mort pour 51 px de couches, une ligne visible sur 39.**
   Mesuré le 2026-09-10 sur un viewport de MacBook Air (1440×820), là où le
