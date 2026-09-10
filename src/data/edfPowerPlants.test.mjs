@@ -25,8 +25,11 @@ import {
   mapAnalystRecord,
   plantColor,
   plantKindText,
+  plantLabelAltitudeBand,
+  plantLabelRanks,
   plantLabelText,
   plantPixelSize,
+  PLANT_LABEL_ALTITUDE_TIERS,
   referenceDateRange,
   selectPlantOverlayCohort,
   summarizePlants,
@@ -123,6 +126,71 @@ test('a label names the site, its installed power and what it actually is', () =
   assert.equal(plantLabelText(record('thermique:CORDEMAIS')), 'CORDEMAIS · 1 160 MW · 2 unités au charbon');
   assert.equal(plantLabelText(record('thermique:BOUCHAIN')), 'BOUCHAIN · 585 MW · unité au gaz');
   assert.equal(plantLabelText(record('hydraulique:RANCE')), 'RANCE · 240 MW · marémotrice');
+});
+
+test('a label stops repeating the filière the reader is already filtering on', () => {
+  // The capture that started this: `Hydraulique › Tous`, and 28 of 51 labels
+  // reading `retenue de lac` under a lit HYDRAULIQUE chip, a cyan mark, a cyan
+  // accent bar and a cyan leader line. The regime is on the card and counted on
+  // the sub-category strip; it does not also have to be on the globe.
+  assert.equal(
+    plantLabelText(record('hydraulique:GRAND-MAISON'), { filiere: 'hydraulique' }),
+    'GRAND-MAISON · 1 714 MW',
+  );
+  assert.equal(
+    plantLabelText(record('nucleaire:GRAVELINES'), { filiere: 'nucleaire' }),
+    'GRAVELINES · 5 460 MW',
+  );
+  // Under TOUTES the phrase is the only thing separating a reactor from a water
+  // regime, so it stays — including the unit count the filtered label gives up.
+  assert.equal(
+    plantLabelText(record('nucleaire:GRAVELINES'), { filiere: null }),
+    'GRAVELINES · 5 460 MW · 6 réacteurs',
+  );
+  assert.equal(plantLabelText(record('nucleaire:GRAVELINES'), {}),
+    plantLabelText(record('nucleaire:GRAVELINES')));
+});
+
+// ── A name is not owed to every site at every altitude ──────────────────────
+
+test('a label’s altitude ceiling comes from its rank, and the top ten never fade', () => {
+  for (const rank of [0, 5, 9]) {
+    assert.equal(plantLabelAltitudeBand(rank).fadeEnd, Number.POSITIVE_INFINITY,
+      'the biggest sites are the ones worth naming from orbit');
+  }
+  // Each tier is strictly lower than the one above it, so descending can only
+  // ever ADD names — a label that appeared at 400 km cannot vanish at 200 km.
+  const ends = [0, 10, 30, 78].map((rank) => plantLabelAltitudeBand(rank).fadeEnd);
+  for (let i = 1; i < ends.length; i += 1) assert.ok(ends[i] <= ends[i - 1]);
+  assert.ok(plantLabelAltitudeBand(10).fadeEnd < 991_000,
+    'the 991 km capture must not paint the eleventh name');
+  // A fade BAND, not a switch: a slow descent brings a name up rather than
+  // popping it in.
+  for (const tier of PLANT_LABEL_ALTITUDE_TIERS) assert.ok(tier.fadeStart <= tier.fadeEnd);
+  // A rank this function cannot read is treated as the smallest site there is,
+  // never as the biggest.
+  assert.deepEqual(plantLabelAltitudeBand(Number.NaN), plantLabelAltitudeBand(1e6));
+});
+
+test('rank is read off installed power, with a stable tie-break and no invented zero', () => {
+  const ranks = plantLabelRanks(RECORDS);
+  assert.equal(ranks.get('nucleaire:GRAVELINES'), 0);
+  assert.equal(ranks.get('hydraulique:GRAND-MAISON'), 2);
+  assert.equal(ranks.get('hydraulique:GRANDVAL'), RECORDS.length - 1);
+
+  // Ranked inside the cohort the reader ASKED for: having filtered to hydro,
+  // the biggest dam is the first name on the screen, not the eleventh.
+  const hydro = plantLabelRanks(filterPlants(RECORDS, { filiere: 'hydraulique' }));
+  assert.equal(hydro.get('hydraulique:GRAND-MAISON'), 0);
+  assert.equal(hydro.get('hydraulique:GRANDVAL'), 5);
+
+  // Equal power keeps a stable order across repaints rather than swapping which
+  // of the two is named; an unpublished power ranks last rather than as zero.
+  const tied = plantLabelRanks([
+    { id: 'b', mw: 100 }, { id: 'a', mw: 100 }, { id: 'z', mw: null }, { id: 'c', mw: 0 },
+  ]);
+  assert.deepEqual([...tied.entries()], [['a', 0], ['b', 1], ['c', 2], ['z', 3]]);
+  assert.equal(plantLabelRanks(null).size, 0);
 });
 
 test('the publisher’s own string survives, one argument away', () => {
@@ -679,6 +747,40 @@ test('narrowing to a filière redraws the globe, the key and the row count', asy
   }
 });
 
+test('narrowing re-ranks the names and takes the repeated word off them', async () => {
+  const h = createHarness([PAYLOAD]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    const painted = () => new Map(
+      h.hostCalls.findLast((call) => call[0] === 'entries')[2].map((e) => [e.id, e]),
+    );
+
+    // Under TOUTES, Grandval is the smallest of the eleven and its name waits
+    // for the reader to come down; the label says what the site is, because
+    // nothing else on screen does.
+    const all = painted().get('edf-plants:hydraulique:GRANDVAL');
+    assert.ok(Number.isFinite(all.altitudeFadeEnd));
+    assert.equal(all.title, 'GRANDVAL · 74 MW · retenue de lac');
+
+    // Asking for hydro promotes it into the six sites the question is about, so
+    // the name comes back at every altitude — and drops the word HYDRAULIQUE is
+    // already lit for.
+    assert.equal(h.layer.setParams({ filiere: 'hydraulique' }), true);
+    const hydro = painted().get('edf-plants:hydraulique:GRANDVAL');
+    assert.equal(hydro.altitudeFadeEnd, Number.POSITIVE_INFINITY);
+    assert.equal(hydro.title, 'GRANDVAL · 74 MW');
+
+    // And clearing the filter puts both back.
+    assert.equal(h.layer.setParams({ filiere: null }), true);
+    assert.equal(painted().get('edf-plants:hydraulique:GRANDVAL').title,
+      'GRANDVAL · 74 MW · retenue de lac');
+  } finally {
+    h.restore();
+  }
+});
+
 test('the sub-category narrows again, and clearing costs no refetch', async () => {
   const h = createHarness([PAYLOAD]);
   try {
@@ -938,4 +1040,22 @@ test('the ambient label steps aside for the selected card', () => {
     true,
     'a selected site must not compete with its own ambient label',
   );
+});
+
+test('an entry carries its own altitude ceiling, so a hidden label holds no slot', () => {
+  const position = Cesium.Cartesian3.fromDegrees(GRAVELINES.lon, GRAVELINES.lat);
+  const top = createPlantOverlayEntry(GRAVELINES, position, { labelRank: 0 });
+  assert.equal(top.altitudeFadeEnd, Number.POSITIVE_INFINITY);
+  const tail = createPlantOverlayEntry(GRAVELINES, position, { labelRank: 60 });
+  assert.ok(Number.isFinite(tail.altitudeFadeEnd));
+  assert.ok(tail.altitudeFadeStart < tail.altitudeFadeEnd);
+  assert.deepEqual(
+    { start: tail.altitudeFadeStart, end: tail.altitudeFadeEnd },
+    { start: plantLabelAltitudeBand(60).fadeStart, end: plantLabelAltitudeBand(60).fadeEnd },
+  );
+  // The filter reaches the title through the entry, not only through the layer.
+  assert.equal(createPlantOverlayEntry(GRAVELINES, position, { filiere: 'nucleaire' }).title,
+    'GRAVELINES · 5 460 MW');
+  assert.equal(createPlantOverlayEntry(GRAVELINES, position).title,
+    'GRAVELINES · 5 460 MW · 6 réacteurs');
 });

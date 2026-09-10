@@ -4,7 +4,7 @@ import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { askJoin, publishJoin } from './layerJoins.js';
 import { PLANT_JOIN_KEYS, plantCrossRegisterLine } from './plantIdentity.js';
 import { horizonOccluder } from './iconOrientation.js';
-import { plantFiliereGlyph, plantUnknownGlyph } from './plantFiliereIcons.js';
+import { plantFiliereGlyph, plantMarkGlyph } from './plantFiliereIcons.js';
 import {
   clearOverlaySource,
   setOverlayEntries,
@@ -34,21 +34,34 @@ import {
  *
  * ── What is drawn, and why THAT ─────────────────────────────────────────────
  * One mark per SITE, its area proportional to installed capacity, labelled
- * with the site's name, its megawatts and what it actually is — `6 réacteurs`
- * at Gravelines, `pompage-turbinage mixte` at Grand-Maison, `2 unités au
- * charbon` at Cordemais. Area rather than side carries the megawatts: a mark
- * twice as wide would otherwise claim four times the capacity.
+ * with the site's name, its megawatts and — while the reader is looking at the
+ * whole fleet — what it actually is: `6 réacteurs` at Gravelines,
+ * `pompage-turbinage mixte` at Grand-Maison, `2 unités au charbon` at
+ * Cordemais. Area rather than side carries the megawatts: a mark twice as wide
+ * would otherwise claim four times the capacity.
  *
- * THE MARK CARRIES ITS FILIÈRE TWICE, in colour and in SHAPE — a tinted plate
- * with a cooling tower, a water drop or a flame punched out of it
+ * NOT EVERY SITE IS NAMED AT EVERY ALTITUDE, and the third field goes away once
+ * a filière is the subject. Both are answers to the same measurement, taken on
+ * a capture at 991 km under `Hydraulique › Tous`: 51 labels offered and 51
+ * accepted, 28 of them reading `retenue de lac`, and the smaller marks buried
+ * under the text naming their neighbours. A label now has an altitude ceiling
+ * set by the site's rank inside the FILTERED cohort — see the block above
+ * {@link PLANT_LABEL_ALTITUDE_TIERS} — and drops the phrase the lit chip is
+ * already saying — see {@link plantLabelText}.
+ *
+ * THE MARK CARRIES ITS FILIÈRE IN COLOUR, and in SHAPE where the shape fits — a
+ * tinted plate with a cooling tower, a water drop or a flame punched out of it
  * (`plantFiliereIcons.js`; a plate rather than a bare silhouette because half
- * this fleet draws under 18 px, where ink over an orthophoto disappears).
- * The colour alone was doing all the work for the majority of the fleet: the
- * label that names a site in words is cohort-limited to 60 of 79 and drops on
- * collision, so on a full view of France most of these stations were a coloured
- * dot and a key on the far side of the screen. The key still decodes the
- * colour, and its swatch is MASKED by the same raster the globe draws, so the
- * pastille in the panel is the mark at key size.
+ * this fleet draws under 18 px, where ink over an orthophoto disappears, and a
+ * WHOLE plate under 20 px, where the punch stops being a shape and becomes a
+ * stain — 53 of 79 sites, every one of them hydro or thermal). The colour alone
+ * was doing all the work for the majority of the fleet: the label that names a
+ * site in words is cohort-limited to 60 of 79, drops on collision, and now also
+ * yields to altitude, so on a full view of France most of these stations are a
+ * coloured dot and a key on the far side of the screen. The key still decodes
+ * the colour, and its swatch is MASKED by the same raster the globe draws — at
+ * 32 px, above the punch floor — so the pastille in the panel is the mark as
+ * the biggest sites draw it.
  *
  * THE MARK IS DRAWN OVER THE TERRAIN, not depth-tested against it. A billboard
  * carries one depth for its whole quad, so a depth-tested mark gets its lower
@@ -418,18 +431,127 @@ export function plantKindText(site, { register = 'plain' } = {}) {
 }
 
 /**
- * Label text for one site: name, installed power, and what it is.
+ * Label text for one site: name, installed power, and — unless the reader has
+ * already said it — what it is.
  *
  * THE SHORT REGISTER, because this one is painted on the globe beside a name
  * and every character costs a collision. `GRAVELINES · 5 460 MW · 6 réacteurs`
  * is a sentence; `GRAVELINES · 5 460 MW · 6 × REP 900`, which is what it said,
  * is a part number. The palier survives on the card, where there is room for
  * it.
+ *
+ * THE THIRD FIELD DROPS ONCE A FILIÈRE IS THE SUBJECT, and that is a
+ * measurement rather than a trim. Under `Hydraulique`, five cyan inks per site
+ * were saying the same word — the mark's colour, its silhouette, the label's
+ * accent bar, its leader line, and the phrase itself — with the lit chip and
+ * the key saying it twice more off to the side. Measured on the live fleet on
+ * 2026-09-10, 28 of the 51 hydro labels read `retenue de lac`; the strip of
+ * sub-category chips above them already reports that as a count, and is the
+ * one place a reader can act on it. Under `TOUTES` the phrase stays, because
+ * there it is the only thing separating a reactor from a water regime.
+ *
+ * What this COSTS is the nuclear unit count: `GRAVELINES · 5 460 MW` no longer
+ * says six reactors while `NUCLÉAIRE` is lit. The count is on the card, one
+ * click away, and under `TOUTES` it is still on the globe.
+ *
  * @param {object} site
+ * @param {Object} [options]
+ * @param {?string} [options.filiere=null] The filière the reader has filtered
+ *   to, if any — from {@link normalizePlantFilter}.
  * @returns {string}
  */
-export function plantLabelText(site) {
-  return `${site?.name ?? ''} · ${formatMegawatts(site?.mw)} · ${plantKindText(site, { register: 'short' })}`;
+export function plantLabelText(site, { filiere = null } = {}) {
+  const head = `${site?.name ?? ''} · ${formatMegawatts(site?.mw)}`;
+  if (filiere) return head;
+  return `${head} · ${plantKindText(site, { register: 'short' })}`;
+}
+
+// ── HOW MANY SITES GET NAMED, AND WHEN ──────────────────────────────────────
+//
+// A NAME IS NOT OWED TO EVERY SITE AT EVERY ALTITUDE.
+//
+// The layer used to offer one label per drawn site and let the shared overlay
+// host sort it out. On a full view of France under `Hydraulique` that is 51
+// labels inside a cohort limit of 60 — every one of them accepted, none of them
+// dropped, and a wall of text over the Alps and the Massif Central where the
+// plants actually are. Worse, the wall BURIES ITS OWN SUBJECT: a label is
+// painted above its mark, so the label of one plant sits on top of the mark of
+// its neighbour, and the smaller sites (Aigle, Grandval) disappear under the
+// text naming the bigger ones.
+//
+// So a label has an altitude ceiling, and the ceiling comes from the site's
+// RANK BY INSTALLED POWER inside the cohort the reader is actually looking at.
+// At country scale only the top handful are named; coming down, the rest arrive
+// in order of size. The question "which are the big ones" is answerable from
+// orbit and the question "what is this one" is answerable from a region, which
+// is the altitude at which each is actually asked.
+//
+// RANKED INSIDE THE FILTERED SET, not inside the fleet. The filter is the
+// reader's question: having asked for hydro, they are owed hydro's biggest
+// names, not a screen where every label belongs to a nuclear site because the
+// smallest reactor outweighs the largest dam.
+//
+// THIS COSTS NO CAMERA LISTENER AND NO PER-FRAME WORK OF OUR OWN. The host
+// already fades entries by altitude, and an entry faded to zero returns before
+// it is measured or allocated a slot (`worldOverlay.js`, `altitudeAlpha`), so a
+// hidden label costs strictly less than a painted one.
+
+/**
+ * Rank → the altitude band its label fades out across, in metres.
+ *
+ * Read in order; the first tier whose `rank` the site is under wins. The
+ * numbers are the three altitudes at which this map is actually read: France
+ * whole (a 60° camera sees ~1 145 km of ground at 991 km up, which is where the
+ * capture that started this was taken), a large region (~460 km of ground), and
+ * a département (~230 km). Each tier fades across a band rather than switching,
+ * so a slow descent brings names up instead of popping them.
+ */
+export const PLANT_LABEL_ALTITUDE_TIERS = Object.freeze([
+  // The ones worth naming when the country does not fit on screen. Ten, because
+  // that is about what a reader takes in at a glance — and because it is the
+  // count the capture's own wall of 51 was hiding.
+  Object.freeze({
+    rank: 10,
+    fadeStart: Number.POSITIVE_INFINITY,
+    fadeEnd: Number.POSITIVE_INFINITY,
+  }),
+  Object.freeze({ rank: 30, fadeStart: 300_000, fadeEnd: 460_000 }),
+  Object.freeze({
+    rank: Number.POSITIVE_INFINITY,
+    fadeStart: 150_000,
+    fadeEnd: 230_000,
+  }),
+]);
+
+/**
+ * The altitude band one rank's label fades out across.
+ * @param {number} rank 0-based, biggest first.
+ * @returns {{fadeStart:number, fadeEnd:number}}
+ */
+export function plantLabelAltitudeBand(rank) {
+  const index = Number.isFinite(rank) ? rank : Number.POSITIVE_INFINITY;
+  for (const tier of PLANT_LABEL_ALTITUDE_TIERS) {
+    if (index < tier.rank) return { fadeStart: tier.fadeStart, fadeEnd: tier.fadeEnd };
+  }
+  const last = PLANT_LABEL_ALTITUDE_TIERS[PLANT_LABEL_ALTITUDE_TIERS.length - 1];
+  return { fadeStart: last.fadeStart, fadeEnd: last.fadeEnd };
+}
+
+/**
+ * Rank every site of one cohort by installed power, biggest first.
+ *
+ * Id is the tie-break, so two sites of equal power keep a stable order across
+ * repaints rather than swapping which of them is named. A site with no
+ * published power ranks last rather than being treated as zero-and-therefore-
+ * equal to nothing else.
+ * @param {Array<object>|null|undefined} records The FILTERED cohort.
+ * @returns {Map<string, number>} Site id → 0-based rank.
+ */
+export function plantLabelRanks(records) {
+  const order = (Array.isArray(records) ? records.slice() : []).sort((a, b) => (
+    (b?.mw ?? -1) - (a?.mw ?? -1) || String(a?.id ?? '').localeCompare(String(b?.id ?? ''))
+  ));
+  return new Map(order.map((record, index) => [String(record?.id ?? ''), index]));
 }
 
 /**
@@ -730,9 +852,17 @@ export function referenceDateRange(datasets) {
  * Build the source-owned presentation for one site label.
  * @param {object} record
  * @param {Cesium.Cartesian3} position
+ * @param {Object} [options]
+ * @param {boolean} [options.skipLabel=false] The site owns the protected card.
+ * @param {number} [options.labelRank=0] Rank by power inside the drawn cohort,
+ *   from {@link plantLabelRanks} — decides the label's altitude ceiling.
+ * @param {?string} [options.filiere=null] The filière the reader filtered to.
  * @returns {object}
  */
-export function createPlantOverlayEntry(record, position, { skipLabel = false } = {}) {
+export function createPlantOverlayEntry(record, position, {
+  skipLabel = false, labelRank = 0, filiere = null,
+} = {}) {
+  const band = plantLabelAltitudeBand(labelRank);
   return {
     id: `edf-plants:${record.id}`,
     // A selected site is drawn by the protected card instead; leaving its
@@ -740,8 +870,13 @@ export function createPlantOverlayEntry(record, position, { skipLabel = false } 
     skipLabel,
     position,
     variant: 'label',
-    title: plantLabelText(record),
+    title: plantLabelText(record, { filiere }),
     accent: plantColor(record.filiere).toCssColorString(),
+    // Above its band this label is not merely hidden — the host returns before
+    // measuring it, so it holds no collision slot and the marks it used to sit
+    // on top of come back. See the block above PLANT_LABEL_ALTITUDE_TIERS.
+    altitudeFadeStart: band.fadeStart,
+    altitudeFadeEnd: band.fadeEnd,
     // Capacity settles a contested label slot: the biggest sites are the ones
     // worth naming when the country does not fit on screen.
     priority: Math.round(record.mw ?? 0),
@@ -1218,14 +1353,16 @@ export function createEdfPowerPlantsLayer({
     _billboards.removeAll();
     _drawn.clear();
     const entries = [];
+    const ranks = plantLabelRanks(_visible);
     for (const record of _visible) {
       const position = Cesium.Cartesian3.fromDegrees(record.lon, record.lat);
       const renderId = `edf-plants:${record.id}`;
       const basePixelSize = plantPixelSize(record.mw);
-      // Three rasters for seventy-nine sites: `plantFiliereGlyph` caches per
-      // filière and size, and Cesium's atlas keys on the image URI, so the
-      // whole fleet costs three atlas entries rather than one per billboard.
-      const image = plantFiliereGlyph(record.filiere) || plantUnknownGlyph();
+      // Four rasters for seventy-nine sites: `plantMarkGlyph` caches per filière
+      // and size and shares ONE plate between the punchless small marks and the
+      // unknown filière, and Cesium's atlas keys on the image URI — so the whole
+      // fleet costs four atlas entries rather than one per billboard.
+      const image = plantMarkGlyph(record.filiere, basePixelSize);
       const billboard = _billboards.add({
         position,
         image,
@@ -1263,6 +1400,8 @@ export function createEdfPowerPlantsLayer({
       _drawn.set(renderId, { record, position, billboard, basePixelSize });
       entries.push(createPlantOverlayEntry(record, position, {
         skipLabel: renderId === _selectedId,
+        labelRank: ranks.get(record.id) ?? 0,
+        filiere: _filter.filiere,
       }));
     }
     // A repaint rebuilds every primitive, so a live selection has just lost the

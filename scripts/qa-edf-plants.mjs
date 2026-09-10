@@ -14,8 +14,9 @@
  *        one marker, not six stacked on one pixel
  *   ii.  capacity reaches the globe as AREA: Gravelines saturates, Grand-Maison
  *        sits between it and Grandval, read off the rendered primitives — and
- *        each filière is drawn with its OWN silhouette, three rasters for
- *        eleven sites rather than one texture per marker
+ *        each filière is drawn with its OWN silhouette where the silhouette
+ *        fits, four rasters for eleven sites (three shapes plus the plate a
+ *        mark under 20 px keeps whole) rather than one texture per marker
  *   iii. the hydro file's x=latitude convention survives all the way to the
  *        rendered position — Grand-Maison unprojects to 45.15 N 6.05 E, and
  *        every site lands inside metropolitan France
@@ -311,16 +312,38 @@ async function main() {
       probe.points.every((point) => point.pixelSize === point.height),
       probe.points.filter((p) => p.pixelSize !== p.height).map((p) => p.id).join(','));
 
-    // ── ii-bis. one silhouette per filière, one texture per silhouette ─────
-    console.log('[qa] ii-bis. each filière carries its own shape');
+    // ── ii-bis. one silhouette per filière, WHERE THE SILHOUETTE FITS ──────
+    //
+    // Four rasters for eleven sites, and the fourth one is the point: under
+    // 20 px the punch stops being a shape and becomes a stain eating the middle
+    // of the pastille, so a small mark keeps its plate whole. Which of the two a
+    // site draws is decided by ITS OWN capacity, so the scene is the place to
+    // prove the split actually reaches the globe — Bathie (602 MW, 20.4 px) is
+    // punched and Montereau (370 MW, 18.8 px) is not, on the same screen.
+    console.log('[qa] ii-bis. each filière carries its own shape, where it fits');
     const textureOf = (fragment) => probe.points.find((point) => point.id.endsWith(fragment))?.texture;
+    const colorOf = (fragment) => probe.points.find((point) => point.id.endsWith(fragment))?.color;
+    const textures = new Set(probe.points.map((point) => point.texture));
+    check('eleven sites cost four rasters: three silhouettes and one plate',
+      textures.size === 4, `${textures.size} distinct textures`);
     check('the three filières are drawn with three DIFFERENT silhouettes',
-      new Set(probe.points.map((point) => point.texture)).size === 3,
-      `${new Set(probe.points.map((p) => p.texture)).size} distinct textures`);
-    check('two sites of the same filière SHARE one texture',
-      textureOf('hydraulique:RANCE') === textureOf('hydraulique:GRANDVAL')
-      && textureOf('hydraulique:RANCE') !== textureOf('nucleaire:GRAVELINES'),
+      new Set([
+        textureOf('nucleaire:GRAVELINES'),
+        textureOf('hydraulique:GRAND-MAISON'),
+        textureOf('thermique:CORDEMAIS'),
+      ]).size === 3,
+      'a shared silhouette would make the shape channel say nothing');
+    check('two big sites of the same filière SHARE one texture',
+      textureOf('hydraulique:GRAND-MAISON') === textureOf('hydraulique:BATHIE (LA)')
+      && textureOf('hydraulique:GRAND-MAISON') !== textureOf('nucleaire:GRAVELINES'),
       'a texture per site would be a texture per atlas entry');
+    check('a mark too small to hold a hole keeps its plate, whatever it burns',
+      textureOf('hydraulique:GRANDVAL') === textureOf('thermique:MONTEREAU')
+      && textureOf('hydraulique:GRANDVAL') !== textureOf('hydraulique:GRAND-MAISON'),
+      `${textureOf('hydraulique:GRANDVAL')?.slice(-12)} vs ${textureOf('thermique:MONTEREAU')?.slice(-12)}`);
+    check('and it is still told apart by the colour its filière owns',
+      colorOf('hydraulique:GRANDVAL') === HYDRO && colorOf('thermique:MONTEREAU') === THERMAL,
+      `${colorOf('hydraulique:GRANDVAL')} / ${colorOf('thermique:MONTEREAU')}`);
     check('the key carries the same silhouettes it draws',
       probe.controls.legend.length === 3
       && probe.controls.legend.every((entry) => /^data:image\/svg\+xml;base64,/.test(entry.glyph || '')),
