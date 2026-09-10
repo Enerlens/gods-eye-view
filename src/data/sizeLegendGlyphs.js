@@ -2,17 +2,24 @@
  * SIZE-LEGEND GLYPHS — the shapes a size channel needs in a legend.
  *
  * D1 makes a legend mandatory wherever a mark carries a value, and a size with
- * no printed scale is exactly the case D1 is about. `damsPack.js` spends the
- * size channel on a mapped span, and needs two swatches for it: a DISC drawn
- * at the class's real screen diameter, and the HOLLOW RING that A1 reserves
- * for "this was never measured".
+ * no printed scale is exactly the case D1 is about. Two swatches answer it: a
+ * DISC drawn at the class's real screen diameter, and the HOLLOW RING that A1
+ * reserves for "this was never measured".
  *
- * They live here rather than in the pack because any second size legend is
+ * They live here rather than in a pack because any second size legend is
  * rendered into the SAME panel, one under the other. Two private copies would
  * drift the day one of them changed a radius, and the reader would be told
  * that two identical situations are different. A BAR and a FOOTPRINT swatch
  * lived here too, for the airports pack's drawn runway and IGN outline; they
  * went out with those rows.
+ *
+ * THE DISC CURRENTLY HAS NO CALLER, and is kept on purpose. `damsPack.js` was
+ * its only one and stopped printing its four metre bands: the dam card already
+ * prints `1 247 m de long` beside the mark, so a bracket in the key was a
+ * coarser second copy of a number the map gives exactly. The disc is the
+ * general answer for a size ladder whose value ISN'T printed beside the mark,
+ * which is the ordinary case — deleting it would only mean the next pack
+ * writes it again, slightly differently.
  *
  * The panel MASKS these glyphs and paints the row's own colour through them,
  * so only the SHAPE survives. That is deliberate: these rows encode size, and
