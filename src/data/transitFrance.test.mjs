@@ -22,6 +22,7 @@ import transitFranceLayer, {
   transitVehicleGlyphUri,
   transitModeLabel,
   transitVehicleColor,
+  nextRetryDelayMs,
   _clearTransitSelectionForTest,
   _selectTransitVehicleForTest,
   _setTransitStateForTest,
@@ -470,4 +471,22 @@ test('the ambient label carries minutes only when the vehicle is out of the band
   assert.equal(detectionLabelFor({ route: '07', delaySec: 90 }), 'LN 07');
   assert.equal(detectionLabelFor({ route: '07' }), 'LN 07');
   assert.equal(detectionLabelFor({}), 'TRANSIT');
+});
+
+test('a failed load asks again soon, then backs off to the poll cadence', () => {
+  // The number that matters is the FIRST one: a viewport request that fails
+  // used to leave `UNAVAILABLE` on the row until the next fifteen-second poll,
+  // with nothing saying another attempt was coming — which is the window an
+  // operator fills by switching the layer off and on again.
+  assert.equal(nextRetryDelayMs(0), 3_000);
+  assert.equal(nextRetryDelayMs(3_000), 6_000);
+  assert.equal(nextRetryDelayMs(6_000), 12_000);
+  // And it stops there: past the poll's own cadence a retry would only be a
+  // second poll under another name, so a lasting outage is left to the poll.
+  assert.equal(nextRetryDelayMs(12_000), 15_000);
+  assert.equal(nextRetryDelayMs(15_000), 15_000);
+  // A caller with no previous attempt to report, however it says so.
+  assert.equal(nextRetryDelayMs(undefined), 3_000);
+  assert.equal(nextRetryDelayMs(Number.NaN), 3_000);
+  assert.equal(nextRetryDelayMs(-1), 3_000);
 });

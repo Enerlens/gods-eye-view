@@ -21,6 +21,12 @@
  *   vi.  the schedule enrichment survives the round trip — a late vehicle
  *        carries its minutes into the ambient label, and the row says how much
  *        of what is on screen is running behind
+ *   vii. a camera that comes to REST somewhere new re-reads the viewport it
+ *        settled on, even when `camera.changed` never fired for that pose —
+ *        the tail of every eased flight, and the reason arriving somewhere by
+ *        voice used to leave the row explaining the place you had left
+ *   viii.a failed load says another attempt is coming and makes it, instead of
+ *        holding UNAVAILABLE until the next fifteen-second poll
  *
  * Screenshots are written under the gitignored `qa-shots/transit-fr/`.
  *
@@ -58,6 +64,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Bordeaux, where the PAN's densest vehicle-position feed actually runs. */
 const CITY = { lon: -0.5792, lat: 44.8378 };
+
+/** The layer's first retry step after a failed load — see `transitFrance.js`. */
+const RETRY_MIN_MS = 3_000;
 
 const FEED = {
   id: 'pan-83026',
@@ -316,12 +325,33 @@ async function main() {
 
     let payload = vehiclePayload({ includeStale: true });
     let viewportRequests = 0;
+    // The box of every viewport request, so a load can be attributed to the
+    // camera pose that actually asked for it.
+    const viewportBoxes = [];
+    // How many of the next viewport requests answer 503, for the recovery case.
+    let failNextViewportRequests = 0;
     const tripRequests = [];
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const url = new URL(request.url());
       if (url.origin === APP_ORIGIN && url.pathname === '/api/transit-fr/vehicles') {
         viewportRequests += 1;
+        viewportBoxes.push({
+          at: Date.now(),
+          south: Number(url.searchParams.get('south')),
+          west: Number(url.searchParams.get('west')),
+          north: Number(url.searchParams.get('north')),
+          east: Number(url.searchParams.get('east')),
+        });
+        if (failNextViewportRequests > 0) {
+          failNextViewportRequests -= 1;
+          void request.respond({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'Live French transit positions are temporarily unavailable' }),
+          });
+          return;
+        }
         void request.respond({
           status: 200,
           contentType: 'application/json',
@@ -568,6 +598,147 @@ async function main() {
       /\b6 late\b/.test(labelled.label || ''), labelled.label);
     check('and names a cancelled run rather than hiding it',
       /\b1 cancelled\b/.test(labelled.label || ''), labelled.label);
+    // ── vii. arrival: the camera stops, the layer re-reads ────────────────
+    //
+    // WHAT THIS PINS, AND WHY IT IS NOT A FLIGHT. `camera.changed` fires while
+    // the camera MOVES and stops as soon as the motion left falls under
+    // `percentageChanged` — on an eased fly-to, most of a second before the
+    // flight ends (measured Paris → Rouen: last `changed` t=2.5 s, `moveEnd`
+    // t=3.3 s). So the tail of every flight is a camera that moves and comes
+    // to rest with NO `changed` behind it, and until `onCameraSettled` existed
+    // nothing re-read the box it settled on: the row kept the verdict of a
+    // half-way pose — "zoom in to load live transit" over a city, or
+    // UNAVAILABLE — until the next fifteen-second poll. That is the "I arrived
+    // in Rouen and had to switch the layer off and on again" report.
+    //
+    // Flying here would prove nothing: this harness pumps frames every 90 ms,
+    // so `changed` fires on nearly every one of them and the debounce alone
+    // would pass. The tail is reproduced honestly instead — the threshold is
+    // raised so the move is under it, exactly as it is at the end of a real
+    // flight — and the assertion is that the layer asks anyway.
+    console.log('[qa] vii. arrival re-reads the settled viewport');
+    // The manager's fifteen-second poll is stopped for the rest of the run, so
+    // that everything below is attributable to the layer's own triggers and to
+    // nothing else. Both cases exist precisely because waiting for that poll
+    // was the old behaviour; a harness that let it run could pass on it.
+    await page.evaluate(() => {
+      const entry = window.__godsEyeView.dataManager.layers.get('transit-fr');
+      clearInterval(entry.intervalId);
+      entry.intervalId = null;
+    });
+    const arrivalStart = viewportRequests;
+    const arrivalAskedAt = Date.now();
+    await page.evaluate((city) => {
+      const gev = window.__godsEyeView;
+      const camera = gev.viewer.camera;
+      const ellipsoid = gev.viewer.scene.globe?.ellipsoid || gev.viewer.scene.ellipsoid;
+      const d2r = Math.PI / 180;
+      const state = { changed: 0, moveEnd: 0, raises: [], restore: camera.percentageChanged };
+      state.offChanged = camera.changed.addEventListener((amount) => {
+        state.changed += 1;
+        state.raises.push({ amount, threshold: camera.percentageChanged });
+      });
+      state.offEnd = camera.moveEnd.addEventListener(() => { state.moveEnd += 1; });
+      window.__qaSettle = state;
+      // The tail of an eased flight: whatever is left to travel is under the
+      // threshold, so `changed` says nothing about the pose that is reached.
+      camera.percentageChanged = 1e6;
+      // A short hop, for the same reason — what a flight has left to travel
+      // once `changed` goes quiet is metres, not degrees. 0.02 degrees still
+      // moves the request box, which is the whole question.
+      camera.setView({
+        destination: ellipsoid.cartographicToCartesian({
+          longitude: (city.lon + 0.02) * d2r, latitude: city.lat * d2r, height: 9000,
+        }),
+        orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+      });
+    }, CITY);
+    // Frames one round trip at a time, like the rest of this harness: a single
+    // evaluate holding the whole loop outlives `protocolTimeout` on a loaded
+    // machine. The threshold is re-applied on each one because
+    // `percentageChanged` is ONE number shared by the whole app
+    // (`cameraSensitivity.js`), and any layer claiming it mid-case would hand
+    // `changed` its voice back.
+    for (let frame = 0; frame < 24; frame++) {
+      await page.evaluate(() => {
+        try {
+          window.__godsEyeView.viewer.camera.percentageChanged = 1e6;
+          window.__godsEyeView.viewer.scene.render();
+        } catch { /* stalled context */ }
+      });
+      await sleep(80);
+    }
+    const settle = await page.evaluate(() => {
+      const camera = window.__godsEyeView.viewer.camera;
+      const state = window.__qaSettle;
+      state.offChanged();
+      state.offEnd();
+      camera.percentageChanged = state.restore;
+      return { changed: state.changed, moveEnd: state.moveEnd, raises: state.raises };
+    });
+    const arrivalBoxes = viewportBoxes.slice(arrivalStart);
+    const settledCentre = await page.evaluate(() => {
+      const rectangle = window.__godsEyeView.viewer.camera.computeViewRectangle();
+      const deg = (value) => (value * 180) / Math.PI;
+      return {
+        lat: (deg(rectangle.south) + deg(rectangle.north)) / 2,
+        lon: (deg(rectangle.west) + deg(rectangle.east)) / 2,
+      };
+    });
+    check('the camera came to rest without `camera.changed` ever firing',
+      settle.moveEnd > 0 && settle.changed === 0,
+      `changed=${settle.changed} moveEnd=${settle.moveEnd} ${JSON.stringify(settle.raises)}`);
+    // With the poll stopped and `changed` never raised, a request here has
+    // exactly one possible author: the camera coming to rest.
+    check('the layer asked for the viewport anyway, with the poll stopped',
+      arrivalBoxes.length >= 1,
+      `${arrivalBoxes.length} request(s) in ${Date.now() - arrivalAskedAt} ms`);
+    check('and it asked for the box the camera SETTLED on',
+      arrivalBoxes.some((box) => Math.abs((box.west + box.east) / 2 - settledCentre.lon) < 0.05
+        && Math.abs((box.south + box.north) / 2 - settledCentre.lat) < 0.05),
+      `settled ${settledCentre.lon.toFixed(3)},${settledCentre.lat.toFixed(3)} vs `
+      + arrivalBoxes.map((box) => `${((box.west + box.east) / 2).toFixed(3)},${((box.south + box.north) / 2).toFixed(3)}`).join(' '));
+
+    // ── viii. a failed load retries itself ────────────────────────────────
+    //
+    // A viewport request that fails puts UNAVAILABLE on the row. Before the
+    // backoff, the only thing that could clear it was the next fifteen-second
+    // poll — fifteen seconds of a dead-looking layer with nothing saying
+    // another attempt was coming, which is the window an operator fills by
+    // switching the layer off and on again.
+    console.log('[qa] viii. a failed load retries itself');
+    // Let whatever the previous case left in flight land first, so the forced
+    // failure is answered to the request THIS case makes and not to an echo.
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await pump(page, 2, 60);
+      await sleep(300);
+      if (!(await layerProbe(page)).stats.loading) break;
+    }
+    await sleep(1200);
+    failNextViewportRequests = 1;
+    const failedAt = viewportRequests;
+    const brokenAt = Date.now();
+    await page.evaluate(() => window.__godsEyeView.dataManager.refreshLayer?.('transit-fr'));
+    await sleep(600);
+    const broken = await layerProbe(page);
+    check('a failed viewport load reports the fault', broken.stats.status === 'error',
+      `status=${broken.stats.status} error=${broken.stats.error}`);
+    check('and says another attempt is coming', Number(broken.stats.retryInSec) > 0,
+      `retryInSec=${broken.stats.retryInSec}`);
+    let recovered = null;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await pump(page, 2, 60);
+      await sleep(400);
+      recovered = await layerProbe(page);
+      if (recovered.stats.status === 'ok') break;
+    }
+    check('the layer recovers on its own, with no toggle and no poll tick',
+      recovered?.stats.status === 'ok' && viewportRequests > failedAt + 1
+        && Date.now() - brokenAt < 3 * RETRY_MIN_MS,  // 3 s retry + slack, poll stopped
+      `status=${recovered?.stats.status} after ${viewportRequests - failedAt} request(s) `
+      + `in ${Date.now() - brokenAt} ms`);
+    await shoot(page, '05-arrival.png');
+
     // ── console hygiene ────────────────────────────────────────────────────
     const relevant = consoleErrors.filter((entry) => !/favicon|Failed to load resource/i.test(entry));
     check('no console errors from the layer',
