@@ -7377,6 +7377,7 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
 
 #control-panel.collapsed .button-grid,
 #data-panel.collapsed .data-toggle-list,
+#data-panel.collapsed #dataset-plug-panel,
 #global-context-panel.collapsed #radio-panel,
 #global-context-panel.collapsed #military-awareness-panel,
 #global-context-panel.collapsed .global-context-actions,
@@ -10674,33 +10675,93 @@ button.cmp-item-title:hover { color: #fff; text-decoration: underline; }
   .velo-pulse-hud.is-playing .velo-pulse-cursor { transition: none; }
 }
 
-/* ── Brancher un jeu de données — the dataset box under the layer list ──── */
+/* ── Brancher un jeu de données — the dataset box under the layer list ────
+ *
+ * THE ONE RULE THIS BOX OBEYS: the layer list is what the panel is for, and
+ * this box is its guest. The guest costs one slim line at rest, a line plus a
+ * field once opened, and only takes room from the list at `.dsp-deep` — set by
+ * the panel when a shortlist is on screen or a draft is in hand, which is the
+ * moment the reader is demonstrably branching something rather than reading a
+ * button. See the THREE SIZES note in src/data/datasetPlugPanel.js.
+ *
+ * The `[hidden]` line below is load-bearing, not tidiness. Every section in
+ * here is `display: flex`, and a class rule beats the user-agent's
+ * `[hidden] { display: none }` — so without it the form, the empty draft and
+ * its two blank pickers were painted permanently, whatever the JS said: 244 px
+ * of dead form under the layer list, which left exactly one layer row visible
+ * on a 13" laptop. It is the whole reason this box "took too much room".
+ */
+.dsp [hidden] { display: none; }
 .dsp {
-  margin-top: 8px;
-  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  padding-top: 6px;
   border-top: 1px solid var(--glass-border);
   font-family: var(--font-mono);
 }
 .dsp-open {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
-  padding: 6px 10px;
+  padding: 3px 8px;
   font-family: var(--font-mono);
   font-size: 9px;
-  letter-spacing: 1.5px;
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.03);
+  letter-spacing: 1.4px;
+  color: var(--text-dim);
+  background: transparent;
   border: 1px dashed var(--glass-border);
-  border-radius: 6px;
+  border-radius: 5px;
   cursor: pointer;
   transition: all var(--transition-fast);
 }
-.dsp-open:hover, .dsp-open:focus-visible { color: var(--text-primary); border-color: rgba(0, 212, 255, 0.5); outline: none; }
+.dsp-open:hover, .dsp-open:focus-visible { color: var(--text-primary); border-color: rgba(0, 212, 255, 0.5); background: rgba(255, 255, 255, 0.03); outline: none; }
 .dsp-expanded .dsp-open { border-style: solid; border-color: rgba(0, 212, 255, 0.5); color: rgba(170, 252, 255, 0.92); }
-.dsp-open-plus { font-size: 12px; line-height: 1; }
-.dsp-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 4px 2px; }
+.dsp-open-plus { font-size: 11px; line-height: 1; }
+.dsp-open-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsp-open-count { margin-left: auto; color: rgba(0, 212, 255, 0.8); letter-spacing: 0.6px; }
+.dsp-form { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; padding: 8px 4px 2px; }
+/* The scrolling share. Only the results and the draft scroll: the field stays
+   under the reader's hands and the status line stays where it was read. The
+   cap holds on a big screen too, where nothing else would stop a shortlist
+   plus a draft from pushing the layer list off the bottom. */
+.dsp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.5) rgba(255, 255, 255, 0.04);
+  scrollbar-gutter: stable;
+}
+.dsp-body::-webkit-scrollbar { width: 5px; }
+.dsp-body::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.04); border-radius: 999px; }
+.dsp-body::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0, 212, 255, 0.6), rgba(0, 212, 255, 0.2)); border-radius: 999px; }
+/* No content, no gap: an open box with nothing in it is a field and a line. */
+.dsp-body:not(:has(> :not([hidden]))) { display: none; }
+
+/*
+ * The third size. The box stops being content-sized and starts sharing what
+ * is left once the layer list has kept two rows; the overflow scrolls.
+ *
+ * WHY THE FLOOR IS ON THE LIST AND NOT A CAP ON THE BOX. Flexbox shrinks in
+ * proportion to base sizes, and the list's base is its whole 2 635 px of rows
+ * against this box's ~370 — leave both to shrink freely and the list keeps
+ * seven eighths of the overflow, which is the arithmetic that gave the box
+ * nine pixels the first time this was written. Pinning the list's basis to its
+ * floor inverts that: the list freezes at two rows and the remainder is the
+ * box's. A percentage cap was the other candidate and is worse — it would
+ * resolve against the panel's allocated height, and src/ui.js measures that
+ * height FROM this content, so a box sized from the panel and a panel sized
+ * from the box shrink each other one pass at a time.
+ */
+#dataset-plug-panel.dsp-deep { flex: 0 1 auto; min-height: 0; }
+.data-panel-inner:has(#dataset-plug-panel.dsp-deep) .data-toggle-list { flex: 1 1 88px; min-height: 88px; }
 .dsp-row { display: flex; align-items: center; gap: 5px; }
 .dsp-label { flex: 0 0 62px; font-size: 9px; letter-spacing: 0.8px; color: var(--text-dim); text-transform: uppercase; }
 .dsp-input {

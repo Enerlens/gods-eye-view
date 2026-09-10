@@ -31,6 +31,13 @@ Sous la liste des couches, **＋ BRANCHER UN JEU DE DONNÉES**. Un seul champ
 prend les deux, et le bouton dit lequel il a lu : **CHERCHER** pour des mots,
 **ANALYSER** pour une adresse.
 
+La boîte est l'invitée du panneau, pas sa locataire : au repos elle tient sur
+une ligne, un clic n'ouvre que le champ, et elle ne prend de la place aux
+couches qu'à partir du moment où il y a quelque chose à lire — une sélection à
+l'écran, ou un brouillon en main. Même là, la liste garde deux lignes et la
+boîte fait défiler le reste. La refermer rend tout, et ne perd rien : le
+brouillon et la sélection sont encore là au retour.
+
 Un sujet — « défibrillateurs » — ouvre la **sélection**. Les cinq premiers
 résultats de data.gouv.fr sont lus d'un coup, seuls ceux dont un brouillon
 valide sont proposés, et chacun porte quatre faits lus sur la plateforme :

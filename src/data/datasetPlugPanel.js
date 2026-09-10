@@ -26,6 +26,17 @@
  * is not most relevant — the Paris pharmacies are the right answer for someone
  * looking at Paris); or promise persistence the storage refused.
  *
+ * THREE SIZES, AND WHO DECIDES THEM. This box is a guest under the layer list,
+ * and the list is what the panel is for: on a 13" laptop the whole panel gets
+ * about 310 px of body, which is six layer rows. So the box costs one slim
+ * line at rest, grows to a line plus a field when the reader opens it, and
+ * only takes room from the list at the third size — once a shortlist is on
+ * screen or a draft is in hand, which is the point where the reader has proved
+ * they are branching something rather than glancing at a button. Even then the
+ * list keeps a floor of two rows and the box scrolls inside its share; closing
+ * the box gives every pixel straight back, and the shortlist and draft survive
+ * the round trip, so the way back to the layers costs nothing to take.
+ *
  * @module data/datasetPlugPanel
  */
 
@@ -38,7 +49,8 @@ export const DATASET_PLUG_PANEL_ID = 'dataset-plug-panel';
 const MARKUP = `
   <button type="button" class="dsp-open" data-dsp-open aria-expanded="false">
     <span class="dsp-open-plus" aria-hidden="true">＋</span>
-    <span lang="fr">BRANCHER UN JEU DE DONNÉES</span>
+    <span class="dsp-open-label" lang="fr">BRANCHER UN JEU DE DONNÉES</span>
+    <span class="dsp-open-count" data-dsp-count hidden></span>
   </button>
   <form class="dsp-form" data-dsp-form hidden autocomplete="off">
     <div class="dsp-row">
@@ -46,35 +58,40 @@ const MARKUP = `
              placeholder="Un sujet — « défibrillateurs » — ou une adresse…" />
       <button type="submit" class="dsp-btn dsp-btn-primary" data-dsp-analyse>CHERCHER</button>
     </div>
-    <section class="dsp-results" data-dsp-results hidden>
-      <ul class="dsp-cands" data-dsp-candidates></ul>
-      <p class="dsp-aside" data-dsp-blocked hidden></p>
-    </section>
-    <section class="dsp-draft" data-dsp-draft hidden>
-      <div class="dsp-row">
-        <label class="dsp-label">Nom</label>
-        <input type="text" class="dsp-input dsp-grow" data-dsp-label maxlength="64" />
-        <input type="color" class="dsp-color" data-dsp-color title="Couleur des marques" />
-      </div>
-      <div class="dsp-row" data-dsp-resources-row hidden>
-        <label class="dsp-label">Ressource</label>
-        <select class="dsp-input dsp-grow" data-dsp-resource></select>
-      </div>
-      <div class="dsp-row" data-dsp-geometry-row hidden>
-        <label class="dsp-label">Position</label>
-        <select class="dsp-input dsp-narrow" data-dsp-lon><option value="">longitude…</option></select>
-        <select class="dsp-input dsp-narrow" data-dsp-lat><option value="">latitude…</option></select>
-      </div>
-      <dl class="dsp-facts" data-dsp-facts></dl>
-      <ul class="dsp-notes" data-dsp-notes></ul>
-      <div class="dsp-row dsp-actions">
-        <button type="button" class="dsp-btn dsp-btn-primary" data-dsp-plug>BRANCHER</button>
-        <button type="button" class="dsp-btn" data-dsp-cancel>ANNULER</button>
-      </div>
-    </section>
+    <div class="dsp-body" data-dsp-body>
+      <section class="dsp-results" data-dsp-results hidden>
+        <ul class="dsp-cands" data-dsp-candidates></ul>
+        <p class="dsp-aside" data-dsp-blocked hidden></p>
+      </section>
+      <section class="dsp-draft" data-dsp-draft hidden>
+        <div class="dsp-row">
+          <label class="dsp-label">Nom</label>
+          <input type="text" class="dsp-input dsp-grow" data-dsp-label maxlength="64" />
+          <input type="color" class="dsp-color" data-dsp-color title="Couleur des marques" />
+        </div>
+        <div class="dsp-row" data-dsp-resources-row hidden>
+          <label class="dsp-label">Ressource</label>
+          <select class="dsp-input dsp-grow" data-dsp-resource></select>
+        </div>
+        <div class="dsp-row" data-dsp-geometry-row hidden>
+          <label class="dsp-label">Position</label>
+          <select class="dsp-input dsp-narrow" data-dsp-lon><option value="">longitude…</option></select>
+          <select class="dsp-input dsp-narrow" data-dsp-lat><option value="">latitude…</option></select>
+        </div>
+        <dl class="dsp-facts" data-dsp-facts></dl>
+        <ul class="dsp-notes" data-dsp-notes></ul>
+      </section>
+      <ul class="dsp-list" data-dsp-list></ul>
+    </div>
+    <!-- Outside the scroller on purpose: the draft is taller than the box's
+         share of a 13" panel, and a BRANCHER the reader has to go looking for
+         is a BRANCHER they can miss. -->
+    <div class="dsp-row dsp-actions" data-dsp-actions hidden>
+      <button type="button" class="dsp-btn dsp-btn-primary" data-dsp-plug>BRANCHER</button>
+      <button type="button" class="dsp-btn" data-dsp-cancel>ANNULER</button>
+    </div>
     <p class="dsp-status" data-dsp-status role="status" aria-live="polite"></p>
   </form>
-  <ul class="dsp-list" data-dsp-list></ul>
 `;
 
 function canMount() {
@@ -115,6 +132,8 @@ export function mountDatasetPlugPanel(box, { host = null } = {}) {
 
   const node = (selector) => panel.querySelector(selector);
   const openButton = node('[data-dsp-open]');
+  const openGlyph = node('.dsp-open-plus');
+  const openCount = node('[data-dsp-count]');
   const form = node('[data-dsp-form]');
   const urlInput = node('[data-dsp-url]');
   const analyseButton = node('[data-dsp-analyse]');
@@ -131,9 +150,11 @@ export function mountDatasetPlugPanel(box, { host = null } = {}) {
   const latSelect = node('[data-dsp-lat]');
   const facts = node('[data-dsp-facts]');
   const notes = node('[data-dsp-notes]');
+  const actionsRow = node('[data-dsp-actions]');
   const plugButton = node('[data-dsp-plug]');
   const cancelButton = node('[data-dsp-cancel]');
   const status = node('[data-dsp-status]');
+  const scroller = node('[data-dsp-body]');
   const list = node('[data-dsp-list]');
 
   let draft = null;
@@ -197,10 +218,28 @@ export function mountDatasetPlugPanel(box, { host = null } = {}) {
   });
 
   function setOpen(open) {
+    // Closing hides, it does not clear: the shortlist and the draft are still
+    // in the DOM when the reader comes back, so going to look at the layer
+    // list is not a decision to start over.
     form.hidden = !open;
     openButton.setAttribute('aria-expanded', open ? 'true' : 'false');
     panel.classList.toggle('dsp-expanded', open);
+    openGlyph.textContent = open ? '－' : '＋';
+    openButton.title = open ? 'Fermer et rendre la place aux couches' : 'Ajouter un jeu de données au globe';
     if (open) urlInput?.focus();
+    syncDepth();
+  }
+
+  /**
+   * The third size, and the only one that costs the layer list anything.
+   *
+   * A click on the opener is not proof of anything — it is how you read the
+   * field. A shortlist on screen or a draft in hand is proof, so that is what
+   * the class is keyed to, and it goes away the moment either does.
+   */
+  function syncDepth() {
+    const working = !form.hidden && (!resultsSection.hidden || !draftSection.hidden);
+    panel.classList.toggle('dsp-deep', working);
   }
 
   function fillSelect(select, columns, chosen, placeholder) {
@@ -245,7 +284,7 @@ export function mountDatasetPlugPanel(box, { host = null } = {}) {
   function renderDraft() {
     facts.replaceChildren();
     notes.replaceChildren();
-    if (!draft) { draftSection.hidden = true; return; }
+    if (!draft) { draftSection.hidden = true; actionsRow.hidden = true; syncDepth(); return; }
     const { manifest, columns, sample, resources, total } = draft;
     labelInput.value = manifest.label || '';
     colorInput.value = manifest.color || '#ffb14e';
@@ -293,6 +332,8 @@ export function mountDatasetPlugPanel(box, { host = null } = {}) {
       notes.appendChild(li);
     }
     draftSection.hidden = false;
+    actionsRow.hidden = false;
+    syncDepth();
     syncFaults();
   }
 
@@ -316,6 +357,7 @@ export function mountDatasetPlugPanel(box, { host = null } = {}) {
     blockedLine.textContent = '';
     blockedLine.hidden = true;
     resultsSection.hidden = true;
+    syncDepth();
   }
 
   /**
@@ -325,6 +367,7 @@ export function mountDatasetPlugPanel(box, { host = null } = {}) {
    */
   function renderCandidates(shortlist) {
     candidateList.replaceChildren();
+    if (scroller) scroller.scrollTop = 0;
     for (const entry of shortlist.ready) {
       const li = document.createElement('li');
       li.className = 'dsp-cand';
@@ -355,6 +398,7 @@ export function mountDatasetPlugPanel(box, { host = null } = {}) {
       blockedLine.hidden = true;
     }
     resultsSection.hidden = shortlist.ready.length === 0 && shortlist.blocked.length === 0;
+    syncDepth();
   }
 
   function markChosen() {
@@ -369,6 +413,10 @@ export function mountDatasetPlugPanel(box, { host = null } = {}) {
     chosenSlug = entry.slug;
     markChosen();
     renderDraft();
+    // The draft opens BELOW the shortlist, and at the third size the shortlist
+    // alone can fill the box. Without this, choosing a candidate looks like
+    // pressing a button that does nothing.
+    draftSection.scrollIntoView({ block: 'nearest' });
     say(draft.faults.length
       ? `À compléter : ${draft.faults[0]}`
       : `« ${entry.title} » — vérifiez, puis BRANCHER pour le voir sur le globe.`);
@@ -459,6 +507,11 @@ export function mountDatasetPlugPanel(box, { host = null } = {}) {
     list.replaceChildren();
     const entries = box.list().filter((entry) => entry.origin === 'plugged');
     list.hidden = entries.length === 0;
+    // The branched datasets already have their own rows in the layer list, up
+    // in JEUX BRANCHÉS. What only lives here is the manifest and the ✕, so the
+    // resting line carries the count and the rows wait inside.
+    openCount.textContent = entries.length ? `· ${entries.length}` : '';
+    openCount.hidden = entries.length === 0;
     for (const entry of entries) {
       const li = document.createElement('li');
       li.className = 'dsp-item';

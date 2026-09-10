@@ -40,6 +40,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   navale 3, champ de tir 2, terrain militaire 39.
 
 ### Changed
+- **« Brancher un jeu de données » rendait la liste des couches inutilisable :
+  244 px de formulaire mort pour 51 px de couches, une ligne visible sur 39.**
+  Mesuré le 2026-09-10 sur un viewport de MacBook Air (1440×820), là où le
+  panneau DATA LAYERS ne reçoit que 367 px de couloir. La boîte se croyait
+  fermée — `form.hidden = true` au démarrage, et rien dans le JS ne disait le
+  contraire — mais chacune de ses sections est posée en `display: flex` par une
+  règle de classe, et une règle de classe l'emporte sur le `[hidden]
+  { display: none }` du navigateur. Le champ de recherche, une carte de
+  brouillon VIDE et ses deux sélecteurs de colonnes sans option étaient donc
+  peints en permanence, sous la liste qu'ils écrasaient. La faute n'existait
+  dans aucun des deux fichiers, seulement dans la cascade entre les deux ;
+  `src/data/datasetPlugPanelLayout.test.mjs` compare désormais les spécificités
+  et échoue si une règle de `display` repasse devant.
+
+  **La boîte a trois tailles, et seule la troisième coûte quelque chose à la
+  liste.** Au repos, une ligne fine de 27 px : la liste garde 270 px, quatre
+  lignes de couches entières au lieu d'une. Ouverte d'un clic, 78 px — le champ
+  et rien d'autre, parce qu'un clic sur un bouton n'est pas la preuve qu'on
+  branche quoi que ce soit. La troisième taille n'arrive qu'avec une preuve :
+  une liste de candidats à l'écran, ou un brouillon en main. Là seulement la
+  boîte prend 209 px et fait défiler ses 530 px de contenu, et la liste des
+  couches conserve un plancher de 88 px. Sur un écran de 1920×1200 les mêmes
+  règles donnent 601 px de couches au repos (huit lignes) et 243 px pendant le
+  travail. Refermer rend tout, immédiatement : le brouillon et les candidats
+  survivent à l'aller-retour, donc aller regarder ses couches ne coûte rien.
+
+  **Trois conséquences plus petites, du même diagnostic.** BRANCHER et ANNULER
+  sortent de la zone défilante — le brouillon est plus haut que la part de
+  boîte d'un panneau de 13 pouces, et un bouton qu'il faut aller chercher est
+  un bouton qu'on rate. La boîte disparaît quand on replie DATA LAYERS, ce
+  qu'elle ne faisait pas. Et les jeux déjà branchés, qui ont leur propre ligne
+  dans la liste sous JEUX BRANCHÉS, ne sont plus répétés au repos : leur nombre
+  passe en bout de la ligne d'ouverture, les rangs avec le manifeste et la
+  croix attendent à l'intérieur.
 - **La reconstitution du mégafeu ne déclare plus le feu terminé : ses deux bouts
   nomment une détection.** Le curseur affichait `■ 1ᵉʳ août 12:44 UTC · fin de
   l'événement`, et la clé sous cette ligne ajoutait « le feu est éteint depuis le
