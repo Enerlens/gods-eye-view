@@ -82,14 +82,28 @@ export const GBFS_LICENCE_LABELS = Object.freeze({
  * Display vehicle kinds. Derived from the GBFS `form_factor` +
  * `propulsion_type` pair, which is the only place the spec states what a
  * vehicle physically is.
+ *
+ * `scooter` is the GBFS kick-scooter — a trottinette — and `moped` is the
+ * seated one. The two words are false friends across the Channel and the
+ * silhouettes on screen differ, so the labels must not swap them.
  */
 export const VEHICLE_KIND_LABELS = Object.freeze({
-  bike: 'Bike',
-  ebike: 'E-bike',
-  scooter: 'Scooter',
-  moped: 'Moped',
-  car: 'Car',
-  other: 'Other',
+  bike: 'Vélo',
+  ebike: 'VAE',
+  scooter: 'Trottinette',
+  moped: 'Scooter',
+  car: 'Voiture',
+  other: 'Véhicule',
+});
+
+/** Plural forms. `VAE` is an acronym and stays invariable. */
+export const VEHICLE_KIND_PLURALS = Object.freeze({
+  bike: 'Vélos',
+  ebike: 'VAE',
+  scooter: 'Trottinettes',
+  moped: 'Scooters',
+  car: 'Voitures',
+  other: 'Véhicules',
 });
 
 /**

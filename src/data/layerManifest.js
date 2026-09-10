@@ -318,7 +318,7 @@ export const LAYER_MANIFEST = Object.freeze([
   }),
   Object.freeze({
     id: 'shared-mobility-fr',
-    name: 'Shared Mobility FR',
+    name: 'Véhicules partagés (FR)',
     icon: '🛴',
     source: 'transport.data.gouv.fr',
     capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
