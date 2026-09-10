@@ -631,7 +631,7 @@ async function main() {
     const wideClick = await cardFor(page, 'idfm:stop:23613');
     const wideCard = String(wideClick?.copy || '');
     check('and a click up here BUYS the profile instead of quoting the altitude',
-      wideClick?.probe === 'ok' && /départs\/h/.test(wideCard)
+      wideClick?.probe === 'ok' && /par heure ici/.test(wideCard)
       && !/altitude|approchez/.test(wideCard),
       `probe=${wideClick?.probe} · ${wideCard.split('\n').slice(1).join(' | ')}`);
     // At most one, not exactly one: a probe keeps every profile its box paid
