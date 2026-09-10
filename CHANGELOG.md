@@ -107,6 +107,66 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   constellation large bande viendrait rejoindre le jour où le mode en chargerait
   une autre que Starlink.
 
+### Added
+- **Le mégafeu de Gironde prend feu : des panaches de flamme et de fumée là où
+  FIRMS a vu brûler, et qui marchent avec le front.** La reconstitution montrait
+  cinq périmètres, des fronts, des flammes photo-interprétées et 9 524 points
+  chauds. Tout était juste et rien ne brûlait : à l'écran, un incendie de
+  37 191 ha était un aplat rouge.
+
+  **Ce qui est mesuré, et ce qui est dessiné — la distinction est dans la
+  légende, pas seulement dans le code.** Un panache ne se dresse que là où NASA
+  FIRMS a relevé une anomalie thermique dans les **12 h** précédant le curseur,
+  à l'intensité de la puissance radiative du groupe, et jamais sous le premier
+  barreau de l'échelle FRP du pack (10 MW) — ce plancher est ce qui laisse
+  l'image de clôture parfaitement calme, le feu ayant été déclaré éteint. Et il
+  penche dans la direction où le feu a **réellement progressé** entre deux
+  images Copernicus, relevée sur le déplacement des flammes photo-interprétées :
+  c'est-à-dire sous le vent, sans jamais consulter un modèle de vent. Hauteur de
+  colonne, taille des bouffées, vitesse d'ascension et de dérive sont un rendu,
+  et la clé de carte porte la ligne « colonne de fumée — rendu, non mesuré » à
+  côté des polygones qui, eux, ont été tracés à la main sur des images à 30 cm.
+
+  **`Cesium.ParticleSystem` ne pouvait pas servir.** Il tire son delta de
+  `frameState.time`, donc de `viewer.clock`, que cette application n'anime
+  jamais — mode requête, zéro tic mesuré en une minute. Un système de particules
+  posé ici émet une fois puis se fige. Le champ est donc roulé à la main sur un
+  delta `performance.now()`, dans **une seule** `BillboardCollection` par
+  matière : six panaches coûtent un lot de dessin au lieu de douze, et toute la
+  simulation se teste dans Node sans GPU.
+
+  **Un feu n'est pas gratuit, et il est borné par trois portes.** Des particules
+  animées exigent une image par image, donc le gouverneur de rendu est tenu
+  ouvert — la couche s'éteint dès que l'une des trois se ferme : plus de
+  détection fraîche sous le curseur, caméra à plus de 400 km, ou profil `lite`,
+  qui divise le nombre de panaches **et** le débit d'émission derrière chacun.
+  La couche s'ouvrant sur l'image de clôture, l'allumer ne coûte rien tant que
+  le lecteur n'a pas rejoué le feu.
+
+### Fixed
+- **La lecture du mégafeu disait enfin où elle en est, et qu'elle est finie.**
+  Trois défauts signalés d'une seule voix — « je ne sais pas trop où j'en suis
+  quand j'appuie sur play, et une fois la simulation faite le bouton reste sur
+  pause ».
+
+  La ligne de la couche et la clé de carte portent désormais l'instant sous le
+  curseur et le jour où il tombe (`▶ 26 juil. 04:12 UTC · jour 4 sur 10`), et la
+  bande des cinq puces — déjà dans l'ordre chronologique — allume celle de
+  l'image tenue pendant la lecture : elle devient la barre d'avancement qui
+  manquait, pour le prix d'une classe CSS. Le bouton distingue enfin **trois**
+  états d'arrêt au lieu d'un : `▶ Jouer` avant le départ, `▶ Reprendre` à
+  l'arrêt en cours de route, `↺ Rejouer` une fois la fenêtre parcourue.
+
+  **La cause du bouton figé n'était pas dans la couche.** Les panneaux sont
+  construits une seule fois, au démarrage, et à ce moment-là chaque couche est
+  une **souche paresseuse** qui n'expose pas `setRowControlsListener` — l'appel
+  optionnel du gestionnaire ne faisait donc rien, en silence, et le vrai module
+  n'apparaît qu'au premier allumage. Conséquence : **aucune couche paresseuse du
+  dépôt ne pouvait repeindre sa propre ligne**. Le rappel est maintenant
+  réinstallé juste après `init()`, quand le module existe. Même forme de défaut
+  que le conteneur de puces corrigé la veille, et pour la même raison de fond :
+  une ligne est construite contre une souche et vit contre un module.
+
 ## [Unreleased] — 2026-09-09
 
 ### Added

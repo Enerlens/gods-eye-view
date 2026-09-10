@@ -70,6 +70,7 @@ export const MEGAFIRE_FADE_HOURS = 6;
 export const MEGAFIRE_EMBER_FLOOR = 0.18;
 
 const HOUR_MS = 3600_000;
+const DAY_MS = 24 * HOUR_MS;
 
 /**
  * Create a cursor over the event window.
@@ -170,17 +171,68 @@ export function seekMegafireClock(clock, instantMs) {
  * @param {ReturnType<createMegafireClock>} clock
  * @param {ReadonlyArray<{acq: string}>} [steps] - Defaults to {@link MEGAFIRE_STEPS}.
  * @returns {{cursorMs: number, progress: number, stepIndex: ?number,
- *   playing: boolean, atEnd: boolean}}
+ *   playing: boolean, atEnd: boolean, atStart: boolean, day: number,
+ *   days: number}}
  */
 export function megafireClockState(clock, steps = MEGAFIRE_STEPS) {
   const span = clock.endMs - clock.startMs;
+  const progress = span > 0 ? (clock.cursorMs - clock.startMs) / span : 1;
+  const days = megafireWindowDays(clock);
   return {
     cursorMs: clock.cursorMs,
-    progress: span > 0 ? (clock.cursorMs - clock.startMs) / span : 1,
+    progress,
     stepIndex: megafireStepAt(clock.cursorMs, steps),
     playing: Boolean(clock.playing),
     atEnd: clock.cursorMs >= clock.endMs,
+    // `atStart` is not `!atEnd`. Three states have to be told apart on one
+    // button — never played, stopped halfway, finished — because the gesture
+    // means something different in each, and a play control that reads the
+    // same in all three is the defect this window was reported with.
+    atStart: clock.cursorMs <= clock.startMs,
+    day: Math.min(days, Math.floor((clock.cursorMs - clock.startMs) / DAY_MS) + 1),
+    days,
   };
+}
+
+/**
+ * Whole days spanned by the window. 10 for the shipped pack.
+ *
+ * ROUNDED, not ceiled: 22 July 11:55 to 1 August 12:44 is ten days and
+ * forty-nine minutes, and "jour 4 sur 11" for a fire everything else in this
+ * layer calls a ten-day event would be a denominator the reader has to
+ * reconcile. The last day absorbs the remainder instead, which is what
+ * {@link megafireClockState} clamps `day` for.
+ * @param {{startMs: number, endMs: number}} clock
+ * @returns {number} Days, at least 1.
+ */
+export function megafireWindowDays(clock) {
+  const span = (clock?.endMs ?? 0) - (clock?.startMs ?? 0);
+  return Math.max(1, Math.round(span / DAY_MS));
+}
+
+/**
+ * The one line that says where the cursor is — the instant, the day, and
+ * whether anything is moving.
+ *
+ * WHY THIS EXISTS. The layer shipped with the cursor readable in exactly two
+ * places: a chip tooltip, and a `getStats()` field nothing rendered. Pressing
+ * play therefore ran ten days of fire past a reader with no clock anywhere on
+ * screen, and the reported symptom was the honest one — "I do not know where I
+ * am". An instant alone would not have fixed it either: `26 juil. 04:12 UTC` is
+ * only meaningful to somebody who already knows the window runs from the 22nd
+ * to the 1st, which is precisely what a first-time reader does not know. So the
+ * line carries the position IN the window as well.
+ *
+ * @param {ReturnType<createMegafireClock>} clock
+ * @param {ReturnType<megafireClockState>} state
+ * @returns {string} e.g. `▶ 26 juil. 04:12 UTC · jour 4 sur 10`.
+ */
+export function megafireCursorReadout(clock, state) {
+  const instant = megafireCursorLabel(state.cursorMs);
+  if (state.playing) return `▶ ${instant} · jour ${state.day} sur ${state.days}`;
+  if (state.atEnd) return `■ ${instant} · fin de l’événement`;
+  if (state.atStart) return `▶ ${instant} · départ de l’incendie`;
+  return `❚❚ ${instant} · jour ${state.day} sur ${state.days}`;
 }
 
 /**

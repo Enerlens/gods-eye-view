@@ -15,7 +15,9 @@ import {
   createMegafireClock,
   megafireClockState,
   megafireCursorLabel,
+  megafireCursorReadout,
   megafireEmberStrength,
+  megafireWindowDays,
   seekMegafireClock,
   setMegafirePlaying,
 } from './megafireClock.js';
@@ -156,5 +158,85 @@ test('the cursor label is UTC, French, and matches the pack', () => {
   // zone — if one drifts, a chip and the card disagree about the same instant.
   for (const step of MEGAFIRE_STEPS) {
     assert.equal(megafireCursorLabel(Date.parse(step.acq)), `${step.label} UTC`);
+  }
+});
+
+test('the window is ten days, not eleven', () => {
+  // 22 July 11:55 to 1 August 12:44 is ten days and forty-nine minutes. Ceiling
+  // it would print "jour 4 sur 11" under a layer that calls this a ten-day
+  // event everywhere else.
+  const clock = createMegafireClock({
+    startMs: Date.parse('2026-07-22T11:55:00Z'),
+    endMs: Date.parse('2026-08-01T12:44:00Z'),
+  });
+  assert.equal(megafireWindowDays(clock), 10);
+  // The remainder is absorbed by the last day rather than opening an eleventh.
+  assert.equal(megafireClockState(clock).day, 10);
+  assert.equal(megafireClockState(clock).days, 10);
+});
+
+test('the day number counts from the first hour of the window', () => {
+  const clock = createMegafireClock({
+    startMs: Date.parse('2026-07-22T11:55:00Z'),
+    endMs: Date.parse('2026-08-01T12:44:00Z'),
+  });
+  const dayAt = (iso) => {
+    seekMegafireClock(clock, Date.parse(iso));
+    return megafireClockState(clock).day;
+  };
+  assert.equal(dayAt('2026-07-22T11:55:00Z'), 1);
+  assert.equal(dayAt('2026-07-23T11:54:00Z'), 1, 'still the first day, one minute short');
+  assert.equal(dayAt('2026-07-23T11:56:00Z'), 2);
+  assert.equal(dayAt('2026-07-24T09:05:00Z'), 2, 'the first Copernicus frame');
+  assert.equal(dayAt('2026-08-01T11:38:00Z'), 10);
+});
+
+test('three stopped states are told apart, because the same button serves all three', () => {
+  const clock = createMegafireClock({
+    startMs: Date.parse('2026-07-22T11:55:00Z'),
+    endMs: Date.parse('2026-08-01T12:44:00Z'),
+  });
+  // The layer opens parked on the closing frame.
+  let state = megafireClockState(clock);
+  assert.equal(state.atEnd, true);
+  assert.equal(state.atStart, false);
+  assert.equal(state.playing, false);
+
+  seekMegafireClock(clock, Date.parse('2026-07-26T04:12:00Z'));
+  state = megafireClockState(clock);
+  assert.equal(state.atEnd, false);
+  assert.equal(state.atStart, false);
+
+  seekMegafireClock(clock, Date.parse('2026-07-22T11:55:00Z'));
+  state = megafireClockState(clock);
+  assert.equal(state.atStart, true);
+  assert.equal(state.atEnd, false);
+});
+
+test('the readout says the instant, the day, and whether anything is moving', () => {
+  const clock = createMegafireClock({
+    startMs: Date.parse('2026-07-22T11:55:00Z'),
+    endMs: Date.parse('2026-08-01T12:44:00Z'),
+  });
+  const readout = () => megafireCursorReadout(clock, megafireClockState(clock));
+
+  // Parked on the closing frame — the state the layer opens in. This must NOT
+  // read like a paused run: it is the end of the event.
+  assert.equal(readout(), '■ 1ᵉʳ août 12:44 UTC · fin de l’événement');
+
+  seekMegafireClock(clock, Date.parse('2026-07-26T04:12:00Z'));
+  assert.equal(readout(), '❚❚ 26 juil. 04:12 UTC · jour 4 sur 10');
+
+  clock.playing = true;
+  assert.equal(readout(), '▶ 26 juil. 04:12 UTC · jour 4 sur 10');
+
+  seekMegafireClock(clock, clock.startMs);
+  assert.equal(readout(), '▶ 22 juil. 11:55 UTC · départ de l’incendie');
+
+  // Every reading carries the instant, so the row and the tooltip can never
+  // disagree about where the cursor is.
+  for (const iso of ['2026-07-24T09:05:00Z', '2026-07-29T14:07:00Z']) {
+    seekMegafireClock(clock, Date.parse(iso));
+    assert.ok(readout().includes(megafireCursorLabel(Date.parse(iso))));
   }
 });

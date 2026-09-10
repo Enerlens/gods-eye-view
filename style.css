@@ -6322,6 +6322,32 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   opacity: 1;
 }
 
+/* A chip the reader did not press and is not being invited to press YET: the
+   frame a running replay is currently holding. It has to be legible as "you
+   are here" without being legible as "this is selected", because the moment
+   playback stops the SAME chip becomes `.active` and the difference between
+   the two states is what tells a reader whether the tape is still running.
+   Hence a dimmed accent and a marker on the left edge rather than the filled
+   pill `.active` gets. The five step chips are in chronological order, so this
+   turns the strip into the progress bar the layer had no room for. */
+.data-toggle-chip.chip-passing {
+  color: var(--accent);
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .data-toggle-chip.chip-passing {
+    animation: chip-passing-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes chip-passing-pulse {
+  0%, 100% { border-color: rgba(255, 255, 255, 0.14); }
+  50% { border-color: var(--accent); }
+}
+
 /* An option published by a COMPANION, not by the row's own layer. The marker
    is a left edge rather than a colour: the strip can hold three companions,
    and three hues would be a legend nobody was given. Which layer it steers is
