@@ -21,12 +21,18 @@ import sharedMobilityFranceLayer, {
   stationColor,
   stationPointSize,
   vehicleKindLabel,
+  matchesKindFilter,
+  stationHoldsBikes,
   _clearSharedMobilitySelectionForTest,
+  _reanchorSharedMobilityForTest,
   _selectSharedMobilityObjectForTest,
+  _setSharedMobilityPayloadForTest,
   _setSharedMobilityStateForTest,
+  SHARED_MOBILITY_KIND_FILTERS,
   SHARED_MOBILITY_FR_OVERLAY_SOURCE_ID,
   SHARED_MOBILITY_FR_OVERLAY_SOURCE_OPTIONS,
 } from './sharedMobilityFrance.js';
+import { reportMeshFloorCell, setMeshFloorPreferred } from './groundFloor.js';
 import { GBFS_MAX_BOX_DEG } from './gbfsFeeds.js';
 import { resolveMobilityOperator } from './mobilityOperators.js';
 import { sharedMobilityGlyph } from './sharedMobilityIcons.js';
@@ -239,7 +245,9 @@ test('the row legend carries both channels — shapes, then the operators in vie
     ],
   });
   const { legend, chips } = sharedMobilityFranceLayer.getRowControls();
-  assert.deepEqual(chips, []);
+  // The strip carries the two halves of the fleet and nothing else; what each
+  // one holds is pinned by the filter tests below.
+  assert.deepEqual(chips.map((chip) => chip.id), ['velo', 'autres']);
   assert.deepEqual(legend.map((item) => [item.label, item.count]), [
     // What is on screen, by kind...
     ['E-bike', 2], ['Scooter', 2], ['Stations', 1],
@@ -294,5 +302,128 @@ test('a crowded viewport names six operators and declares the tail it did not na
   assert.match(tail.blurb, /Cityscoot/);
   assert.match(tail.blurb, /YEGO/);
 
+  _setSharedMobilityStateForTest({ viewer: null, records: [] });
+});
+
+// --- The two halves of the fleet --------------------------------------------
+
+/** Puts the layer back on the whole fleet, whatever a test before it pressed. */
+function clearKindFilter() {
+  _setSharedMobilityPayloadForTest(null);
+  sharedMobilityFranceLayer.setParams({ kinds: 'all' });
+  _setSharedMobilityStateForTest({ viewer: null, records: [] });
+}
+
+test('the two chips PARTITION the fleet — every kind lands on exactly one side', () => {
+  const kinds = ['bike', 'ebike', 'scooter', 'moped', 'car', 'other'];
+  for (const kind of kinds) {
+    const sides = SHARED_MOBILITY_KIND_FILTERS
+      .filter((filter) => matchesKindFilter(filter.id, 'vehicle', { kind }));
+    assert.equal(sides.length, 1, `${kind} belongs to exactly one chip`);
+  }
+  assert.deepEqual(
+    kinds.filter((kind) => matchesKindFilter('velo', 'vehicle', { kind })),
+    ['bike', 'ebike'],
+    'a VAE is a bike: the chip named "Vélos" cannot hide half of them',
+  );
+  // No filter is not a third state to test for — it keeps everything.
+  assert.ok(matchesKindFilter(null, 'vehicle', { kind: 'car' }));
+  assert.ok(matchesKindFilter(null, 'station', { byKind: { car: 3 } }));
+});
+
+test('a station is filed by what it holds, and an unreadable inventory reads as bikes', () => {
+  assert.equal(stationHoldsBikes({ byKind: { bike: 5, ebike: 2 } }), true);
+  assert.equal(stationHoldsBikes({ byKind: { ebike: 4 } }), true);
+  assert.equal(stationHoldsBikes({ byKind: { car: 3 } }), false);
+  assert.equal(stationHoldsBikes({ byKind: { scooter: 2, moped: 1 } }), false);
+  // A dock whose bike count is zero still HOLDS bikes — it is empty, not a
+  // car park, and the split is about what a place is for.
+  assert.equal(stationHoldsBikes({ byKind: { bike: 0, car: 2 } }), false,
+    'nothing recognisable AND a car declared: the car wins');
+  // GBFS 3.0 publishes the system\'s own opaque vehicle_type_ids here, which
+  // this layer cannot resolve — so does a feed with no breakdown at all. Both
+  // fall back to the spec default: a system with no vehicle types runs bikes.
+  assert.equal(stationHoldsBikes({ byKind: { 'vt-9f3a': 12 } }), true);
+  assert.equal(stationHoldsBikes({ byKind: null }), true);
+  assert.equal(stationHoldsBikes({}), true);
+});
+
+test('pressing a chip lights it, pressing it again releases the filter', () => {
+  clearKindFilter();
+  assert.deepEqual(
+    sharedMobilityFranceLayer.getRowControls().chips.map((chip) => chip.active),
+    [false, false],
+    'neither lit is how an unfiltered row reads',
+  );
+
+  assert.equal(sharedMobilityFranceLayer.setParams({ kinds: 'velo' }), true);
+  assert.deepEqual(sharedMobilityFranceLayer.getParams(), { kinds: 'velo' });
+  const lit = sharedMobilityFranceLayer.getRowControls().chips;
+  assert.deepEqual(lit.map((chip) => chip.active), [true, false]);
+  assert.equal(lit[0].state, 'active');
+  assert.match(lit[0].title, /Appuyer à nouveau/, 'the way back is written on the chip');
+  assert.equal(lit[0].disabled, false, 'the lit chip is never the one refused');
+  // The release is a VALUE, not a repeat: re-applying `velo` (a replayed
+  // params intent, a lazy stub flushing its buffer) must not flip the filter
+  // off behind the reader.
+  assert.deepEqual(lit[0].params, { kinds: 'all' });
+  assert.equal(sharedMobilityFranceLayer.setParams({ kinds: 'velo' }), false);
+  assert.deepEqual(sharedMobilityFranceLayer.getParams(), { kinds: 'velo' });
+
+  assert.equal(sharedMobilityFranceLayer.setParams(lit[0].params), true);
+  assert.deepEqual(sharedMobilityFranceLayer.getParams(), { kinds: null });
+
+  assert.equal(sharedMobilityFranceLayer.setParams({ kinds: 'trottinettes' }), false,
+    'an id no chip publishes changes nothing');
+  assert.equal(sharedMobilityFranceLayer.setParams({}), false);
+  assert.deepEqual(sharedMobilityFranceLayer.getParams(), { kinds: null });
+  clearKindFilter();
+});
+
+test('a chip counts the half it would hide, and refuses to blank the map', () => {
+  clearKindFilter();
+  _setSharedMobilityPayloadForTest({
+    stations: [{ id: 's1', byKind: { bike: 4 } }, { id: 's2', byKind: { bike: 1 } }],
+    vehicles: [{ id: 'v1', kind: 'ebike' }, { id: 'v2', kind: 'bike' }, { id: 'v3', kind: 'bike' }],
+    systems: [],
+  });
+  const [velo, autres] = sharedMobilityFranceLayer.getRowControls().chips;
+  assert.match(velo.title, /5 objets sur 5/);
+  assert.equal(velo.disabled, false);
+  // Nothing on the other side: the chip would leave an empty globe, so it is
+  // refused rather than allowed to look broken.
+  assert.match(autres.title, /0 objet sur 5/);
+  assert.equal(autres.disabled, true);
+  clearKindFilter();
+});
+
+// --- Staying on the ground when the map moves --------------------------------
+
+test('a point placed before its floor landed is re-placed, not left on the ellipsoid', () => {
+  // The bug this pins: a cold cell anchored the object at ellipsoid 0, which
+  // under a French city is tens to hundreds of metres below the street. Depth
+  // testing is off, so it is painted anyway — and its screen position then
+  // follows the camera, sliding over the rooftops on every pan.
+  setMeshFloorPreferred(true);
+  const record = vehicleRecord({ object: { id: 'anchor:1', lat: 45.1881, lon: 5.7245 } });
+  _setSharedMobilityStateForTest({ viewer: viewerWithView(null), records: [record] });
+
+  const buried = Cesium.Cartographic.fromCartesian(record.position);
+  assert.ok(Math.abs(buried.height - 12) < 0.001, 'seeded where the pre-fix code left it');
+
+  reportMeshFloorCell(45.1881, 5.7245, 213.4);
+  assert.equal(_reanchorSharedMobilityForTest(), 1, 'the floor landed, so the point moves');
+
+  const placed = Cesium.Cartographic.fromCartesian(record.position);
+  assert.ok(Math.abs(placed.height - (213.4 + 2.5)) < 0.05,
+    `expected the Grenoble floor plus the lift, got ${placed.height}`);
+  // The primitive is what is actually drawn — a record that agrees with the
+  // floor while its billboard does not is the same bug with a passing test.
+  assert.ok(Cesium.Cartesian3.equals(record.billboard.position, record.position));
+
+  // Idempotent: a pass with nothing new to say must not dirty the collection.
+  assert.equal(_reanchorSharedMobilityForTest(), 0);
+
+  setMeshFloorPreferred(false);
   _setSharedMobilityStateForTest({ viewer: null, records: [] });
 });

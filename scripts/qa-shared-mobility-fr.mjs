@@ -53,6 +53,13 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Nantes: a real mix of dock stations and a small free-floating fleet. */
 const CITY = { lon: -1.5536, lat: 47.2184 };
+/**
+ * Ellipsoidal height below which an anchor is judged to be on the ELLIPSOID
+ * and not on Nantes. The city sits a few metres above the sea, but the geoid
+ * runs ~+47 m through western France, so a real floor there is tens of metres
+ * of ellipsoidal height — while the pre-fix anchor was the 2.5 m lift alone.
+ */
+const GROUND_FLOOR_MIN_M = 20;
 
 const DOCK_SYSTEM = {
   id: 'gbfs-dock', name: 'Naolib Nantes', area: 'Nantes Métropole', kind: 'docked',
@@ -180,6 +187,7 @@ function probe(page) {
     // Read what actually reached the SCENE, not what the layer says it drew.
     // The collections are found by the id of the objects inside them, so this
     // cannot accidentally sample another layer's sprites.
+    const ellipsoid = gev.viewer.scene.globe?.ellipsoid || gev.viewer.scene.ellipsoid;
     const scan = (prefix) => {
       const primitives = gev.viewer.scene.primitives;
       for (let i = 0; i < primitives.length; i++) {
@@ -190,11 +198,16 @@ function probe(page) {
         const drawn = [];
         for (let n = 0; n < collection.length; n++) {
           const item = collection.get(n);
+          // The ANCHOR, read off the primitive rather than off the layer's
+          // own record: a record that agrees with the ground while the sprite
+          // does not is the bug with a passing test.
+          const carto = item.position ? ellipsoid.cartesianToCartographic(item.position) : null;
           drawn.push({
             id: item.id,
             image: item.image || null,
             color: item.color?.toCssHexString?.() || null,
             outline: item.outlineColor?.toCssHexString?.() || null,
+            height: carto ? carto.height : null,
           });
         }
         return drawn;
@@ -289,6 +302,43 @@ async function main() {
     check('one point per object', loaded.rendered === 32, `${loaded.rendered} for 12 stations + 20 vehicles`);
     check('stations and vehicles are both drawn', loaded.stats.count === 32, `count=${loaded.stats.count}`);
     await shoot(page, '02-city.png');
+
+    // ── ii-bis. the fleet stands on the ground ─────────────────────────────
+    //
+    // A point anchored at ellipsoid 0 is not "slightly off": depth testing is
+    // disabled so it is painted anyway, and its screen position then follows
+    // the CAMERA POSE — drag the map and the whole fleet slides over the
+    // rooftops. The fix reads the floor before placing anything and comes back
+    // when a better one lands, so this waits for the settle rather than
+    // asserting on the first frame.
+    console.log('[qa] ii-bis. the fleet stands on the ground');
+    let anchored = loaded;
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const heights = [...anchored.dots, ...anchored.glyphs].map((item) => item.height);
+      if (heights.length && heights.every((h) => Number.isFinite(h) && h > GROUND_FLOOR_MIN_M)) break;
+      await pump(page, 3, 60);
+      await sleep(400);
+      anchored = await probe(page);
+    }
+    const anchorHeights = [...anchored.dots, ...anchored.glyphs].map((item) => item.height);
+    const buried = anchorHeights.filter((h) => !Number.isFinite(h) || h <= GROUND_FLOOR_MIN_M).length;
+    const lowest = anchorHeights.length ? Math.min(...anchorHeights) : null;
+    const highest = anchorHeights.length ? Math.max(...anchorHeights) : null;
+    console.log(`  · ${anchorHeights.length} anchors, `
+      + `${lowest === null ? 'n/a' : lowest.toFixed(1)}-${highest === null ? 'n/a' : highest.toFixed(1)} m `
+      + `ellipsoidal, ${buried} on the ellipsoid`);
+    check('every drawn object is placed on the ground, not on the ellipsoid',
+      anchorHeights.length === 32 && buried === 0,
+      `${buried} of ${anchorHeights.length} still at ellipsoid height`
+      + ` (range ${lowest === null ? 'n/a' : lowest.toFixed(1)}`
+      + `-${highest === null ? 'n/a' : highest.toFixed(1)} m)`);
+    // One city is one floor. The bound is loose on purpose — Nantes really
+    // does have relief, and the measured spread was 34.3 m — because the
+    // failure it guards is not a few metres: it is half the fleet borrowing a
+    // floor from ground it does not stand on, which is hundreds.
+    check('and they share one city floor',
+      lowest !== null && highest - lowest < 120,
+      `${lowest === null ? 'n/a' : (highest - lowest).toFixed(1)} m between the lowest and the highest`);
 
     // ── iii. the legend counts what is on screen ───────────────────────────
     console.log('[qa] iii. row legend');

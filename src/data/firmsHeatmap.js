@@ -19,6 +19,7 @@ import {
 } from './pickRegistry.js';
 import { adaptFirmsRecords } from './firmsAdapt.js';
 import { fireAnchorHeight, sampleFireAnchorFloors, warmFireAnchorFloors } from './fireAnchors.js';
+import { provisionalFloorRetryDelayMs } from './provisionalFloor.js';
 import { horizonOccluder } from './iconOrientation.js';
 import {
   accentForSeverity,
@@ -54,17 +55,6 @@ const LOD_LEVELS = [
   { id: 'close', minHeight: 0, mode: 'detections', maxDetections: 3000, labelDistance: 1800000 },
 ];
 const LOD_CHECK_MS = 650;
-/** First delay before re-rendering detections whose ground could not be read
- *  yet — long enough for the tiles under them to stream, short enough that
- *  nobody watches a dot sit in the wrong place. Each retry doubles it. */
-const ANCHOR_RETRY_MS = 1200;
-/** Consecutive deferred retries allowed before the layer gives up until the
- *  camera moves again. Ground with no photoreal coverage must not keep waking
- *  a parked camera, and five doubling tries are five single frames spread
- *  over ~37 s — long enough for a cold tile stream (measured 8.7 s and 11.7 s
- *  headless, where a first cut that stopped at 8.4 s lost the race), short
- *  enough that nothing is waiting on it. The DEM warm runs underneath. */
-const MAX_ANCHOR_RETRIES = 5;
 /** +/-10% hysteresis on LOD band edges so slow zooms don't thrash rebuilds. */
 const LOD_HYSTERESIS = 0.1;
 /** Padding fraction applied to the camera view rectangle before clipping. */
@@ -92,16 +82,14 @@ const CULL_LIFT_M = 12;
 
 /**
  * Delay before the nth deferred anchor retry, or null once the budget is
- * spent (see {@link MAX_ANCHOR_RETRIES}). Doubling rather than fixed: the
- * thing being waited for is a tile stream, which either lands in the first
- * second or takes ten, and a parked camera must be woken a bounded number of
- * times whatever happens — five tries reach ~37 s in total.
+ * spent. The policy is shared with every other layer that waits on the same
+ * tile stream — see `provisionalFloor.js`, which is also where the timings
+ * were measured; this export is the name this module's tests and callers use.
  * @param {number} attempt - Retries already spent for this situation.
  * @returns {?number} Milliseconds to wait, or null for "stop asking".
  */
 export function anchorRetryDelayMs(attempt) {
-  if (!Number.isInteger(attempt) || attempt < 0 || attempt >= MAX_ANCHOR_RETRIES) return null;
-  return ANCHOR_RETRY_MS * (2 ** attempt);
+  return provisionalFloorRetryDelayMs(attempt);
 }
 
 /** Color stops shared by cell heat fills and detection glow sprites. */

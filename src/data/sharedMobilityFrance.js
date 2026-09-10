@@ -36,6 +36,11 @@ import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
+import {
+  provisionalFloor,
+  provisionalFloorRetryDelayMs,
+  sampleProvisionalFloors,
+} from './provisionalFloor.js';
 import { horizonOccluder } from './iconOrientation.js';
 import {
   clearOverlaySource,
@@ -79,6 +84,25 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_RENDERED_OBJECTS = 6_000;
 /** Metres above the resolved ground floor a point sits. */
 const POINT_LIFT_M = 2.5;
+/**
+ * Objects whose DEM floor is requested per reconcile.
+ *
+ * The DEM answers over the network and a Paris viewport holds 6,000 objects;
+ * this is the courtesy budget on the terrain proxy, unchanged from the layer's
+ * first cut. What it does not reach is NOT left on the ellipsoid — it keeps
+ * the rendered-surface floor sampled below, which measured within ~1.3 m of
+ * the DEM where both were read (`provisionalFloor.js`).
+ */
+const MAX_FLOOR_WARM = 600;
+/**
+ * How far a cell the probe budget did not reach may borrow a sampled floor
+ * from, in km. Tighter than the fire layer's 25 km on purpose: a parked
+ * scooter is a street-scale object and the view that holds one is a city, so
+ * a borrowed floor stays inside one urban basin — where the relief is metres
+ * and the ellipsoid is wrong by tens to hundreds. Wider would start borrowing
+ * across a valley wall.
+ */
+const FLOOR_FILL_KM = 10;
 
 // --- Presentation -----------------------------------------------------------
 //
@@ -116,6 +140,7 @@ const LEGEND_GLYPH_PX = 32;
 const KIND_LEGEND_TINT = '#cbd5e1';
 /** Operators listed by name in the row legend before the tail is summarised. */
 const MAX_OPERATOR_LEGEND_ROWS = 6;
+
 const SELECTED_COLOR = '#00ffff';
 
 /** Station fill-rate palette, matching the bikeshare layer's reading. */
@@ -124,6 +149,96 @@ const STATION_MID = '#ffaa00';
 const STATION_LOW = '#ff4444';
 const STATION_UNKNOWN = '#91a4b4';
 const STATION_CLOSED = '#687581';
+
+// --- Filtering --------------------------------------------------------------
+/**
+ * THE TWO HALVES OF THE FLEET, AS A FILTER.
+ *
+ * A city viewport holds bikes, e-bikes, trottinettes, scooters and shared cars
+ * in the same streets, and the reader who came for one of those reads the
+ * other four as noise. The shape channel already says which is which; these
+ * two chips are what let someone act on it.
+ *
+ * A PARTITION, NOT TWO OVERLAPPING SETS. Every object belongs to exactly one
+ * side, so pressing one chip and then the other shows the whole fleet with
+ * nothing invisible under both. That is the property that makes the pair
+ * trustworthy, and it is why `other` — a form factor GBFS declines to name —
+ * sits with the rest rather than nowhere.
+ *
+ * A VAE IS A BIKE. `vehicleKindFromType()` splits `bicycle` by propulsion, so
+ * `bike` and `ebike` are the same silhouette on two power sources; a chip
+ * labelled "Vélos" that hid every Vélib' électrique would be lying about its
+ * own name. The tooltip says both are in there.
+ *
+ * There is no third "everything" chip: pressing the lit one releases the
+ * filter, and a row with neither lit already reads as unfiltered. The strip
+ * this shares with the fusion chips is a control strip, not a second list of
+ * names, and a third chip would have spent a quarter of it saying "no".
+ */
+export const SHARED_MOBILITY_KIND_FILTERS = Object.freeze([
+  Object.freeze({
+    id: 'velo',
+    label: 'Vélos',
+    /** Vehicle kinds on this side of the split. */
+    kinds: Object.freeze(['bike', 'ebike']),
+  }),
+  Object.freeze({
+    id: 'autres',
+    label: 'Le reste',
+    kinds: Object.freeze(['scooter', 'moped', 'car', 'other']),
+  }),
+]);
+
+/**
+ * Whether a station holds bicycles.
+ *
+ * Three cases, and the middle one is the reason this is a function rather than
+ * a lookup. A 2.x feed publishes a mechanical/ebike split that
+ * `parseGbfsStationStatus` normalises to `bike`/`ebike`, so it answers
+ * directly. A 3.0 feed publishes `vehicle_types_available`, whose keys are the
+ * system's OWN vehicle_type_ids — opaque strings this layer cannot resolve —
+ * so a station carrying only those tells us nothing about what is in it. And a
+ * station with no availability breakdown at all tells us nothing either.
+ *
+ * Both of those unknowns fall back to YES, following the GBFS spec's own
+ * default: a system that publishes no vehicle types "is assumed to operate
+ * non-motorized bicycles" (the same fallback `vehicleKindLookup` documents).
+ * A dock that turns out to hold scooters is then shown under "Vélos", which is
+ * the failure worth having — the alternative hides half the docks in France
+ * from the chip that names them.
+ *
+ * @param {{byKind?: ?Object<string, number>}} station Wire station.
+ * @returns {boolean}
+ */
+export function stationHoldsBikes(station) {
+  const byKind = station?.byKind;
+  if (!byKind) return true;
+  let recognised = false;
+  for (const [key, count] of Object.entries(byKind)) {
+    if (!(Number(count) > 0)) continue;
+    if (key === 'bike' || key === 'ebike') return true;
+    if (key in VEHICLE_KIND_LABELS) recognised = true;
+  }
+  return !recognised;
+}
+
+/**
+ * Whether one wire object survives a filter. A null filter keeps everything.
+ * @param {?string} filterId One of {@link SHARED_MOBILITY_KIND_FILTERS}' ids.
+ * @param {'station'|'vehicle'} type
+ * @param {object} object Wire station or vehicle.
+ * @returns {boolean}
+ */
+export function matchesKindFilter(filterId, type, object) {
+  if (!filterId) return true;
+  const bike = type === 'station' ? stationHoldsBikes(object) : isBikeKind(object?.kind);
+  return filterId === 'velo' ? bike : !bike;
+}
+
+/** A bicycle form factor, powered either way. */
+function isBikeKind(kind) {
+  return kind === 'bike' || kind === 'ebike';
+}
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
@@ -157,6 +272,19 @@ let _systemsMatched = 0;
 let _truncated = false;
 let _altitudeGateOpen = false;
 let _lastBox = null;
+/** The last viewport answer, kept so a filter change repaints without a
+ *  refetch — and so the chips can count the half they are hiding. */
+let _lastPayload = null;
+/** Active kind filter id, or null for the whole fleet. */
+let _kindFilter = null;
+/** Memo of `kindFilterTally()`, keyed on the payload it was counted from. */
+let _tallyPayload = null;
+let _tally = { velo: 0, autres: 0 };
+let _rowControlsListener = null;
+/** Deferred floor pass: timer handle and retries already spent (see
+ *  `scheduleFloorRetry`). */
+let _floorRetryTimer = null;
+let _floorRetries = 0;
 
 /**
  * The operator behind a render record.
@@ -256,9 +384,34 @@ function updateAltitudeGate(viewer) {
   return _altitudeGateOpen;
 }
 
-function objectPosition(object) {
+/**
+ * The floor one object stands on: the shared DEM/mesh cell when it is warm,
+ * the PROVISIONAL rendered-surface read when it is not, and null when neither
+ * has an answer.
+ *
+ * WHY THE SECOND SOURCE EXISTS. The DEM answers over the network. Until it
+ * does, this returned 0 — the WGS84 ellipsoid, which under a French city is
+ * tens to hundreds of metres below the street. The points draw with
+ * `disableDepthTestDistance: Infinity` so a scooter is not swallowed by the
+ * kerb it sits on, so a buried point is painted anyway, and its screen
+ * position then follows the CAMERA POSE: drag the map and the whole fleet
+ * slides across the rooftops before snapping back. That is the reported
+ * "the points move with the map instead of being fixed to it", and it
+ * recurred on every viewport the session had not visited — which, on a layer
+ * that refetches on every camera move, is most of them.
+ * @param {{lat: number, lon: number}} object
+ * @returns {?number} Ellipsoidal floor in metres, or null.
+ */
+function objectFloor(object) {
   const floor = cachedGroundFloor(object.lat, object.lon);
-  const height = (Number.isFinite(floor) ? floor : 0) + POINT_LIFT_M;
+  if (Number.isFinite(floor)) return floor;
+  const provisional = provisionalFloor(object.lat, object.lon);
+  return Number.isFinite(provisional) ? provisional : null;
+}
+
+function objectPosition(object) {
+  const floor = objectFloor(object);
+  const height = (floor ?? 0) + POINT_LIFT_M;
   return Cesium.Cartesian3.fromDegrees(object.lon, object.lat, height);
 }
 
@@ -492,7 +645,15 @@ function onPreRender() {
   }
 }
 
-/** Replace the rendered set with a viewport answer. */
+/**
+ * Replace the rendered set with a viewport answer.
+ *
+ * Order matters twice here. The FILTER runs before the render cap, so a chip
+ * means "draw only bikes" and not "draw fewer bikes" — spending a 6,000-object
+ * budget on vehicles the reader just asked to hide would be the second. And
+ * the FLOOR pass runs before any position is computed, because a position is
+ * written into a primitive once and nothing recomputes it per frame.
+ */
 function reconcile(payload) {
   const stations = Array.isArray(payload.stations) ? payload.stations : [];
   const vehicles = Array.isArray(payload.vehicles) ? payload.vehicles : [];
@@ -502,9 +663,34 @@ function reconcile(payload) {
   _points.removeAll();
   _billboards.removeAll();
   _records.clear();
+  // A new set is a new situation: the deferred floor pass gets its budget back.
+  resetFloorRetries();
 
-  let rendered = 0;
-  const positions = [];
+  const drawn = [];
+  const seen = new Set();
+  for (const station of stations) {
+    if (drawn.length >= MAX_RENDERED_OBJECTS) break;
+    const id = station.id;
+    if (!id || seen.has(id)) continue;
+    if (!matchesKindFilter(_kindFilter, 'station', station)) continue;
+    seen.add(id);
+    drawn.push({ type: 'station', id, object: station });
+  }
+  for (const vehicle of vehicles) {
+    if (drawn.length >= MAX_RENDERED_OBJECTS) break;
+    const id = vehicle.id || `${vehicle.system}:${vehicle.lat},${vehicle.lon}`;
+    if (seen.has(id)) continue;
+    if (!matchesKindFilter(_kindFilter, 'vehicle', vehicle)) continue;
+    seen.add(id);
+    drawn.push({ type: 'vehicle', id, object: vehicle });
+  }
+
+  const objects = drawn.map((entry) => entry.object);
+  // Ground the cold cells against the surface actually being DRAWN before the
+  // positions below are taken. Synchronous, no network of ours, ≤40 probes and
+  // nothing at all above 25 km of camera (`provisionalFloor.js`).
+  const { pending } = sampleProvisionalFloors(_viewer?.scene, objects, { fillKm: FLOOR_FILL_KM });
+
   // One resolve per system, not per object: a Paris viewport holds ~6,000
   // vehicles across a handful of operators.
   const operatorsBySystem = new Map();
@@ -517,43 +703,34 @@ function reconcile(payload) {
     return operator;
   };
 
-  for (const station of stations) {
-    if (rendered >= MAX_RENDERED_OBJECTS) break;
-    const id = station.id;
-    if (!id || _records.has(id)) continue;
-    const position = objectPosition(station);
-    const operator = operatorFor(station.system);
-    const color = stationColor(station);
-    const size = stationPointSize(station);
-    const point = _points.add({
-      id,
-      position,
-      color: Cesium.Color.fromCssColorString(color),
-      pixelSize: size,
-      // Fill answers "how full", ring answers "whose".
-      outlineColor: Cesium.Color.fromCssColorString(operator.color),
-      outlineWidth: STATION_RING_PX,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 90_000, 0.35),
-    });
-    _records.set(id, {
-      id, type: 'station', object: station, system: systemsById.get(station.system) || {},
-      operator, point, position, baseColor: color, baseSize: size,
-    });
-    positions.push(station);
-    rendered += 1;
-  }
-
-  for (const vehicle of vehicles) {
-    if (rendered >= MAX_RENDERED_OBJECTS) break;
-    const id = vehicle.id || `${vehicle.system}:${vehicle.lat},${vehicle.lon}`;
-    if (_records.has(id)) continue;
-    const position = objectPosition(vehicle);
-    const operator = operatorFor(vehicle.system);
+  for (const entry of drawn) {
+    const { id, object } = entry;
+    const position = objectPosition(object);
+    const operator = operatorFor(object.system);
+    if (entry.type === 'station') {
+      const color = stationColor(object);
+      const size = stationPointSize(object);
+      const point = _points.add({
+        id,
+        position,
+        color: Cesium.Color.fromCssColorString(color),
+        pixelSize: size,
+        // Fill answers "how full", ring answers "whose".
+        outlineColor: Cesium.Color.fromCssColorString(operator.color),
+        outlineWidth: STATION_RING_PX,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 90_000, 0.35),
+      });
+      _records.set(id, {
+        id, type: 'station', object, system: systemsById.get(object.system) || {},
+        operator, point, position, baseColor: color, baseSize: size,
+      });
+      continue;
+    }
     const billboard = _billboards.add({
       id,
       position,
-      image: sharedMobilityGlyph(vehicle.kind),
+      image: sharedMobilityGlyph(object.kind),
       width: VEHICLE_GLYPH_PX,
       height: VEHICLE_GLYPH_PX,
       color: Cesium.Color.fromCssColorString(operator.color),
@@ -568,20 +745,108 @@ function reconcile(payload) {
       translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 90_000, 0.3),
     });
     _records.set(id, {
-      id, type: 'vehicle', object: vehicle, system: systemsById.get(vehicle.system) || {},
+      id, type: 'vehicle', object, system: systemsById.get(object.system) || {},
       operator, billboard, position, baseColor: operator.color, baseSize: VEHICLE_GLYPH_PX,
     });
-    positions.push(vehicle);
-    rendered += 1;
   }
 
   _count = _records.size;
-  warmGroundFloor(positions.slice(0, 600));
+  warmGroundFloor(objects.slice(0, MAX_FLOOR_WARM));
+  // Two reasons to come back, and neither of them produces a frame on its own:
+  // the tiles under a cell may not have streamed yet, and the DEM warm above
+  // is fire-and-forget — nothing repositions what it resolves.
+  if (pending || hasColdFloor(objects)) scheduleFloorRetry();
   governorRequestRender('shared-mobility-fr-reconcile');
+}
+
+/** True when any object is still standing on no measured floor at all. */
+function hasColdFloor(objects) {
+  for (const object of objects) {
+    if (objectFloor(object) == null) return true;
+  }
+  return false;
+}
+
+/**
+ * Re-place every rendered object on the best floor now known for its cell.
+ *
+ * A position is baked into a primitive once, so a floor that lands after the
+ * reconcile changes nothing until something walks the set — which is what this
+ * is. Cheap: no network, no allocation beyond the new Cartesians, and it exits
+ * on the first pass where nothing moved.
+ * @returns {number} How many objects actually moved.
+ */
+function reanchor() {
+  let moved = 0;
+  for (const record of _records.values()) {
+    const next = objectPosition(record.object);
+    // 5 cm: below this the move is not a pixel anywhere, and rewriting the
+    // primitive would only cost the collection a dirty flag.
+    if (Cesium.Cartesian3.equalsEpsilon(record.position, next, 0, 0.05)) continue;
+    record.position = next;
+    const primitive = recordPrimitive(record);
+    if (primitive) primitive.position = next;
+    moved += 1;
+  }
+  // The selected card is anchored on the record's position, so it has to be
+  // told too — otherwise the card stays where the buried point used to be.
+  if (moved && _selectedId) {
+    const entry = createSharedMobilitySelectedOverlayEntry(_records.get(_selectedId));
+    if (entry) {
+      _overlayHost.setEntries(
+        SHARED_MOBILITY_FR_OVERLAY_SOURCE_ID,
+        [entry],
+        SHARED_MOBILITY_FR_OVERLAY_SOURCE_OPTIONS,
+      );
+    }
+  }
+  return moved;
+}
+
+/** One deferred floor pass: sample again, re-place, and decide whether to
+ *  come back. Never fetches — the DEM warm runs on its own underneath. */
+function refreshFloors() {
+  if (!_enabled || !_viewer || !_records.size) return;
+  const objects = [];
+  for (const record of _records.values()) objects.push(record.object);
+  const { pending } = sampleProvisionalFloors(_viewer.scene, objects, { fillKm: FLOOR_FILL_KM });
+  if (reanchor()) governorRequestRender('shared-mobility-fr-reanchor');
+  if (pending || hasColdFloor(objects)) scheduleFloorRetry();
+}
+
+/**
+ * Come back for the objects the surface could not place yet.
+ *
+ * A probe misses when the tiles under a vehicle have not streamed — the
+ * ordinary state for the second or two after arriving somewhere — and a parked
+ * camera produces no rebuild, so nothing would ask again. Bounded on purpose:
+ * five doubling wakeups (~37 s in total, `provisionalFloor.js`), refilled
+ * whenever the situation is new, so ground with no photoreal coverage cannot
+ * undo the render governor's idle parking.
+ */
+function scheduleFloorRetry() {
+  if (_floorRetryTimer != null) return;
+  const delay = provisionalFloorRetryDelayMs(_floorRetries);
+  if (delay == null) return; // budget spent — wait for the camera to move
+  _floorRetries += 1;
+  _floorRetryTimer = setTimeout(() => {
+    _floorRetryTimer = null;
+    refreshFloors();
+  }, delay);
+}
+
+/** Drops a pending pass and refills its budget (a new situation gets a new one). */
+function resetFloorRetries() {
+  if (_floorRetryTimer != null) {
+    clearTimeout(_floorRetryTimer);
+    _floorRetryTimer = null;
+  }
+  _floorRetries = 0;
 }
 
 function clearFleet() {
   clearSelection();
+  resetFloorRetries();
   if (_points) _points.removeAll();
   if (_billboards) _billboards.removeAll();
   _records.clear();
@@ -595,6 +860,7 @@ async function loadViewport({ force = false } = {}) {
     _status = 'zoom-in';
     _error = null;
     _loading = false;
+    _lastPayload = null;
     if (_records.size) clearFleet();
     return;
   }
@@ -603,6 +869,7 @@ async function loadViewport({ force = false } = {}) {
     _status = 'zoom-in';
     _error = null;
     _loading = false;
+    _lastPayload = null;
     if (_records.size) clearFleet();
     return;
   }
@@ -638,6 +905,7 @@ async function loadViewport({ force = false } = {}) {
     const payload = await response.json();
     if (generation !== _requestGeneration || !_enabled) return;
 
+    _lastPayload = payload;
     reconcile(payload);
     _systems = payload.systems || [];
     _systemsMatched = Number(payload.systemsMatched) || 0;
@@ -662,8 +930,16 @@ async function loadViewport({ force = false } = {}) {
 
 function onCameraChanged() {
   if (!_enabled) return;
+  // A camera that moved is a NEW situation for the floor pass: closer tiles
+  // read finer, and a load that turns out to be a no-op (same box, request
+  // already in flight) would otherwise leave the fleet on whatever floor the
+  // last view could see.
+  resetFloorRetries();
   clearTimeout(_cameraDebounceTimer);
-  _cameraDebounceTimer = setTimeout(() => { void loadViewport(); }, CAMERA_DEBOUNCE_MS);
+  _cameraDebounceTimer = setTimeout(() => {
+    scheduleFloorRetry();
+    void loadViewport();
+  }, CAMERA_DEBOUNCE_MS);
 }
 
 /** Deterministic subsample of rendered objects for the detection overlay. */
@@ -701,14 +977,78 @@ function collectDetectableObjects(options = {}) {
   return result;
 }
 
+/**
+ * How many objects sit on each side of the split, in the answer currently
+ * held — INCLUDING the half a chip is hiding. A control that says what it
+ * costs is the difference between a filter and a disappearance.
+ * @returns {{velo: number, autres: number}}
+ */
+function kindFilterTally() {
+  const payload = _lastPayload;
+  if (!payload) return { velo: 0, autres: 0 };
+  // Memoised on the payload's own identity: the panel asks for the row's
+  // controls on every refresh, and this walks up to 6,000 objects for an
+  // answer that cannot change until the next viewport answer replaces them.
+  if (_tallyPayload === payload) return _tally;
+  const tally = { velo: 0, autres: 0 };
+  for (const station of Array.isArray(payload.stations) ? payload.stations : []) {
+    tally[stationHoldsBikes(station) ? 'velo' : 'autres'] += 1;
+  }
+  for (const vehicle of Array.isArray(payload.vehicles) ? payload.vehicles : []) {
+    tally[isBikeKind(vehicle?.kind) ? 'velo' : 'autres'] += 1;
+  }
+  _tallyPayload = payload;
+  _tally = tally;
+  return tally;
+}
+
+const fr = (value) => Number(value).toLocaleString('fr-FR');
+
+/**
+ * The tooltip for one filter chip.
+ *
+ * It carries the count on BOTH sides, and — on the bikes chip — the one place
+ * the split is a judgement rather than a reading: a dock that publishes no
+ * inventory is counted as a bike dock, following the GBFS default.
+ * @param {{id: string}} filter
+ * @param {number} kept Objects this chip would keep.
+ * @param {number} total Objects in the answer.
+ * @param {boolean} active Whether this chip is the lit one.
+ * @returns {string}
+ */
+function kindFilterChipTitle(filter, kept, total, active) {
+  // Nothing has arrived yet, so there is no share to quote — and a chip that
+  // said "0 sur 0" would look like an answer instead of an absence.
+  const share = total > 0
+    ? ` — ${fr(kept)} objet${kept > 1 ? 's' : ''} sur ${fr(total)}`
+    : '';
+  if (active) return `${filter.label} seuls${share}. Appuyer à nouveau pour tout revoir.`;
+  if (filter.id === 'velo') {
+    return `Ne garder que les vélos${share}. Vélo mécanique et VAE, plus les stations`
+      + ' qui en tiennent ; une station qui ne publie pas son inventaire est comptée ici,'
+      + ' comme le veut le défaut GBFS.';
+  }
+  return `Ne garder que le reste${share}. Trottinettes, scooters, voitures partagées`
+    + ' et formes non nommées, plus les stations sans vélo.';
+}
+
 function buildLoadingLabel() {
   if (_status === 'zoom-in') return 'zoom in to load shared vehicles';
   if (_loading) return _records.size ? 'refreshing operators...' : 'resolving operators...';
   if (_status === 'empty') {
+    // A chip that hides everything has to own it: "no vehicles reporting here"
+    // would blame the feed for the reader's own filter.
+    const tally = kindFilterTally();
+    if (_kindFilter && tally.velo + tally.autres > 0) {
+      return _kindFilter === 'velo'
+        ? 'no bikes in this view — the rest is filtered out'
+        : 'nothing but bikes in this view — they are filtered out';
+    }
     return _systemsMatched > 0 ? 'no vehicles reporting here' : 'no PAN system covers this view';
   }
   const active = _systems.filter((s) => s.stationsInView > 0 || s.vehiclesInView > 0).length;
   const parts = [`${active} operator${active === 1 ? '' : 's'}`];
+  if (_kindFilter) parts.push(_kindFilter === 'velo' ? 'bikes only' : 'bikes hidden');
   if (_truncated) parts.push('capped');
   const suppressed = _systems.reduce((sum, s) => sum + (s.stationsSuppressed || 0), 0);
   if (suppressed) parts.push(`${suppressed.toLocaleString('en-US')} shared bays merged out`);
@@ -754,6 +1094,8 @@ const sharedMobilityFranceLayer = {
     _truncated = false;
     _altitudeGateOpen = false;
     _lastBox = null;
+    _lastPayload = null;
+    resetFloorRetries();
 
     _overlayHost.setVisible(SHARED_MOBILITY_FR_OVERLAY_SOURCE_ID, false);
     restoreSpriteOrder(viewer);
@@ -815,11 +1157,53 @@ const sharedMobilityFranceLayer = {
     _status = 'idle';
     _systems = [];
     _lastBox = null;
+    _lastPayload = null;
   },
 
   async update() {
     if (!_enabled) return;
     await loadViewport({ force: true });
+  },
+
+  /**
+   * Runtime params. `kinds` hides half the fleet without losing it: the
+   * viewport answer is kept whole, so the chips keep counting what they hide
+   * and releasing the filter costs no request.
+   *
+   * DECLARATIVE, NOT A TOGGLE. `velo` always means "show bikes" and never
+   * "show bikes unless you already were" — the lit chip publishes `all` as its
+   * own params, so the release is a value and not a repeat. A parameter that
+   * inverted on re-application would flip the filter off the moment anything
+   * replayed it (`lazyLayer`'s buffered calls, a params intent re-applied on
+   * enable), and nothing about that would look like a bug from the outside.
+   * @param {{kinds?: ?string}} [params] `velo`, `autres`, `all`/null to clear.
+   * @returns {boolean} Whether anything changed.
+   */
+  setParams(params = {}) {
+    if (params.kinds === undefined) return false;
+    const next = params.kinds === null || params.kinds === 'all' ? null : String(params.kinds);
+    if (next !== null && !SHARED_MOBILITY_KIND_FILTERS.some((f) => f.id === next)) return false;
+    if (next === _kindFilter) return false;
+    _kindFilter = next;
+    // Repaint from the answer already in hand. A filter is a view of what
+    // arrived, not a different question to ask the proxy.
+    if (_lastPayload) {
+      reconcile(_lastPayload);
+      _status = _count > 0 ? 'ready' : 'empty';
+    } else {
+      clearFleet();
+    }
+    _rowControlsListener?.();
+    return true;
+  },
+
+  /** @returns {{kinds: ?string}} */
+  getParams() {
+    return { kinds: _kindFilter };
+  },
+
+  setRowControlsListener(listener) {
+    _rowControlsListener = typeof listener === 'function' ? listener : null;
   },
 
   getDetectableObjects(options = {}) {
@@ -869,9 +1253,16 @@ const sharedMobilityFranceLayer = {
   },
 
   /**
-   * The key to both channels, for the control-panel row.
+   * The row's controls and the key to both channels.
    *
-   * Two groups, because the map is saying two things at once:
+   * TWO CHIPS, which are a filter and not a second legend: a city viewport
+   * holds bikes, trottinettes, scooters and shared cars in the same streets,
+   * and the reader who came for one of them reads the other three as noise.
+   * They partition the fleet, so pressing one and then the other shows
+   * everything; pressing the lit one releases the filter. There is no third
+   * "everything" chip — a row with neither lit already reads as unfiltered.
+   *
+   * Two legend groups, because the map is saying two things at once:
    *
    *   SHAPE rows — what is on screen, by kind, each showing its own silhouette
    *     in a neutral tint. Kinds with nothing in view are omitted rather than
@@ -929,7 +1320,27 @@ const sharedMobilityFranceLayer = {
       });
     }
 
-    return { chips: [], legend: [...shapes, ...listed] };
+    const tally = kindFilterTally();
+    const total = tally.velo + tally.autres;
+    const chips = SHARED_MOBILITY_KIND_FILTERS.map((filter) => {
+      const active = _kindFilter === filter.id;
+      const kept = tally[filter.id];
+      return {
+        id: filter.id,
+        label: filter.label,
+        active,
+        state: active ? 'active' : 'idle',
+        // A chip that would blank the map is refused rather than allowed to
+        // look broken — but never the lit one, which is the way back.
+        disabled: kept === 0 && !active,
+        title: kindFilterChipTitle(filter, kept, total, active),
+        // The lit chip IS the way back, and it says so as a value rather than
+        // as "press me twice" — see `setParams`.
+        params: { kinds: active ? 'all' : filter.id },
+      };
+    });
+
+    return { chips, legend: [...shapes, ...listed] };
   },
 
   destroy(viewer) {
@@ -958,7 +1369,10 @@ const sharedMobilityFranceLayer = {
       viewer.scene.primitives.remove(_billboards);
       _billboards = null;
     }
+    resetFloorRetries();
     _records.clear();
+    _lastPayload = null;
+    _rowControlsListener = null;
     _viewer = null;
   },
 };
@@ -980,6 +1394,16 @@ export function _selectSharedMobilityObjectForTest(id) {
 export function _clearSharedMobilitySelectionForTest() {
   clearSelection();
   _overlayHost = DEFAULT_OVERLAY_HOST;
+}
+
+/** Drive the production re-anchor pass over the seeded records. */
+export function _reanchorSharedMobilityForTest() {
+  return reanchor();
+}
+
+/** Seed the viewport answer the chips count and a filter repaints from. */
+export function _setSharedMobilityPayloadForTest(payload) {
+  _lastPayload = payload;
 }
 
 /** Row-control legend, for tests that do not construct a viewer. */

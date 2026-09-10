@@ -319,7 +319,8 @@ export const LAYER_MANIFEST = Object.freeze([
     name: 'Shared Mobility FR',
     icon: '🛴',
     source: 'transport.data.gouv.fr',
-    capabilities: Object.freeze(['destroy', 'getStats']),
+    capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
+    defaultParams: Object.freeze({ kinds: null }),
     load: () => import('./sharedMobilityFrance.js').then((module) => module.default),
   }),
   Object.freeze({
