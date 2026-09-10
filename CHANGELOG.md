@@ -251,6 +251,25 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   voyait l'auteur d'un lien qui omet le champ. Épinglé dans
   `src/reasonableDefaults.test.mjs`. Un lien de partage, ou la main de
   l'opérateur, l'emporte toujours : `dm=OFF` restaure toujours OFF.
+
+- **Un bus, un glyphe : la Seine-Eure cesse d'être comptée deux fois.** Le
+  détecteur de doublons compare des FLOTTES ENTIÈRES, et il est donc aveugle à
+  un flux qui est un sous-ensemble strict d'un autre. Mesuré le 2026-09-10 :
+  `Semo Bus` (19 véhicules) et l'agrégat `Atoumod` (239) publient les mêmes
+  courses — mêmes `trip_id`, mêmes coordonnées **au mètre**, mêmes horodatages
+  — sous deux préfixes d'identifiant. Autour de Val-de-Reuil et de
+  Pont-de-l'Arche, chaque bus était dessiné deux fois, l'un exactement derrière
+  l'autre, et le compteur de la couche affichait le double : 32 contacts pour
+  16 bus.
+
+  La fusion se fait sur la COURSE, parce qu'une course GTFS est un trajet servi
+  par un véhicule à la fois. Le survivant est choisi par identifiant de flux et
+  jamais par fraîcheur — un vainqueur choisi à la fraîcheur changerait d'identité
+  chaque fois que les deux éditeurs se dépassent, et le glyphe perdrait son
+  glissement et la sélection de qui l'avait cliqué. La POSITION, elle, vient du
+  relevé le plus récent : sur 378 paires appariées, ce n'est **jamais** le flux
+  local (l'agrégat mène de 60 s en médiane, jusqu'à 207 s). Le nombre de
+  contacts fusionnés est publié sur le fil plutôt qu'absorbé en silence.
 - **La légende des bouées marines cesse de plaider et se contente de nommer :
   douze lignes et 692 px deviennent huit et 219.** Le bloc de droite portait
   388 mots pour une seule couche. Quatre de ces lignes étaient une RÈGLE

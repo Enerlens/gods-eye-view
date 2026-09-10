@@ -597,6 +597,7 @@ import {
   PAN_MAX_VEHICLES,
 } from './src/data/panFeeds.js';
 import { partitionFeedsByHealth } from './src/data/panFeedHealth.js';
+import { mergeDuplicateRuns } from './src/data/transitFleetMerge.js';
 import { resolveVehicleKind } from './src/data/transitVehicleKind.js';
 import {
   chooseTripShape,
@@ -13901,14 +13902,22 @@ async function refreshPanViewport(box, key) {
     return { feed, outcome, vehicles, schedule };
   }));
 
-  const vehicles = [];
+  // ONE BUS, ONE CONTACT. Two French feeds can publish the same run under two
+  // ids — Seine-Eure's `Semo Bus` is a strict subset of the Normandy aggregate,
+  // same trips, same coordinates — and the duplicate detector in
+  // `build-pan-gtfs-rt-index.mjs` cannot see it because it compares whole
+  // rosters. Merged BEFORE the cap, so the cap counts buses and not copies.
+  // See `transitFleetMerge.js`.
+  const merge = mergeDuplicateRuns(results.flatMap((result) => result.vehicles));
+  const vehicles = merge.vehicles.slice(0, PAN_MAX_VEHICLES);
+  const vehiclesTruncated = merge.vehicles.length > PAN_MAX_VEHICLES;
+  const survivorsByFeed = new Map();
+  for (const vehicle of vehicles) {
+    survivorsByFeed.set(vehicle.feed, (survivorsByFeed.get(vehicle.feed) || 0) + 1);
+  }
+
   const feeds = [];
-  let vehiclesTruncated = false;
   for (const { feed, outcome, vehicles: inBox, schedule } of results) {
-    for (const vehicle of inBox) {
-      if (vehicles.length >= PAN_MAX_VEHICLES) { vehiclesTruncated = true; break; }
-      vehicles.push(vehicle);
-    }
     feeds.push({
       id: feed.id,
       network: feed.network,
@@ -13918,7 +13927,12 @@ async function refreshPanViewport(box, key) {
       publisher: feed.publisher,
       pageUrl: feed.pageUrl,
       datasetUrl: feed.datasetUrl,
-      inView: inBox.length,
+      // What this feed CONTRIBUTED, after the merge — not what it reported.
+      // A feed whose every run is also in a neighbouring aggregate contributes
+      // nothing to the picture, and saying `inView: 8` for it would be the
+      // double count the merge exists to remove, moved into the panel.
+      inView: survivorsByFeed.get(feed.id) || 0,
+      merged: merge.mergedByFeed[feed.id] || 0,
       reported: outcome.vehicles.length,
       retrievedAt: outcome.at ? new Date(outcome.at).toISOString() : null,
       stale: outcome.stale || false,
@@ -13926,7 +13940,9 @@ async function refreshPanViewport(box, key) {
       // How much of this network's fleet the schedule feed could speak for.
       // `delayed` counts vehicles that got a NUMBER, not vehicles running late.
       trips: schedule?.tripCount || 0,
-      delayed: inBox.filter((vehicle) => Number.isFinite(vehicle.delaySec)).length,
+      delayed: vehicles.filter(
+        (vehicle) => vehicle.feed === feed.id && Number.isFinite(vehicle.delaySec),
+      ).length,
       alertsPublished: schedule?.alertsPublished || 0,
       alertsActive: schedule?.alertIndex?.count || 0,
       scheduleError: schedule?.error || null,
@@ -13947,6 +13963,10 @@ async function refreshPanViewport(box, key) {
     // polled, or the vehicle cap cut the answer.
     feedsTruncated: selection.truncated,
     vehiclesTruncated,
+    // How many contacts two feeds turned out to be one of. Reported rather
+    // than silently absorbed: it is the difference between the layer's own
+    // count and the sum of what its networks published.
+    vehiclesMerged: merge.merged,
     // Punctuality of what is actually being returned, so the layer can say
     // what is happening without every client re-tallying the same array.
     schedule: summarizeSchedule(vehicles),
