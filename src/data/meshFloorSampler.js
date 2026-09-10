@@ -55,10 +55,14 @@ if (typeof window !== 'undefined') {
  * True when a VISIBLE 3D tileset in the scene reports its streaming queue
  * drained (tilesLoaded) — the mirror of cctv.js's projectionTilesReady.
  * Walks top-level primitives only (a handful; once per poll).
+ *
+ * Exported because `fireAnchors.js` needs the same answer for the same
+ * reason: a probe taken while tiles are mid-stream reads whatever coarse
+ * geometry is loaded, and there is no second source to check it against.
  * @param {Cesium.Scene} scene
  * @returns {boolean}
  */
-function _visibleTilesetLoaded(scene) {
+export function visibleTilesetLoaded(scene) {
   try {
     const prims = scene.primitives;
     for (let i = 0; i < prims.length; i++) {
@@ -106,7 +110,7 @@ export function sampleMeshFloorCells(scene, points, { excludeObjects = [], viewe
   // camera is low enough that the streamed LOD near it is fine-grained.
   const camH = scene.camera?.positionCartographic?.height;
   if (!Number.isFinite(camH) || camH > MAX_CAMERA_HEIGHT_M) return;
-  if (!_visibleTilesetLoaded(scene)) return;
+  if (!visibleTilesetLoaded(scene)) return;
   let sampled = 0;
   const attempted = new Set();
   for (const p of points) {

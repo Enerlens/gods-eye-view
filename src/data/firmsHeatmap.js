@@ -18,7 +18,7 @@ import {
   unregisterPickOwner,
 } from './pickRegistry.js';
 import { adaptFirmsRecords } from './firmsAdapt.js';
-import { fireAnchorHeight, warmFireAnchorFloors } from './fireAnchors.js';
+import { fireAnchorHeight, sampleFireAnchorFloors, warmFireAnchorFloors } from './fireAnchors.js';
 import { horizonOccluder } from './iconOrientation.js';
 import {
   accentForSeverity,
@@ -54,6 +54,17 @@ const LOD_LEVELS = [
   { id: 'close', minHeight: 0, mode: 'detections', maxDetections: 3000, labelDistance: 1800000 },
 ];
 const LOD_CHECK_MS = 650;
+/** First delay before re-rendering detections whose ground could not be read
+ *  yet — long enough for the tiles under them to stream, short enough that
+ *  nobody watches a dot sit in the wrong place. Each retry doubles it. */
+const ANCHOR_RETRY_MS = 1200;
+/** Consecutive deferred retries allowed before the layer gives up until the
+ *  camera moves again. Ground with no photoreal coverage must not keep waking
+ *  a parked camera, and five doubling tries are five single frames spread
+ *  over ~37 s — long enough for a cold tile stream (measured 8.7 s and 11.7 s
+ *  headless, where a first cut that stopped at 8.4 s lost the race), short
+ *  enough that nothing is waiting on it. The DEM warm runs underneath. */
+const MAX_ANCHOR_RETRIES = 5;
 /** +/-10% hysteresis on LOD band edges so slow zooms don't thrash rebuilds. */
 const LOD_HYSTERESIS = 0.1;
 /** Padding fraction applied to the camera view rectangle before clipping. */
@@ -78,6 +89,20 @@ const LABEL_VIEW_MARGIN_PX = 16;
 const CULL_LIFT_THRESHOLD_M = 10;
 /** Height of the lifted occlusion-test point (flights uses the same 12 m). */
 const CULL_LIFT_M = 12;
+
+/**
+ * Delay before the nth deferred anchor retry, or null once the budget is
+ * spent (see {@link MAX_ANCHOR_RETRIES}). Doubling rather than fixed: the
+ * thing being waited for is a tile stream, which either lands in the first
+ * second or takes ten, and a parked camera must be woken a bounded number of
+ * times whatever happens — five tries reach ~37 s in total.
+ * @param {number} attempt - Retries already spent for this situation.
+ * @returns {?number} Milliseconds to wait, or null for "stop asking".
+ */
+export function anchorRetryDelayMs(attempt) {
+  if (!Number.isInteger(attempt) || attempt < 0 || attempt >= MAX_ANCHOR_RETRIES) return null;
+  return ANCHOR_RETRY_MS * (2 ** attempt);
+}
 
 /** Color stops shared by cell heat fills and detection glow sprites. */
 /**
@@ -183,6 +208,10 @@ export function createFirmsHeatmapLayer({
   let _clickHandler = null;
   let _moveEndRemover = null;
   let _selectedFire = null;
+  /** Pending deferred re-render for detections the rendered surface could not
+   *  place yet, and how many of those this situation has already spent. */
+  let _anchorRetryTimer = null;
+  let _anchorRetries = 0;
   /** Priority-ordered label candidates from the last rebuild (detections or cells). */
   let _labelCandidates = [];
   let _labelLodDistance = 0;
@@ -257,6 +286,7 @@ export function createFirmsHeatmapLayer({
 
     disable() {
       _enabled = false;
+      resetAnchorRetries();
       clearFireSelection();
       if (_dataSource) _dataSource.show = false;
       if (_billboards) _billboards.show = false;
@@ -313,6 +343,7 @@ export function createFirmsHeatmapLayer({
       _fireByCardId.clear();
       _cullPositions.length = 0;
       _camSnapValid = false;
+      resetAnchorRetries();
     },
 
     /**
@@ -528,6 +559,7 @@ export function createFirmsHeatmapLayer({
       _selectedFire = null;
       _fires = adaptFirmsRecords(payload?.fires);
       _cellCacheByGrid.clear(); // aggregation is per-dataset — new fires, new cells
+      resetAnchorRetries(); // fresh detections are a fresh situation to ground
       _firesByFrp = [..._fires].sort((a, b) => b.frp - a.frp);
       _count = _fires.length;
       // Data age, not response age: a stale proxy payload truthfully reads old.
@@ -718,13 +750,15 @@ export function createFirmsHeatmapLayer({
   /**
    * Render individual detections (local/close bands) as pre-baked
    * radial-glow sprite billboards sized by FRP, capped per viewport by
-   * highest FRP, depth test disabled. The 3D Tiles mesh is never sampled
-   * per point; instead, the CLOSE band (where terrain parallax is actually
-   * visible) batch-warms the shared cached DEM floor for its rendered
-   * subset and re-renders once floors land, so anchors sit on the terrain
-   * (firePosition). The local band keeps cold anchors at height 0 — at
-   * ≥750 km camera height the divergence is invisible and warming a
-   * continent-wide viewport would waste the DEM proxy.
+   * highest FRP, depth test disabled. The CLOSE band (where terrain parallax
+   * is actually visible) grounds its anchors twice: a budgeted, synchronous
+   * read of the RENDERED surface for the cells the DEM has not answered yet
+   * (so nothing is ever painted at ellipsoid 0 under a low camera), and the
+   * batched DEM warm for the rendered subset, which re-renders once floors
+   * land. Both go through `fireAnchors.js`; `firePosition` just reads the
+   * answer. The local band keeps cold anchors at height 0 — at ≥750 km
+   * camera height the divergence is invisible and warming a continent-wide
+   * viewport would waste the DEM proxy.
    * Labels are not built here; candidates feed {@link rebuildAmbientLabels}.
    * @param {Object} lod - Active LOD descriptor.
    * @param {?Object} bounds - Padded view bounds in degrees, or null.
@@ -756,6 +790,18 @@ export function createFirmsHeatmapLayer({
     _cellCount = candidates.length;
     _labelCandidates = [];
     _labelLodDistance = lod.labelDistance;
+
+    if (lod.id === 'close') {
+      // Ground the cold cells against the surface being DRAWN, BEFORE the
+      // anchors below are read. Without this a detection is painted at
+      // ellipsoid 0 until its DEM cell answers over the network — measured
+      // 293 m under the Chiapas fires, which is not a small error but a
+      // sprite that is not on the ground at all: it slides across the
+      // landscape as the camera moves and jumps into place a second later.
+      // Bounded to 40 probes per pass and skipped above 25 km (fireAnchors).
+      const { pending } = sampleFireAnchorFloors(_viewer.scene, candidates);
+      if (pending) scheduleAnchorRetry();
+    }
 
     for (const fire of candidates) {
       const coreSize = frpPixelSize(fire.frp);
@@ -796,6 +842,47 @@ export function createFirmsHeatmapLayer({
         renderCurrentLod(true);
       });
     }
+  }
+
+  /**
+   * Come back for the detections the rendered surface could not place yet.
+   *
+   * A probe misses when the tiles under a detection have not streamed — the
+   * ordinary state for the second or two after arriving somewhere — and a
+   * parked camera produces no rebuild, so nothing would ask again. The DEM
+   * warm above normally lands first and re-renders; this is what keeps the
+   * layer honest when it does NOT (proxy down, offline, keyless deployment),
+   * which is exactly when the rendered surface is the only ground truth left.
+   *
+   * Bounded on purpose: a parked camera over ground with no photoreal
+   * coverage must not be woken every second forever — that would undo the
+   * render governor's idle parking. The budget refills whenever the camera
+   * actually moves or fresh fires arrive, i.e. whenever the situation is new.
+   */
+  function scheduleAnchorRetry() {
+    if (_anchorRetryTimer != null) return;
+    const delay = anchorRetryDelayMs(_anchorRetries);
+    if (delay == null) return; // budget spent — wait for the camera to move
+    _anchorRetries += 1;
+    _anchorRetryTimer = setTimeout(() => {
+      _anchorRetryTimer = null;
+      if (!_enabled || !_viewer) return;
+      const currentLod = LOD_LEVELS[_currentLodIndex];
+      if (!currentLod || currentLod.mode !== 'detections') return;
+      renderCurrentLod(true);
+      // The camera is parked, so this rebuild would otherwise sit in an idle
+      // scene until something else asked for a frame.
+      governorRequestRender('firms-anchor-retry');
+    }, delay);
+  }
+
+  /** Drops a pending retry and refills its budget (a new situation gets a new one). */
+  function resetAnchorRetries() {
+    if (_anchorRetryTimer != null) {
+      clearTimeout(_anchorRetryTimer);
+      _anchorRetryTimer = null;
+    }
+    _anchorRetries = 0;
   }
 
   /**
@@ -1261,6 +1348,9 @@ export function createFirmsHeatmapLayer({
       Cesium.Cartesian3.clone(camera.positionWC, _camPos);
       Cesium.Cartesian3.clone(camera.directionWC, _camDir);
       _camSnapValid = true;
+      // A camera that moved is a new situation: whatever ground the last pass
+      // could not read, this one is looking at different ground anyway.
+      resetAnchorRetries();
       // The camera moved, so the horizon moved. A rebuild culls its own fresh
       // sprites (renderDetections); an early-out — same LOD band and view
       // rect, or a refresh in flight — does not, so cull here instead.
@@ -1470,9 +1560,11 @@ function glowSprite(stop, corePx) {
 
 /**
  * Lazily-cached Cartesian3 anchor at the shared ground floor (DEM/mesh cell
- * + lift) when the floor is warm, else ellipsoid height 0 (owner field
- * finding 2026-07-21: height-0 anchors read as buried under high terrain at
- * close/oblique zoom). Warm-cache read only — floors are warmed in batch by
+ * + lift) when the floor is warm, at the provisional rendered-surface floor
+ * when it is not, and only then at ellipsoid height 0 (owner field finding
+ * 2026-07-21: height-0 anchors read as buried under high terrain at
+ * close/oblique zoom; 2026-09-10: and they slide over it as the camera
+ * moves). Warm-cache read only — floors are grounded and warmed in batch by
  * renderDetections for the close band; everything else (cell-band context
  * registrations, detectable objects) just rides whatever is already warm.
  * Fires are static and floor cells latch, so each detection re-allocates at

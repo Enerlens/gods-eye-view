@@ -137,6 +137,45 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   l'application : les seize nouvelles lignes tiennent **toutes** sur une rangée,
   les quatre anciennes gardées en témoin se replient **toutes** en deux.
 
+- **Les feux actifs restent collés au sol quand on déplace la carte.** Une
+  détection FIRMS était peinte à la hauteur 0 — sur l'ellipsoïde WGS84, pas sur
+  le sol — tant que sa cellule de MNT n'avait pas répondu sur le réseau.
+  Mesuré dans l'application au-dessus des feux du Chiapas : les onze pastilles
+  du cadre ont passé leur première seconde **293,2 m sous le terrain** qu'elles
+  désignent, puis ont sauté à leur place. Une pastille enterrée n'est pas
+  « un peu décalée » : le test de profondeur est désactivé pour qu'aucun feu ne
+  soit avalé par le relief, donc elle est peinte quand même — et sa position à
+  l'écran devient alors une fonction de la **pose de la caméra**. On tire la
+  carte à la souris et les points glissent sur le paysage avant de se
+  replacer : le « les feux bougent avec la carte au lieu d'y être fixes »
+  signalé. Et ça recommence sur chaque bout de sol que la session n'a pas
+  encore visité, c'est-à-dire exactement celui qu'on regarde quand on se
+  promène.
+
+  La couche lit maintenant la surface qu'elle **dessine** avant de poser ses
+  pastilles : une sonde `scene.sampleHeight` par cellule de ~111 m, synchrone,
+  sans réseau, plafonnée à 40 sondes par passe et coupée au-dessus de 25 km de
+  caméra (au-delà, l'erreur vaut moins d'un pixel). Ce que le budget n'atteint
+  pas emprunte le sol de la sonde la plus proche dans un rayon de 25 km — un
+  complexe de feux tient sur un versant, et son relief se compte en mètres là
+  où l'ellipsoïde se trompe de centaines. Le MNT Re:Earth reste l'autorité et
+  reprend la main dès qu'il répond ; accord mesuré entre les deux surfaces :
+  **+1,2 m** de moyenne sur neuf points de pinède landaise, **−1,3 m** à
+  Bordeaux. Vérifié bout en bout avec le MNT coupé (proxy renvoyé en 503) :
+  avant, les onze pastilles restaient à la hauteur 0 indéfiniment ; après,
+  elles se posent à 226–378 m, aux mêmes hauteurs que celles que le MNT donne.
+
+  Deux garde-fous, tous deux payés par une mesure. Une lecture prise pendant
+  que les tuiles arrivent encore renvoie la tuile grossière qui, elle, est
+  chargée : **76 m** là où le maillage drainé lit 293 m. C'est quatre fois
+  mieux que l'ellipsoïde et toujours faux, donc la passe se déclare **due** et
+  la couche revient la refaire quand les tuiles ont fini — « posé » n'est pas
+  « bien posé ». Et une sonde sur un jeu de tuiles non streamé a renvoyé
+  **−11 838 m** dans un run sans écran, d'où la bande de plausibilité
+  (−500 m … 9 500 m) qui refuse ce genre de réponse. Le retour est borné :
+  cinq réveils qui doublent (1,2 s → 19,2 s, ~37 s en tout), rechargés dès que
+  la caméra bouge, pour qu'un sol sans couverture photoréaliste ne réveille
+  pas indéfiniment une caméra à l'arrêt.
 - **La légende des aéroports perd ses deux dernières lignes de forme : cinq
   lignes deviennent trois.** Ce matin la légende récitait encore « Piste
   tracée » (4 790 terrains) et « Emprise au sol » (418) sous les trois tiers,
