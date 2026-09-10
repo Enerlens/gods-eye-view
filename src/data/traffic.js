@@ -2718,8 +2718,11 @@ const trafficLayer = {
    * method from the console — so the most truthful version of this layer
    * existed and no user could ask for it (CARTOGRAPHIE A1).
    *
-   * Counts come from the per-bucket rendered-dot tally, so the key describes
-   * what is on screen rather than what was fetched.
+   * Counts describe WHAT IS ON SCREEN rather than what was fetched — the
+   * per-bucket rendered-dot tally normally, and the ribbon's when there are no
+   * dots to count. The second case is not a fallback, it is the Overpass-down
+   * view the ribbon exists for: the numbers are segments there instead of
+   * dots, and both are "débit mesuré par TomTom", which is what the key says.
    * @returns {{chips: Array<object>, legend: Array<object>}|null} Row controls.
    */
   getRowControls() {
