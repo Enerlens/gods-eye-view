@@ -40,6 +40,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   navale 3, champ de tir 2, terrain militaire 39.
 
 ### Changed
+- **La reconstitution du mégafeu ne déclare plus le feu terminé : ses deux bouts
+  nomment une détection.** Le curseur affichait `■ 1ᵉʳ août 12:44 UTC · fin de
+  l'événement`, et la clé sous cette ligne ajoutait « le feu est éteint depuis le
+  1ᵉʳ août 2026 ». Aucune des trois sources du pack ne dit ça. 12:44 est la
+  `FINALDATE` d'EFFIS — le dernier instant où un algorithme a vu ce sol brûler,
+  qui se trouve être aussi la dernière détection FIRMS retenue dans la fenêtre ;
+  11:55 au départ est sa `FIREDATE`, six heures **avant** que le COGIC signale
+  l'incendie. Copernicus EMS cartographie et ne déclare rien ; la déclaration
+  officielle est un communiqué de préfecture, de la prose sans jeu de données ni
+  API, avec deux mots — « fixé », puis « éteint » — qu'un feu de tourbe peut
+  séparer de plusieurs semaines. Les deux bouts lisent donc `première détection`
+  et `dernière détection`, les seules choses que le pack sait dater.
+
+  **Et la clé nomme enfin la dernière image.** L'état de fin porte deux instants
+  et le lecteur n'en voyait qu'un : la fenêtre se ferme sur une détection à
+  12:44, soit 66 minutes après la dernière **image**, celle du 1ᵉʳ août 11:38
+  (`GRA_MONIT01`, cinquième et dernier produit livré pour l'activation EMSR899).
+  C'est pourquoi la ligne du périmètre annonce 11:38 pendant que le curseur
+  annonce 12:44 — un écart que rien n'expliquait. Le blurb de fin le dit
+  maintenant, et le libellé de l'image est lu dans le pack, pas tapé.
+
+  Rien de dessiné ne change : ni la fenêtre, ni les cinq périmètres, ni le
+  contour de clôture d'EFFIS à 37 191 ha qui reste, lui, ce que la couche a de
+  plus proche d'une fin.
 - **Le trafic live n'attend plus le graphe routier : TomTom se dessine
   lui-même, et le conteneur retrouve Overpass.** « Ça prend très, très
   longtemps à s'afficher, voire ça ne s'affiche pas du tout » — le coupable

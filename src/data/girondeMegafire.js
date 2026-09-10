@@ -765,6 +765,11 @@ const girondeMegafireLayer = {
     // instant under the cursor belongs at the top of it. `color: null` is the
     // manager's deliberate "not drawn on the map" swatch: this line is a
     // reading, not a colour on the ground.
+    // The window closes on the last DETECTION, 66 minutes after the last
+    // IMAGE, so the end state has two instants and the reader can see only one
+    // of them on the line above. Naming the frame here is what keeps the
+    // perimeter's `1ᵉʳ août 11:38` from contradicting the cursor's `12:44`.
+    const lastStep = _event.steps[_event.steps.length - 1];
     const legend = [{
       label: megafireCursorReadout(_clock, state),
       color: null,
@@ -773,8 +778,8 @@ const girondeMegafireLayer = {
           + 'Entre deux images satellite rien n’est interpolé : la carte tient la dernière '
           + 'mesure, et ce sont les points chauds qui portent l’intervalle.'
         : (state.atEnd
-          ? 'Fin de la fenêtre — le feu est éteint depuis le 1ᵉʳ août 2026. ↺ pour le rejouer '
-            + 'depuis le départ.'
+          ? `Dernière détection de la fenêtre. La dernière image, elle, date du ${lastStep.label} : `
+            + 'après elle, plus personne n’a redessiné ce feu. ↺ pour rejouer depuis le départ.'
           : `Curseur arrêté. ▶ reprend la lecture des ${state.days} jours en `
             + `${MEGAFIRE_PLAY_SECONDS} s.`),
     }];
