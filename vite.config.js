@@ -655,6 +655,10 @@ import {
   isBusyAisSubscription,
 } from './src/data/aisSubscription.js';
 import {
+  parseVesselRegistryFr,
+  resolveVesselType,
+} from './src/data/vesselRegistryFr.js';
+import {
   fetchTerrainChunkWithRetry,
   parseTerrainPoints,
   resolveTerrainHeightRequest,
@@ -2326,6 +2330,21 @@ let _aisStaticDirty = false;
 let _aisStaticFlushedAt = 0;
 /** Wall clock of the last expiry sweep, for the throttle. */
 let _aisStaticPrunedAt = 0;
+/**
+ * @type {Map<string,string>|null}
+ * mmsi -> AIS type token, from the frozen ANFR radio register.
+ *
+ * Read ONCE, lazily, on the first ingest that needs it, and held for the
+ * process lifetime: 123 585 entries, ~1.2 MB on disk, ~12 MB resident as a
+ * Map. Nothing invalidates it — the pack is a build artefact, not a cache, and
+ * a hull's category does not change while the server is up.
+ *
+ * `null` means "not attempted yet"; an empty Map means "attempted and there is
+ * nothing to join against", which is the correct state for a checkout where
+ * the pack was never built. Neither is an error: the layer draws the same map
+ * it drew before the join existed, with a fuller silent bucket.
+ */
+let _vesselRegistryFr = null;
 /** @type {Map<string,{lats:Float32Array,lons:Float32Array,times:Uint32Array,head:number,len:number}>} mmsi -> track ring buffer */
 const _aisStreamTracks = new Map();
 /** @type {Map<string,{lat:number,lon:number,epochSec:number}>} mmsi -> first fix awaiting second (lazy buffer allocation) */
@@ -19113,7 +19132,7 @@ function aisStreamSubscription() {
  * @param {Object} envelope Parsed, non-error AIS envelope.
  * @returns {boolean} True when an AIS record was recognised.
  */
-function ingestAisStreamEnvelope(envelope) {
+export function ingestAisStreamEnvelope(envelope) {
   // Single shared recognition rule (also used by the adapter's tests), so the
   // liveness predicate that ships is the one under test. An envelope carrying
   // only an MMSI is not proof the feed works.
@@ -19154,13 +19173,28 @@ function ingestAisStreamEnvelope(envelope) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return true;
 
   const staticData = _aisStreamStatic.get(mmsi) || {};
+  // THE TYPE, AND WHO ANSWERED FOR IT. Measured 2026-09-10 over 5 749 live
+  // contacts, a third of the fleet broadcasts ship type 0 — "not available" —
+  // which is a permanent answer, not a gap uptime closes. Where the hull
+  // declares nothing the French radio register speaks in its place, and the
+  // row carries which of the two it was (`vesselRegistryFr.js`).
+  const resolvedType = resolveVesselType(
+    mmsi,
+    vesselTypeFromAis(message, staticData),
+    vesselRegistryFrIndex(),
+  );
   _aisStreamVessels.set(mmsi, {
     lat,
     lon,
     name: vesselNameFromAis(metadata, message, staticData) || `MMSI ${mmsi}`,
     mmsi,
     imo: stringValue(message.ImoNumber ?? message.IMO ?? staticData.imo),
-    type: vesselTypeFromAis(message, staticData),
+    type: resolvedType.type,
+    type_source: resolvedType.source,
+    // Recomputed from the CURRENT message rather than remembered: a hull is one
+    // class for life, so every fix agrees, and deriving it fresh keeps the
+    // field from outliving a contact whose MMSI got recycled.
+    ais_class: AIS_CLASS_BY_MESSAGE[messageType] || '',
     destination: stringValue(message.Destination ?? staticData.destination),
     // A position report never carries dimensions; the hull rides along from
     // whatever static message was heard for this MMSI, and stays null for the
@@ -19260,11 +19294,60 @@ function approxMetersBetween(lat1, lon1, lat2, lon2) {
   return Math.hypot(dLat, dLon);
 }
 
+/**
+ * The MMSI → type index from the frozen ANFR pack, loaded on first use.
+ *
+ * Synchronous by design. It runs once, inside the ingest of a single AIS
+ * message, and a 1.2 MB read is cheaper than the bookkeeping an async warm-up
+ * would need to keep the socket from racing it.
+ * @returns {Map<string,string>}
+ */
+function vesselRegistryFrIndex() {
+  if (_vesselRegistryFr) return _vesselRegistryFr;
+  const file = path.join(process.cwd(), 'src', 'data', 'local_data', 'vessels_fr', 'anfr-types.json');
+  try {
+    _vesselRegistryFr = parseVesselRegistryFr(JSON.parse(fs.readFileSync(file, 'utf8')));
+    console.log(`[AIS] ANFR vessel-type register: ${_vesselRegistryFr.size} MMSIs`);
+  } catch (error) {
+    // A missing pack is a supported state, not a failure — say so once and
+    // carry on rather than retrying the read on every message.
+    _vesselRegistryFr = new Map();
+    console.warn('[AIS] ANFR vessel-type register unavailable:', error?.message || String(error));
+  }
+  return _vesselRegistryFr;
+}
+
+/**
+ * A/B, read off the family of the message the fix arrived in.
+ *
+ * Messages 1/2/3 and 5 are Class A — SOLAS ships, required to transmit.
+ * Messages 18/19 and 24 are Class B — voluntary equipment, non-SOLAS craft.
+ * The ingest has always had this and always dropped it one function before it
+ * could be used; for the third of the fleet that declares no ship type it is
+ * the only remaining classifier.
+ */
+const AIS_CLASS_BY_MESSAGE = Object.freeze({
+  PositionReport: 'A',
+  ShipStaticData: 'A',
+  StandardClassBPositionReport: 'B',
+  ExtendedClassBPositionReport: 'B',
+  StaticDataReport: 'B',
+});
+
 function mergeAisStaticIntoLiveVessel(mmsi, staticData) {
   const existing = _aisStreamVessels.get(mmsi);
   if (!existing) return;
   if (staticData.name && (!existing.name || existing.name === `MMSI ${mmsi}`)) existing.name = staticData.name;
-  if (staticData.type && !existing.type) existing.type = staticData.type;
+  // A REAL DECLARATION EVICTS A JOINED ONE. Without the `type_source` test the
+  // register would win permanently: it writes a non-empty type, and the guard
+  // that used to read `!existing.type` would then refuse the transponder's own
+  // answer when it finally arrived six minutes later. The hull always outranks
+  // the register.
+  if (staticData.type && (!existing.type || existing.type_source === 'anfr')) {
+    const resolved = resolveVesselType(mmsi, staticData.type, vesselRegistryFrIndex());
+    existing.type = resolved.type;
+    existing.type_source = resolved.source;
+  }
   if (staticData.destination && !existing.destination) existing.destination = staticData.destination;
   if (staticData.imo && !existing.imo) existing.imo = staticData.imo;
   // Unlike the fields above, a later hull REPLACES an earlier one instead of
@@ -19292,7 +19375,7 @@ function vesselTypeFromAis(message, staticData = {}) {
   );
 }
 
-function aisStreamRows(maxRows) {
+export function aisStreamRows(maxRows) {
   const cutoff = Date.now() - AISSTREAM_STALE_MS;
   const rows = [];
   for (const row of _aisStreamVessels.values()) {

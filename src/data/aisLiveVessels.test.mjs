@@ -1327,6 +1327,37 @@ test('buildVesselCard: numeric AIS type codes read as family names, not digits',
   assert.equal(card.accent, '255, 179, 71');
 });
 
+test('the selected card marks a joined type and never invents one', () => {
+  // WHERE THE TYPE CAME FROM. The French radio register answers for a third of
+  // the fleet that declares nothing (`vesselRegistryFr.js`), and it does so at
+  // a measured ~98 % on its four kept categories — a good number, not a
+  // certainty. A reader looking at a card is told which of the two spoke.
+  const joined = buildSelectedVesselCard(makeRecord({
+    type: 'PLEASURE', typeSource: 'anfr', mmsi: '227235520',
+  }));
+  assert.match(joined.details[0], /^PLEASURE \(ANFR\) · /);
+  // A hull that typed itself carries no mark: the unmarked case is the ship's
+  // own word, which is the only thing that outranks the register.
+  const declared = buildSelectedVesselCard(makeRecord({ type: '37', typeSource: 'ais' }));
+  assert.match(declared.details[0], /^PLEASURE · /);
+  assert.equal(declared.details[0].includes('ANFR'), false);
+});
+
+test('a silence classifies by transponder class instead of saying VESSEL', () => {
+  // The word `VESSEL` was printed over a third of the fleet and carried no
+  // information at all. Class A / B does: measured 2026-09-10, 0.8 % of
+  // undeclared contacts publish an IMO number against ~50 % of declared ones,
+  // so the undeclared bucket is Class B — small craft that volunteered a
+  // position — almost whole.
+  const classB = buildSelectedVesselCard(makeRecord({ type: '0', typeSource: '', aisClass: 'B' }));
+  assert.match(classB.details[0], /^CLASSE B · /);
+  const classA = buildSelectedVesselCard(makeRecord({ type: '', typeSource: '', aisClass: 'A' }));
+  assert.match(classA.details[0], /^CLASSE A · /);
+  // And when even the class is unknown, the card says no more than it knows.
+  const nothing = buildSelectedVesselCard(makeRecord({ type: '', typeSource: '', aisClass: '' }));
+  assert.match(nothing.details[0], /^VESSEL · /);
+});
+
 test('cardScreenSeparated: rejects candidates inside the min separation radius', () => {
   const accepted = [{ x: 400, y: 300 }];
   assert.equal(cardScreenSeparated(accepted, { x: 400 + 149, y: 300 }, 150), false);
@@ -1777,10 +1808,17 @@ test('an unmeasured hull gets a distinct mark, not a default size', () => {
   assert.doesNotMatch(solid, /stroke-dasharray/);
 });
 
-test('the unknown-type slate survives the size pass', () => {
-  const icon = _shipIconForTest({ type: '', hull: { loaM: 100, beamM: 12 } }, false);
-  const svg = Buffer.from(icon.split(',')[1], 'base64').toString('utf8');
-  assert.match(svg, /#9aa7b5/, 'a typeless vessel is still slate, never cargo cyan');
+test('the unknown-type slate survives the size pass, and now has two shades', () => {
+  const silent = _shipIconForTest({ type: '', hull: { loaM: 100, beamM: 12 } }, false);
+  const silentSvg = Buffer.from(silent.split(',')[1], 'base64').toString('utf8');
+  assert.match(silentSvg, /#6c7784/, 'a vessel never heard from is slate, never cargo cyan');
+  // Type 0 is a DIFFERENT fact: the transponder answered, and answered blank.
+  // 1 934 contacts against 543 on the 2026-09-10 run, and only the second of
+  // the two is something uptime will fix.
+  const blank = _shipIconForTest({ type: '0', hull: { loaM: 100, beamM: 12 } }, false);
+  const blankSvg = Buffer.from(blank.split(',')[1], 'base64').toString('utf8');
+  assert.match(blankSvg, /#9aa7b5/, 'a vessel that declared 0 keeps the established slate');
+  assert.notEqual(silent, blank);
 });
 
 test('hull selection keeps the nearest and declares the rest (A5)', () => {
@@ -1903,13 +1941,46 @@ test('the legend is the hue key, counted, and nothing more', () => {
   assert.ok(controls, 'getRowControls used to return null for every array of records');
   const labels = controls.legend.map((entry) => entry.label);
   // One row per family PRESENT, ordered by how many of them are on screen.
-  assert.deepEqual(labels, ['Type non déclaré', 'Pétrolier / chimiquier']);
+  assert.deepEqual(labels, ['Identité pas encore reçue', 'Pétrolier / chimiquier']);
   assert.deepEqual(controls.legend.map((entry) => entry.count), [2, 1]);
   // Every row is a swatch, a name and a count. Nothing else: no prose beside
   // the swatch, and no folded disclosure under the block either.
   for (const entry of controls.legend) {
     assert.deepEqual(Object.keys(entry).sort(), ['color', 'count', 'label']);
   }
+});
+
+test('the legend names three things the slate used to swallow', () => {
+  // Measured on the live feed 2026-09-10, 5 749 contacts: 54.7 % drew the
+  // unfamilied slate under ONE row that said "Type non déclaré" — and the
+  // three states inside it are not the same claim. A dredger declared what it
+  // is; a `0` answered with a blank; an empty type never answered at all.
+  _setVesselStateForTest({
+    viewer: {},
+    records: [
+      { mmsi: '1', type: '33' },
+      { mmsi: '2', type: '51' },
+      { mmsi: '3', type: '40' },
+      { mmsi: '4', type: '99' },
+      { mmsi: '5', type: '0' },
+      { mmsi: '6', type: '' },
+    ],
+  });
+  const controls = aisLiveVesselsLayer.getRowControls();
+  const labels = controls.legend.map((entry) => entry.label).sort();
+  assert.deepEqual(labels, [
+    'Autre type déclaré',
+    'Identité pas encore reçue',
+    'Navire à grande vitesse',
+    'Remorquage, pilotage, servitude',
+    'Secours, police, militaire',
+    'Type laissé vide à bord',
+  ]);
+  // Six rows, six distinct swatches — a legend whose rows share a colour is a
+  // legend that explains nothing.
+  const colors = controls.legend.map((entry) => entry.color);
+  assert.equal(new Set(colors).size, colors.length);
+  assert.equal(labels.includes('Type non déclaré'), false, 'the catch-all row is gone');
 });
 
 test('an empty layer still publishes no legend', () => {

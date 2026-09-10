@@ -116,6 +116,7 @@ import {
   normalizeVesselType,
   vesselFamilyCss,
   vesselTypeFamily,
+  vesselSilentFamily,
   VESSEL_FAMILY_LABELS,
   vesselHullFromAisDimensions,
   vesselArrowScale,
@@ -556,7 +557,12 @@ const aisLiveVesselsLayer = {
   id: 'ais-live-vessels',
   name: 'Live AIS Vessels',
   icon: '◭',
-  source: 'AISStream',
+  // ANFR is credited here because it is JOINED INTO the rows, not switched on
+  // beside them: where a hull declares no ship type, the type a reader sees came
+  // from the French radio register (`vesselRegistryFr.js`), and the Licence
+  // Ouverte makes saying so a condition rather than a courtesy. `layerManifest.js`
+  // is GENERATED from this line — change it here, then `npm run layers:manifest`.
+  source: 'AISStream + ANFR (Données radiomaritimes, Licence Ouverte v2.0)',
   updateInterval: REFRESH_MS,
   statsRefreshInterval: 1000,
 
@@ -922,14 +928,17 @@ const aisLiveVesselsLayer = {
     if (!Array.isArray(records) || !records.length) return null;
     const byFamily = new Map();
     for (const record of records) {
-      const family = vesselTypeFamily(record?.type) || 'unknown';
+      // A single "Type non déclaré" row used to absorb three different facts:
+      // a type the palette had no swatch for, a type declared as 0, and an
+      // identity never heard. It now names all three — see vesselLabels.js.
+      const family = vesselTypeFamily(record?.type) || vesselSilentFamily(record?.type);
       byFamily.set(family, (byFamily.get(family) || 0) + 1);
     }
     const legend = [...byFamily.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([family, count]) => ({
         label: VESSEL_FAMILY_LABELS[family] || family,
-        color: vesselFamilyCss(family === 'unknown' ? null : family),
+        color: vesselFamilyCss(family),
         count,
       }));
     return { legend };
@@ -1365,6 +1374,8 @@ function updateRecordInPlace(record, next) {
   record.imo = next.imo;
   record.hull = next.hull;
   record.type = next.type;
+  record.typeSource = next.typeSource;
+  record.aisClass = next.aisClass;
   record.destination = next.destination;
   record.speed = next.speed;
   record.course = next.course;
@@ -1427,6 +1438,13 @@ function normalizeVessel(row) {
     imo: String(row.imo || ''),
     hull: vesselHullFromRow(row),
     type: String(row.type_specific || row.type || ''),
+    // Who answered "what kind of boat is this" — 'ais' when the hull declared
+    // it, 'anfr' when the French radio register did, '' when nobody could.
+    typeSource: String(row.type_source || ''),
+    // A or B, from the family of the position message the fix arrived in. The
+    // ingest has always known it and always dropped it; for the third of the
+    // fleet that declares no type it is the only thing left that classifies.
+    aisClass: String(row.ais_class || '').trim().toUpperCase(),
     destination: String(row.destination || ''),
     speed: finiteNumber(row.speed),
     course: finiteNumber(row.course),
@@ -2383,6 +2401,12 @@ function registerSelectedContext(record) {
       properties: {
         mmsi: record.mmsi,
         type: record.type,
+        // The voice assistant reads these properties aloud. Handing it `type`
+        // alone would let it say "c'est un bateau de plaisance" about a hull
+        // that never said so; `typeSource` is what lets it attribute, and
+        // `aisClass` is what it can still say when nobody typed the boat.
+        typeSource: record.typeSource,
+        aisClass: record.aisClass,
         speedKt: record.speed,
         course: record.course,
         destination: record.destination,
@@ -2531,7 +2555,7 @@ export function vesselCardJoins(record) {
 export function buildSelectedVesselCard(record, joins = null) {
   const direction = record.heading ?? record.course;
   const details = [[
-    vesselTypeShort(record) || 'VESSEL',
+    vesselTypeCell(record),
     formatSpeed(record.speed),
     Number.isFinite(direction) ? `${Math.round(direction)}°` : '--°',
   ].join(' · ')];
@@ -2578,6 +2602,34 @@ function vesselOverlayEntryId(record) {
 /** Uppercased, card-width-bounded AIS type (empty string when unknown). */
 function vesselTypeShort(record) {
   return normalizeVesselType(record.type).toUpperCase().slice(0, 14);
+}
+
+/**
+ * The type cell of a card, and the two things it must never hide.
+ *
+ * A JOINED TYPE IS MARKED. When the French radio register answered for a hull
+ * that declared nothing (`vesselRegistryFr.js`), the card says so — `(ANFR)`.
+ * The join is measured at ~98 % on its four kept categories, which is a good
+ * number and not a certainty, and a reader deserves to know that this line
+ * came from a register rather than from the ship in front of them.
+ *
+ * A SILENCE STILL CLASSIFIES. Where nobody could answer, the cell used to read
+ * `VESSEL` — a word with no content, printed over a third of the fleet. The
+ * transponder class is there instead: `CLASSE B` says non-SOLAS small craft
+ * that volunteered its position, `CLASSE A` says a ship required to transmit.
+ * Measured 2026-09-10, only 0.8 % of undeclared contacts publish an IMO number
+ * against ~50 % of declared ones — the undeclared bucket is Class B almost
+ * whole, and saying so is more than the map said before.
+ *
+ * Pure — exported for unit tests.
+ * @param {Object} record Vessel record.
+ * @returns {string}
+ */
+export function vesselTypeCell(record) {
+  const type = vesselTypeShort(record);
+  if (type) return record?.typeSource === 'anfr' ? `${type} (ANFR)` : type;
+  const klass = String(record?.aisClass || '').trim().toUpperCase();
+  return klass ? `CLASSE ${klass}` : 'VESSEL';
 }
 
 /**

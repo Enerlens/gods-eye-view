@@ -8,6 +8,7 @@ import {
   vesselOverlayCohortLimit,
   vesselTypeCss,
   vesselTypeFamily,
+  vesselSilentFamily,
   vesselFamilyCss,
   VESSEL_FAMILY_LABELS,
   vesselHullFromAisDimensions,
@@ -53,12 +54,33 @@ test('vessel type CSS and card accents stay paired', () => {
   assert.equal(accentForVesselType('Passenger'), '255, 122, 223');
   assert.equal(accentForVesselType('Fishing'), '124, 255, 155');
   assert.equal(accentForVesselType('Pilot Vessel'), '247, 240, 163');
-  // A dredger belongs to no family in this palette — and it is NOT a cargo
-  // ship. The unfamilied default is off the ramp entirely (CARTOGRAPHIE A1),
-  // which is also the state of every vessel that broadcast no type at all.
-  assert.equal(accentForVesselType('Dredger'), '154, 167, 181');
-  assert.equal(vesselTypeCss(''), '#9aa7b5');
+  // A dredger is a working craft, and it is NOT a cargo ship. It used to fall
+  // to the unfamilied slate; measured 2026-09-10, 88 of them were doing that
+  // in the Channel box alone, plus 15 port tenders, 3 dive-ops and 2
+  // anti-pollution boats that the `service` pattern missed by a word.
+  assert.equal(accentForVesselType('Dredger'), '247, 240, 163');
+  assert.equal(accentForVesselType('33'), '247, 240, 163');
+  assert.equal(accentForVesselType('Port Tender'), '247, 240, 163');
+  // The state vessels are their own row now — SAR, police and navy are not
+  // servitude, and 68 of them were drawn as if they had declared nothing.
+  assert.equal(vesselTypeCss('51'), '#ff5c5c');
+  assert.equal(vesselTypeCss('55'), '#ff5c5c');
+  assert.equal(vesselTypeCss('35'), '#ff5c5c');
+  assert.equal(vesselTypeCss('40'), '#5b8cff', 'high-speed craft, 59 of them');
+  // Codes 90-99 are the AIS enum's OWN "other type": declared, and unhelpful.
+  // A declared unhelpful answer is not the same state as no answer, so it gets
+  // a neutral of its own rather than joining either silence below.
+  assert.equal(vesselTypeCss('99'), '#c8d0d8');
+  assert.equal(vesselTypeCss('90'), '#c8d0d8');
+  // THE TWO SILENCES. `0` is a transponder answering with a blank — permanent,
+  // and only a register can improve it. `''` is an identity never heard —
+  // transient, and it is what uptime fills in. They were one colour and one
+  // legend row; they are neither.
+  assert.equal(vesselTypeCss('0'), '#9aa7b5');
+  assert.equal(vesselTypeCss(''), '#6c7784');
+  assert.notEqual(vesselTypeCss('0'), vesselTypeCss(''));
   assert.notEqual(vesselTypeCss(''), vesselTypeCss('Container Ship'));
+  assert.notEqual(vesselTypeCss('0'), vesselTypeCss('99'), 'declared-other is not a silence');
   assert.equal(accentForVesselType('84'), '255, 179, 71');
   assert.equal(vesselTypeCss('62'), '#ff7adf');
 });
@@ -123,21 +145,42 @@ test('the key names the family a hue stands for, including the one nobody declar
   assert.equal(vesselTypeFamily('37'), 'pleasure');
   assert.equal(vesselTypeFamily('36'), 'pleasure');
   assert.equal(vesselTypeFamily('Sailing Vessel'), 'pleasure');
+  // Three families measured out of the slate on 2026-09-10: 670 contacts,
+  // 11.7 % of the whole layer, had declared a type the palette could not draw.
+  assert.equal(vesselTypeFamily('33'), 'service', 'a dredger is a working craft');
+  assert.equal(vesselTypeFamily('Dredger'), 'service');
+  assert.equal(vesselTypeFamily('51'), 'state');
+  assert.equal(vesselTypeFamily('55'), 'state');
+  assert.equal(vesselTypeFamily('35'), 'state');
+  assert.equal(vesselTypeFamily('40'), 'hsc');
+  assert.equal(vesselTypeFamily('99'), 'other', 'the AIS enum\'s own "other type"');
+  assert.equal(vesselTypeFamily('20'), 'other');
+  assert.equal(vesselTypeFamily('Sludge Barge'), 'other', 'declared text nobody can family');
+  // Only a silence has no family now.
   assert.equal(vesselTypeFamily(''), null, 'no declared type is no family');
   assert.equal(vesselTypeFamily('0'), null, 'and neither is AIS "not available"');
-  assert.equal(vesselTypeFamily('Dredger'), null, 'and neither is an unmatched one');
+  assert.equal(vesselSilentFamily(''), 'silent', 'never heard — uptime fixes this one');
+  assert.equal(vesselSilentFamily('0'), 'unavailable', 'declared blank — uptime never will');
   // The swatch a family gets IS the hue drawn for it.
   assert.equal(vesselFamilyCss('tanker'), vesselTypeCss('Tanker'));
   assert.equal(vesselFamilyCss('cargo'), vesselTypeCss('Container Ship'));
   assert.equal(vesselFamilyCss(null), vesselTypeCss(''));
+  assert.equal(vesselFamilyCss('silent'), vesselTypeCss(''));
+  assert.equal(vesselFamilyCss('unavailable'), vesselTypeCss('0'));
   assert.equal(vesselFamilyCss('pleasure'), vesselTypeCss('37'));
   assert.notEqual(vesselFamilyCss(null), vesselFamilyCss('cargo'));
-  // Six families, six hues, and none of them the slate of the unnamed bucket.
-  const hues = ['tanker', 'cargo', 'passenger', 'fishing', 'service', 'pleasure']
-    .map((family) => vesselFamilyCss(family));
+  // Nine families, nine hues, and none of them either silence.
+  const hues = ['tanker', 'cargo', 'passenger', 'fishing', 'service', 'pleasure',
+    'state', 'hsc', 'other'].map((family) => vesselFamilyCss(family));
   assert.equal(new Set(hues).size, hues.length, 'every family has its own hue');
-  assert.equal(hues.includes(vesselFamilyCss(null)), false);
+  assert.equal(hues.includes(vesselFamilyCss('silent')), false);
+  assert.equal(hues.includes(vesselFamilyCss('unavailable')), false);
   assert.ok(VESSEL_FAMILY_LABELS.pleasure);
+  assert.ok(VESSEL_FAMILY_LABELS.state);
+  assert.ok(VESSEL_FAMILY_LABELS.hsc);
+  assert.ok(VESSEL_FAMILY_LABELS.other);
+  assert.ok(VESSEL_FAMILY_LABELS.silent);
+  assert.ok(VESSEL_FAMILY_LABELS.unavailable);
   assert.ok(VESSEL_FAMILY_LABELS.unknown);
 });
 

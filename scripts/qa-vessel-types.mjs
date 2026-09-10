@@ -3,13 +3,24 @@
  * qa-vessel-types — phase 5: why so many ships read "Type non déclaré", and
  * what the registry on disk changes.
  *
- * The cause is in the protocol, not in the layer. AIS position reports —
- * messages 1/2/3 and 18, the ones the map is drawn from — carry no identity at
- * all. Type, name, IMO number and hull dimensions travel only in message 5 and
- * in part B of message 24, roughly every six minutes per transponder. The
- * server merged the two families correctly but kept the result in a
- * process-lifetime `Map` that was never written anywhere, so every restart
- * threw away 100 % of what it had learned and began the six-minute wait again.
+ * The bucket had THREE causes, and only one of them was the protocol. Measured
+ * on the live feed 2026-09-10, Channel / North Sea box, 5 749 contacts:
+ *
+ *   ·  543  (9.4 %) had sent no static message yet. This IS the protocol —
+ *      type, name, IMO and hull travel only in message 5 and in part B of
+ *      message 24, roughly every six minutes per transponder — and the server
+ *      made it worse by keeping what it learned in a process-lifetime `Map`
+ *      that was never written anywhere, so every restart began the wait again.
+ *      The disk registry closed that one.
+ *   · 1 934 (33.6 %) declared ship type 0, "not available". The transponder is
+ *      speaking and the field was never configured; listening longer buys
+ *      nothing. The frozen ANFR register answers for these where it can.
+ *   ·   670 (11.7 %) had declared a perfectly good type the palette had no
+ *      swatch for — dredgers, SAR, police, high-speed craft, codes 90-99. That
+ *      was never a data problem at all, and it is fixed in `vesselLabels.js`.
+ *
+ * A harness that reports one number over all three cannot tell you which of
+ * them moved, so section D breaks them out.
  *
  * This harness measures the running dev server. It does not look at pixels:
  * the claim is a count, and the count is the whole of it.
@@ -26,8 +37,13 @@
  *     where it used to start at zero.
  *
  *  D. THE DECLARED SHARE, RIGHT NOW, with the family breakdown the legend
- *     draws. Informational: on a cold cache this is the ~30 % the protocol
- *     gives you, and it is supposed to climb over sessions.
+ *     draws — and the two silences told apart, because only one of them is
+ *     something uptime will fix. Informational.
+ *
+ *  G. WHAT THE FRENCH REGISTER FILLED. Contacts whose type came from the
+ *     frozen ANFR pack rather than from the hull, and the share of the silent
+ *     bucket that represents. Zero is a legitimate answer outside French
+ *     waters; a zero on the France box means the pack is missing.
  *
  *  E. NO VOYAGE DATA ON DISK. `destination` rides in the same message 5 as the
  *     identity, but it is true for one passage only. It must appear nowhere in
@@ -50,7 +66,12 @@ import {
   AIS_STATIC_TTL_MS,
 } from '../src/data/aisStaticRegistry.js';
 import { AIS_BBOX_FRANCE } from '../src/data/aisSubscription.js';
-import { VESSEL_FAMILY_LABELS, vesselTypeFamily } from '../src/data/vesselLabels.js';
+import {
+  VESSEL_FAMILY_LABELS,
+  vesselSilentFamily,
+  vesselTypeFamily,
+} from '../src/data/vesselLabels.js';
+import { aisTypeIsDeclared } from '../src/data/vesselRegistryFr.js';
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -147,10 +168,14 @@ if (!identities.length) {
 }
 
 // ── D. the declared share, right now ───────────────────────────────────────
-const declared = rows.filter((row) => String(row.type || '').trim());
+// `String(row.type).trim()` used to count as "declared" — which counted ship
+// type 0 as an answer and reported 90.6 % where the map was drawing 54.7 % of
+// its contacts in the unfamilied slate. A `0` is a non-answer, and the number
+// that matters is the one the reader can see.
+const declared = rows.filter((row) => aisTypeIsDeclared(row.type));
 const families = new Map();
 for (const row of rows) {
-  const family = vesselTypeFamily(row.type) || 'unknown';
+  const family = vesselTypeFamily(row.type) || vesselSilentFamily(row.type);
   families.set(family, (families.get(family) || 0) + 1);
 }
 const breakdown = [...families.entries()]
@@ -160,9 +185,24 @@ const breakdown = [...families.entries()]
 record(
   'D. contacts carrying a declared type (informational)',
   null,
-  `${declared.length} of ${rows.length} (${percent(declared.length, rows.length)})`,
+  `${declared.length} of ${rows.length} (${percent(declared.length, rows.length)})`
+    + ` · type 0: ${families.get('unavailable') || 0}`
+    + ` · never heard: ${families.get('silent') || 0}`,
 );
 console.log(`      ${breakdown}`);
+
+// ── G. what the French register filled ─────────────────────────────────────
+const joined = rows.filter((row) => row.type_source === 'anfr');
+const silent = (families.get('unavailable') || 0) + (families.get('silent') || 0);
+const french = rows.filter((row) => /^(22[6-8]|329|347|361|540|546|578|618|635|660|745)/.test(String(row.mmsi)));
+record(
+  'G. the ANFR register answered where the hull did not',
+  // Only assertable where French-flagged contacts are actually in view; on a
+  // box with none, a zero fill is the correct answer, not a failure.
+  french.length >= 20 ? joined.length > 0 : null,
+  `${joined.length} filled, ${silent} still silent`
+    + ` (${french.length} French-flagged contacts in view)`,
+);
 
 if (identities.length) {
   const text = JSON.stringify(document);

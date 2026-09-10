@@ -443,7 +443,7 @@ export const LAYER_MANIFEST = Object.freeze([
     id: 'ais-live-vessels',
     name: 'Live AIS Vessels',
     icon: '◭',
-    source: 'AISStream',
+    source: 'AISStream + ANFR (Données radiomaritimes, Licence Ouverte v2.0)',
     capabilities: Object.freeze(['destroy', 'getStats']),
     load: () => import('./aisLiveVessels.js').then((module) => module.default),
   }),
