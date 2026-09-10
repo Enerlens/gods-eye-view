@@ -25,6 +25,16 @@
  *   3. Free-floating operators republish the city's own parking bays as their
  *      "stations" — 26,259 rows over Paris alone, near-identical between
  *      operators. Those are not drawn per operator; the fleet is.
+ *   4. An operator alone in its city escapes rule 3 and draws its whole bay
+ *      map, most of it empty: Pony put 447 empty bays over Biarritz against 94
+ *      holding a bike. A VIRTUAL bay with a published zero is not drawn — it
+ *      is a polygon, not infrastructure — while an empty physical dock always
+ *      is (`isEmptyVirtualBay`). Both counts are declared in the control row.
+ *
+ * NAMES ARE CHECKED AGAINST THEIR OWN KEY. Ten Pony systems publish
+ * `station_id` in the `name` field — 4,959 rows nationwide — which filled a
+ * whole city with `basque_country_parking` repeated. `gbfsFeeds.js` refuses
+ * the echo, and a nameless dot is called by its operator instead.
  *
  * FRESHNESS IS UNEVEN AND SAID SO. Measured 2026-08-26: Lime republishes every
  * ~50 s, Dott's median fix is 8 minutes old with a tail past 2 hours. The card
@@ -311,6 +321,26 @@ export function vehicleKindLabel(kind) {
 }
 
 /**
+ * What to call a station whose feed published no name.
+ *
+ * Ten Pony systems publish `station_id` in the `name` field, so `gbfsFeeds.js`
+ * drops the echo and the dot arrives here nameless. The fallback says the two
+ * things that ARE known — who runs it, and whether it is a painted bay or a
+ * dock — rather than repeating an identifier the reader cannot use. A place
+ * without a name is not a place without an owner.
+ *
+ * @param {Object} record Render record.
+ * @returns {string}
+ */
+export function stationTitle(record) {
+  const name = record?.object?.name;
+  if (name) return String(name);
+  const kind = record?.object?.virtual ? 'Bay' : 'Station';
+  const operator = sharedMobilityOperator(record);
+  return operator.id === 'unknown' ? kind : `${operator.label} ${kind}`;
+}
+
+/**
  * Colour for a station, by how full it is.
  *
  * A station with no availability data is NOT drawn as empty — it takes the
@@ -448,7 +478,11 @@ export function sharedMobilityReadout(record) {
     return {
       ...base,
       kind: 'shared-mobility-station',
+      // A feed that published an identifier instead of a name leaves this
+      // null. The card can fall back on the operator; a spoken answer must
+      // not, or it would report a brand as a toponym.
       name: object.name || null,
+      virtual: object.virtual === true,
       vehiclesAvailable: num(object.available),
       docksAvailable: num(object.docks),
       capacity: num(object.capacity),
@@ -482,7 +516,7 @@ export function buildSharedMobilitySelectionLabel(record, nowMs = Date.now()) {
 
   let title;
   if (record.type === 'station') {
-    title = object.name || 'Station';
+    title = stationTitle(record);
     const counts = [];
     if (Number.isFinite(object.available)) counts.push(`${object.available} avail`);
     if (Number.isFinite(object.docks)) counts.push(`${object.docks} docks`);
@@ -993,7 +1027,7 @@ function collectDetectableObjects(options = {}) {
       position: record.position,
       sourceId: record.id,
       id: record.type === 'station'
-        ? (record.object.name || 'STATION').slice(0, 22)
+        ? stationTitle(record).toUpperCase().slice(0, 22)
         : `${mobilityOperatorShortLabel(record.system?.name, 10)} ${vehicleKindLabel(record.object.kind)}`
           .toUpperCase().slice(0, 22),
       type: 'VEH',
@@ -1079,6 +1113,11 @@ function buildLoadingLabel() {
   if (_truncated) parts.push('capped');
   const suppressed = _systems.reduce((sum, s) => sum + (s.stationsSuppressed || 0), 0);
   if (suppressed) parts.push(`${suppressed.toLocaleString('en-US')} shared bays merged out`);
+  // The empty painted bays the proxy dropped. Said out loud for the same
+  // reason as the line above: a count that changed silently is a count the
+  // reader cannot trust.
+  const emptyBays = _systems.reduce((sum, s) => sum + (s.baysHidden || 0), 0);
+  if (emptyBays) parts.push(`${emptyBays.toLocaleString('en-US')} empty bays hidden`);
   const stale = _systems.filter((s) => s.stale).length;
   if (stale) parts.push(`${stale} stale`);
   return parts.join(' · ');

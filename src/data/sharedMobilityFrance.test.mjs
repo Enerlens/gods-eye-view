@@ -23,6 +23,7 @@ import sharedMobilityFranceLayer, {
   vehicleKindLabel,
   matchesKindFilter,
   stationHoldsBikes,
+  stationTitle,
   _clearSharedMobilitySelectionForTest,
   _reanchorSharedMobilityForTest,
   _selectSharedMobilityObjectForTest,
@@ -180,6 +181,31 @@ test('a station card prints the counts and the per-kind split it was given', () 
   assert.equal(lines[3], '🅿️ Naolib Nantes');
 });
 
+test('a nameless bay is called by its operator, never by its primary key', () => {
+  // Pony publishes `station_id` in the `name` field, so `gbfsFeeds.js` drops
+  // the echo and the dot arrives here nameless. What is still KNOWN is who
+  // runs it and that it is a painted bay, not a dock — so that is what the
+  // card and the HUD label say.
+  const bay = stationRecord({
+    object: { name: null, virtual: true, available: 3 },
+    system: { name: 'Pony Pays Basque' },
+  });
+  assert.equal(stationTitle(bay), 'Pony Bay');
+  assert.equal(buildSharedMobilitySelectionLabel(bay).split('\n')[0], 'Pony Bay');
+
+  // A nameless PHYSICAL dock is a station, and says so.
+  const dock = stationRecord({ object: { name: null, virtual: false }, system: { name: 'Pony Pays Basque' } });
+  assert.equal(stationTitle(dock), 'Pony Station');
+
+  // A network name the PAN publishes is a fact too, curated brand or not.
+  assert.equal(stationTitle(stationRecord({ object: { name: null }, system: { name: 'Naolib Nantes' } })), 'Naolib Station');
+  // With no operator to name either, the bare noun — never an invented brand.
+  assert.equal(stationTitle(stationRecord({ object: { name: null }, system: { name: null } })), 'Station');
+
+  // A published name always wins — refusing the echo must not cost a toponym.
+  assert.equal(stationTitle(stationRecord({ object: { name: 'Gare de Bayonne', virtual: true } })), 'Gare de Bayonne');
+});
+
 test('missing values are omitted rather than filled in', () => {
   const bare = vehicleRecord({
     object: { kind: 'bike', rangeMeters: null, lastReported: null },
@@ -188,7 +214,10 @@ test('missing values are omitted rather than filled in', () => {
   const lines = buildSharedMobilitySelectionLabel(bare).split('\n');
   assert.deepEqual(lines, ['Bike', 'Parked and available — a rented vehicle is not published']);
 
-  const closed = stationRecord({ object: { name: null, available: null, docks: null, capacity: null, byKind: null, renting: false } });
+  const closed = stationRecord({
+    object: { name: null, available: null, docks: null, capacity: null, byKind: null, renting: false },
+    system: { name: null },
+  });
   const closedLines = buildSharedMobilitySelectionLabel(closed).split('\n');
   assert.equal(closedLines[0], 'Station');
   assert.ok(closedLines.includes('⚠️ Not renting'));

@@ -14,8 +14,11 @@ import {
   freeVehicleFeedUrl,
   gbfsAreaLabel,
   gbfsLicenceLabel,
+  gbfsStationName,
   gbfsSystemName,
   gbfsSystemsFromCatalog,
+  gbfsTimestampSeconds,
+  isEmptyVirtualBay,
   localizedText,
   normalizedSystemName,
   parseGbfsStationStatus,
@@ -110,6 +113,77 @@ test('stations without a usable position are dropped rather than placed at Null 
   assert.deepEqual(stations.map((s) => s.id), ['ok']);
   assert.equal(stations[0].name, 'Quai');
   assert.equal(stations[0].capacity, 20);
+});
+
+test('a name that only repeats the station_id is not a name', () => {
+  // Ten Pony systems publish the primary key in the name field — 4,959 rows
+  // nationwide measured 2026-09-10. Rendered verbatim it fills a whole city
+  // with `basque_country_parking` and says nothing.
+  const stations = parseGbfsStations({
+    data: {
+      stations: [
+        {
+          station_id: 'basque_country_parking_71849_zidUNB5KA8I',
+          name: [{ language: 'en', text: 'basque_country_parking_71849_zidUNB5KA8I' }],
+          lat: 43.48, lon: -1.55, is_virtual_station: true,
+        },
+        // The SAME feed publishes real names where it has one. Refusing the
+        // echo must not cost us those.
+        {
+          station_id: 'basque_country_parking_Bayonne_gare_zid2LNRL8HT',
+          name: [{ language: 'fr', text: 'Gare de Bayonne' }],
+          lat: 43.49, lon: -1.47, is_virtual_station: true,
+        },
+        { station_id: 'dock-1', name: 'Quai des Chartrons', lat: 44.85, lon: -0.57 },
+      ],
+    },
+  });
+  assert.deepEqual(stations.map((s) => s.name), [null, 'Gare de Bayonne', 'Quai des Chartrons']);
+  assert.deepEqual(stations.map((s) => s.virtual), [true, true, false],
+    'a painted bay and a physical dock are different objects downstream');
+});
+
+test('gbfsStationName keeps a name that merely CONTAINS the id', () => {
+  // Only a verbatim echo is refused. A name that happens to embed its own key
+  // is still the operator naming the place.
+  assert.equal(gbfsStationName({ station_id: '42', name: 'Dock 42' }), 'Dock 42');
+  assert.equal(gbfsStationName({ station_id: '42', name: '42' }), null);
+  assert.equal(gbfsStationName({ station_id: '42', name: '  ' }), null);
+  assert.equal(gbfsStationName({ name: 'Unkeyed' }), 'Unkeyed');
+});
+
+test('an empty painted bay is dropped; an empty physical dock is not', () => {
+  // The whole point of the rule: 7,077 empty virtual bays nationwide against
+  // 476 empty physical docks (measured 2026-09-10). One is noise, the other
+  // is the answer to "is there a bike at the stand down the road".
+  assert.equal(isEmptyVirtualBay({ virtual: true }, { available: 0 }), true);
+  assert.equal(isEmptyVirtualBay({ virtual: false }, { available: 0 }), false,
+    'an empty Vélib\' stand is a fact someone acts on');
+  assert.equal(isEmptyVirtualBay({ virtual: true }, { available: 3 }), false);
+
+  // "We do not know" must never be rendered as "we know it is empty": a
+  // station absent from station_status, or a status feed that failed outright,
+  // keeps its dot.
+  assert.equal(isEmptyVirtualBay({ virtual: true }, null), false);
+  assert.equal(isEmptyVirtualBay({ virtual: true }, { available: null }), false);
+  assert.equal(isEmptyVirtualBay({ virtual: true }, {}), false);
+});
+
+test('last_reported is read as epoch seconds in both GBFS 2.x and 3.0', () => {
+  // 3.0 changed the type from POSIX integer to RFC3339 string, and 56 of 106
+  // French systems have moved — 11,110 vehicles whose fix age a numbers-only
+  // reader drops (measured 2026-09-10). A missing age reads as "just now",
+  // which is the opposite of what those feeds are saying.
+  assert.equal(gbfsTimestampSeconds(1789063290), 1789063290);
+  assert.equal(gbfsTimestampSeconds('2026-09-10T18:01:30Z'), 1789063290);
+  assert.equal(gbfsTimestampSeconds('1789063290'), 1789063290);
+  assert.equal(gbfsTimestampSeconds(null), null);
+  assert.equal(gbfsTimestampSeconds('not a date'), null);
+
+  const [vehicle] = parseGbfsVehicles({
+    data: { vehicles: [{ vehicle_id: 'v', lat: 43.4, lon: -1.5, last_reported: '2026-09-10T18:01:30Z' }] },
+  });
+  assert.equal(vehicle.lastReported, 1789063290);
 });
 
 test('a vehicle already counted at a station is not drawn a second time', () => {
