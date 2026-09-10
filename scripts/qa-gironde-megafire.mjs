@@ -5,7 +5,7 @@
  *
  * The pack is a SHIPPED file and its numbers are already guarded offline by
  * `src/data/megafirePack.test.mjs`. What no unit test can reach is whether the
- * reconstruction actually arrives on a globe, so this harness proves the six
+ * reconstruction actually arrives on a globe, so this harness proves the nine
  * things that only a live Cesium scene can:
  *
  *   i.   the layer loads its two pack files and lands on the CLOSING frame —
@@ -24,7 +24,13 @@
  *   vi.  the five chips are REAL buttons in the toggle panel, and a DOM click
  *        on one moves the cursor — the layer's clock is reachable by a reader,
  *        not only by `setLayerParams`
- *   vii. disabling the layer removes every primitive it added
+ *   vii. the cursor is READABLE while it runs — the row repaints during
+ *        playback, the chip of the frame being held lights up, and the play
+ *        button says something different at the end than it did in the middle
+ *   viii. the fire burns where FIRMS saw something and NOWHERE else: plumes at
+ *        a burning instant, none at the closing frame, none from orbit, and the
+ *        render governor handed back every time one of those gates closes
+ *   ix.  disabling the layer removes every primitive it added
  *
  * Screenshots are written under the gitignored `qa-shots/gironde-megafire/`
  * and are OPT-IN (`--shots`): on this app `page.screenshot()` can hang for
@@ -210,8 +216,14 @@ function sceneProbe(page, layerId) {
     for (let i = 0; i < scene.primitives.length; i += 1) {
       const primitive = scene.primitives.get(i);
       if (typeof primitive?.get !== 'function') continue;
-      // The two collections this layer owns are told apart by size: the ember
-      // field is thousands of points, the flame set is at most a few hundred.
+      // POINT collections only. The fire's two BillboardCollections are the
+      // same shape and can be the same size, and the smoke pool on a `full`
+      // profile is over a thousand billboards — which would have been counted
+      // as the ember field. A billboard has no `pixelSize`; that is the
+      // property that tells the two classes apart in a minified bundle.
+      if (typeof primitive.get(0)?.pixelSize !== 'number') continue;
+      // The two point collections this layer owns are told apart by size: the
+      // ember field is thousands of points, the flame set at most a few hundred.
       if (primitive.length > 1000) {
         embers = primitive.length;
         emberCollectionShown = primitive.show !== false;
@@ -237,6 +249,11 @@ function sceneProbe(page, layerId) {
       flames,
       flameCollectionShown,
       flameColor: [...flameColors][0] ?? null,
+      // What the fire says about itself. Read off `getStats()` rather than
+      // counted off the scene: a plume is 200 billboards whose only stable
+      // property is that they exist, and the QUESTION here is how many heads
+      // are alight, which only the layer knows.
+      fire: module.getStats?.()?.fire ?? null,
       governor: window.__godsEyeView?.renderGovernor?.getDiagnostics?.()
         || gev.getRenderGovernorDiagnostics?.() || null,
     };
@@ -427,7 +444,99 @@ async function main() {
       ?.getAttribute('aria-pressed'), LAYER_ID, target.id);
     check('et la puce se marque enfoncée', afterClick === 'true', String(afterClick));
 
-    console.log('\nvii. l’extinction ne laisse rien derrière elle');
+    console.log('\nvii. le curseur se lit à l’écran pendant qu’il court');
+    // Chip ids are bare here: the manager only namespaces them
+    // (`<layer>::<chip>`) on a row that carries FUSION COMPANIONS, and this row
+    // carries none — section vi asserts the bare `play` id above.
+    const chipText = (chipId) => page.evaluate((id, chip) => {
+      const button = document.querySelector(`[data-layer-id="${id}"] [data-chip-id="${chip}"]`);
+      return button ? { label: button.textContent, className: button.className } : null;
+    }, LAYER_ID, chipId);
+
+    await pressChip(page, LAYER_ID, { step: PACK.steps[0].id });
+    await pump(page, 6, 80);
+    probe = await sceneProbe(page, LAYER_ID);
+    check('la ligne porte une lecture d’horloge, pas seulement une info-bulle',
+      typeof probe.stats.coverage === 'string'
+      && probe.stats.coverage.includes('24 juil. 09:05')
+      && /jour \d+ sur 10/.test(probe.stats.coverage),
+      String(probe.stats.coverage));
+    check('la légende de carte s’ouvre sur l’instant du curseur',
+      probe.controls.legend?.[0]?.label === probe.stats.coverage
+      && probe.controls.legend?.[0]?.color === null,
+      JSON.stringify(probe.controls.legend?.[0]));
+
+    await pressChip(page, LAYER_ID, { play: true });
+    await pump(page, 8, 60);
+    const playingChip = await chipText('play');
+    probe = await sceneProbe(page, LAYER_ID);
+    check('le bouton porte l’instant pendant la lecture',
+      /^❚❚ \d/.test(playingChip?.label || ''), JSON.stringify(playingChip));
+    const passing = await page.evaluate((id) => [...document
+      .querySelectorAll(`[data-layer-id="${id}"] .data-toggle-chip.chip-passing`)]
+      .map((button) => button.textContent), LAYER_ID);
+    check('la puce de l’image tenue s’allume — la bande devient la barre d’avancement',
+      passing.length === 1, JSON.stringify(passing));
+    check('la lecture repeint la ligne d’elle-même',
+      probe.stats.coverage.startsWith('▶'), String(probe.stats.coverage));
+
+    const finished = await pollUntil(page,
+      (id) => window.__godsEyeView.dataManager.layers.get(id)?.module?.getParams?.()?.playing === false,
+      { tries: 400, gapMs: 100, arg: LAYER_ID, render: 4 });
+    check('la lecture atteint la fin de la fenêtre', finished);
+    await pump(page, 6, 80);
+    const endedChip = await chipText('play');
+    probe = await sceneProbe(page, LAYER_ID);
+    // THE REPORTED DEFECT. The layer shipped with nothing that repainted this
+    // row, so a run that had already stopped left `❚❚ Pause` on the button and
+    // no way to tell a finished replay from a running one.
+    check('le bouton ne reste pas sur PAUSE une fois la lecture finie',
+      endedChip?.label === '↺ Rejouer', JSON.stringify(endedChip));
+    check('et la ligne dit que l’événement est terminé',
+      probe.stats.atEnd === true && probe.stats.coverage.includes('fin de l’événement'),
+      String(probe.stats.coverage));
+    const noPassing = await page.evaluate((id) => document
+      .querySelectorAll(`[data-layer-id="${id}"] .chip-passing`).length, LAYER_ID);
+    check('plus aucune puce ne clignote à l’arrêt', noPassing === 0, String(noPassing));
+
+    console.log('\nviii. le feu brûle là où FIRMS a vu quelque chose, et nulle part ailleurs');
+    check('rien ne brûle sur l’image de clôture — le feu est éteint depuis le 1ᵉʳ août',
+      (probe.stats.fire?.burning ?? 0) === 0 && (probe.stats.fire?.particles ?? 0) === 0,
+      JSON.stringify(probe.stats.fire));
+    check('et le gouverneur n’est pas tenu par des flammes qui n’existent pas',
+      probe.governor === null || !probe.governor.holds?.includes('gironde-megafire-flames'),
+      JSON.stringify(probe.governor?.holds ?? null));
+
+    await pressChip(page, LAYER_ID, { step: 'del-product' });
+    await pump(page, 25, 60);
+    probe = await sceneProbe(page, LAYER_ID);
+    check('des panaches se dressent sur l’image du 24 juillet',
+      (probe.stats.fire?.burning ?? 0) > 0 && (probe.stats.fire?.particles ?? 0) > 50,
+      JSON.stringify(probe.stats.fire));
+    check('jamais plus de panaches que le budget du profil',
+      probe.stats.fire.burning <= probe.stats.fire.plumes,
+      `${probe.stats.fire?.burning} / ${probe.stats.fire?.plumes}`);
+    check('un feu qui brûle tient le gouverneur ouvert',
+      probe.governor === null || probe.governor.holds?.includes('gironde-megafire-flames'),
+      JSON.stringify(probe.governor?.holds ?? null));
+    await shoot(page, '04-plumes.png');
+
+    // Distance gate: from orbit a kilometre of smoke is a third of a pixel.
+    await setView(page, { lon: -1.03, lat: 44.89, height: 6_000_000 });
+    await pump(page, 20, 60);
+    probe = await sceneProbe(page, LAYER_ID);
+    check('vu de l’orbite, plus rien ne brûle',
+      (probe.stats.fire?.particles ?? 0) === 0, JSON.stringify(probe.stats.fire));
+    check('et le gouverneur est rendu en s’éloignant',
+      probe.governor === null || !probe.governor.holds?.includes('gironde-megafire-flames'),
+      JSON.stringify(probe.governor?.holds ?? null));
+    await setView(page, GIRONDE);
+    await pump(page, 25, 60);
+    probe = await sceneProbe(page, LAYER_ID);
+    check('en revenant, le feu se rallume tout seul',
+      (probe.stats.fire?.particles ?? 0) > 0, JSON.stringify(probe.stats.fire));
+
+    console.log('\nix. l’extinction ne laisse rien derrière elle');
     // Parked on a frame that HAS flames first (the closing product has none, so
     // switching off from there would prove the flame collection is hidden by
     // proving it is empty).
@@ -450,6 +559,10 @@ async function main() {
     check('le gouverneur est rendu',
       probe.governor === null || !probe.governor.holds?.includes(LAYER_ID),
       JSON.stringify(probe.governor?.holds ?? null));
+    check('les panaches sont éteints et leur hold relâché',
+      (probe.stats.fire?.particles ?? 0) === 0
+      && (probe.governor === null || !probe.governor.holds?.includes('gironde-megafire-flames')),
+      `${JSON.stringify(probe.stats.fire)} · ${JSON.stringify(probe.governor?.holds ?? null)}`);
   } finally {
     await browser.close();
   }

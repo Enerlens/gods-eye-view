@@ -74,10 +74,25 @@ import {
   createMegafireClock,
   megafireClockState,
   megafireCursorLabel,
+  megafireCursorReadout,
   megafireEmberStrength,
   seekMegafireClock,
   setMegafirePlaying,
 } from './megafireClock.js';
+import {
+  destroyMegafireFire,
+  initMegafireFire,
+  megafireFireDiagnostics,
+  setMegafireFireEnabled,
+  updateMegafireFire,
+} from './megafireFire.js';
+import { megafireDriftVectors } from './megafireFireMath.js';
+
+/**
+ * @constant {{east: number, north: number}} Drift used before the pack has
+ * loaded: west-north-west, the way this fire ran out of Saumos.
+ */
+const MEGAFIRE_DEFAULT_DRIFT = Object.freeze({ east: -0.92388, north: 0.38268 });
 
 const EVENT_URL = new URL('./local_data/gironde_megafire_2026/event.json', import.meta.url).href;
 const HOTSPOTS_URL = new URL('./local_data/gironde_megafire_2026/hotspots.json', import.meta.url).href;
@@ -119,6 +134,13 @@ let _lastPaintedCursor = null;
 let _drawnStepIndex = null;
 let _tickRemover = null;
 let _lastTickMs = null;
+/** @type {?(() => void)} Manager callback: "this row's controls changed". */
+let _rowControlsListener = null;
+let _lastRowNotifyMs = 0;
+/** Plumes emitting on the previous frame — the edge the row repaints on. */
+let _lastBurning = 0;
+/** @type {Array<{east: number, north: number}>} Downwind vector per step. */
+let _driftVectors = [];
 let _classificationType = Cesium.ClassificationType.BOTH;
 
 /** @type {?Cesium.GroundPrimitive} */
@@ -131,7 +153,10 @@ let _effisOutline = null;
 let _flames = null;
 /** @type {?Cesium.PointPrimitiveCollection} */
 let _embers = null;
-/** @type {Array<{ms: number, level: number}>} Parallel to `_embers`, by index. */
+/**
+ * @type {Array<{ms: number, level: number, lon: number, lat: number, frp: number}>}
+ * Parallel to `_embers`, by index — and the emitter list the plumes read.
+ */
 let _emberMeta = [];
 
 /** @returns {boolean} Whether ground polylines can be drawn at all here. */
@@ -338,7 +363,16 @@ function buildEmbers() {
       show: false,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     });
-    _emberMeta.push({ ms, level });
+    // `lon`, `lat` and `frp` ride along for the plumes: `megafireFire.js` picks
+    // its emitters out of THIS array, so a detection's geometry has to survive
+    // the trip into the point primitive rather than being consumed by it.
+    _emberMeta.push({
+      ms,
+      level,
+      lon: row[index.lon],
+      lat: row[index.lat],
+      frp: row[index.frp],
+    });
   }
 }
 
@@ -369,6 +403,36 @@ function paintEmbers(cursorMs) {
   _lastPaintedCursor = cursorMs;
 }
 
+/**
+ * @constant {number} Shortest gap between two panel repaints, ms.
+ *
+ * The row is the only clock a reader has while playback runs, so it has to
+ * repaint DURING the run and not only at the ends — but `_refreshTogglePanel`
+ * rebuilds every visible row's chips and the on-map key, so it must not be
+ * asked for at frame rate. Four times a second is faster than a reader can
+ * read a timestamp and 15x cheaper than a per-frame refresh.
+ */
+const ROW_NOTIFY_MS = 250;
+
+/**
+ * Tell the manager this row's controls changed.
+ *
+ * @param {boolean} [immediate] - Skip the throttle. True on every state
+ *   TRANSITION (play, pause, seek, end of run), because those are exactly the
+ *   moments a stale chip lies: the layer shipped without this call, so the
+ *   clock reaching the end of the window left `❚❚ Pause` painted on a button
+ *   that had already stopped, with nothing in the app that would ever repaint
+ *   it. Reported as "once the simulation is done, the button stays on pause".
+ * @returns {void}
+ */
+function notifyRow(immediate = false) {
+  if (!_rowControlsListener) return;
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  if (!immediate && now - _lastRowNotifyMs < ROW_NOTIFY_MS) return;
+  _lastRowNotifyMs = now;
+  _rowControlsListener();
+}
+
 /** Re-render everything that depends on the cursor, cheaply. */
 function syncToCursor({ force = false } = {}) {
   if (!_clock || !_enabled) return;
@@ -381,51 +445,108 @@ function syncToCursor({ force = false } = {}) {
   governorRequestRender('gironde-megafire');
 }
 
-/** One playback frame. Wall-clock dt — the app clock freezes when idle. */
+/**
+ * One frame of everything this layer animates.
+ *
+ * TWO independent animations share this listener and must not be confused: the
+ * CURSOR only moves while playback runs, and the FIRE burns whenever the
+ * instant under the cursor had detections and the camera is close enough —
+ * including while paused, because a fire photographed burning at 14:07 was
+ * burning at 14:07 whether or not the reader is running the tape.
+ */
 function onTick() {
-  if (!_clock?.playing) return;
   const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const dt = (nowMs - (_lastTickMs ?? nowMs)) / 1000;
   _lastTickMs = nowMs;
-  const moved = advanceMegafireClock(_clock, dt);
-  // The clock stops ITSELF at the end of the window, and the frame it stops on
-  // is one that also MOVED — so "did it move" and "is it still playing" are
-  // independent questions, and reading only the first left the render governor
-  // held open for the rest of the session (caught by qa-gironde-megafire).
-  if (!_clock.playing) {
-    stopPlayback();
-    return;
+
+  if (_clock?.playing) {
+    const moved = advanceMegafireClock(_clock, dt);
+    // The clock stops ITSELF at the end of the window, and the frame it stops
+    // on is one that also MOVED — so "did it move" and "is it still playing"
+    // are independent questions, and reading only the first left the render
+    // governor held open for the rest of the session (caught by
+    // qa-gironde-megafire).
+    if (!_clock.playing) endPlayback();
+    else if (moved) syncToCursor();
   }
-  if (moved) syncToCursor();
+  const burning = runFire(dt, nowMs / 1000);
+
+  // A row repaint is a rebuild of every visible row's chips plus the on-map
+  // key, so the two reasons to ask for one are kept apart. While the tape RUNS
+  // the clock on the row changes continuously and the throttle is what bounds
+  // it; while it is stopped nothing on the row moves except the plume count,
+  // so the refresh is asked for on the EDGE and the panel goes quiet again.
+  // Without that split a paused fire repainted the whole panel at frame rate.
+  if (_clock?.playing) notifyRow();
+  else if (burning !== _lastBurning) notifyRow();
+  _lastBurning = burning;
 }
 
 /**
- * Start the per-frame tick and hold the render governor open.
+ * Advance the plumes, if there is anything for them to stand on.
+ * @returns {number} Plumes currently emitting.
+ */
+function runFire(dtSec, nowSec) {
+  if (!_enabled || !_clock || !_event) return 0;
+  const stepIndex = megafireClockState(_clock, _event.steps).stepIndex;
+  updateMegafireFire({
+    detections: _emberMeta,
+    cursorMs: _clock.cursorMs,
+    drift: _driftVectors[stepIndex ?? 0] || MEGAFIRE_DEFAULT_DRIFT,
+    centre: _event.centre,
+    dtSec,
+    nowSec,
+  });
+  return megafireFireDiagnostics().burning;
+}
+
+/**
+ * Start the per-frame tick, for as long as the layer is ON.
  *
  * `scene.postRender` and NOT `clock.onTick`: this app runs the scene in
  * request-render mode, and the app clock is not animating, so `onTick` fires
  * only when something else happens to tick it — measured in a headless run,
- * that was never. `postRender` fires exactly when a frame is drawn, which the
- * continuous-render hold taken on the line above guarantees for as long as
- * playback lasts. It is also the only cadence that can be right: advancing a
- * cursor nobody is rendering would be work with no picture at the end of it.
+ * that was never. `postRender` fires exactly when a frame is drawn, which is
+ * also the only cadence that can be right: advancing a cursor or a plume
+ * nobody is rendering is work with no picture at the end of it.
+ *
+ * Installed for the whole enabled lifetime rather than only during playback,
+ * because the fire has to react to the CAMERA as well as to the clock. While
+ * nothing holds the governor this listener costs nothing at all — in idle mode
+ * a frame is only drawn when the camera moves or a tile lands, which is
+ * exactly when the fire's distance gate needs re-reading.
  */
-function startPlayback() {
+function startTicking() {
   if (!_viewer?.scene || _tickRemover) return;
   _lastTickMs = null;
-  holdContinuousRender(MEGAFIRE_LAYER_ID);
   _tickRemover = _viewer.scene.postRender.addEventListener(onTick);
 }
 
-/** Stop the tick and release the hold. Safe when never started. */
-function stopPlayback() {
+/** Remove the tick and drop every hold this layer owns. */
+function stopTicking() {
   if (_tickRemover) {
     _tickRemover();
     _tickRemover = null;
   }
   releaseContinuousRender(MEGAFIRE_LAYER_ID);
   _lastTickMs = null;
+}
+
+/** Take the playback hold. The tick itself is already installed. */
+function beginPlayback() {
+  // The tick runs whenever a frame is drawn, and in idle mode that can be
+  // seconds apart — so the delta is restarted here rather than measured from
+  // whenever the camera last moved.
+  _lastTickMs = null;
+  holdContinuousRender(MEGAFIRE_LAYER_ID);
+  notifyRow(true);
+}
+
+/** Release the playback hold and repaint the row on the state it settled in. */
+function endPlayback() {
+  releaseContinuousRender(MEGAFIRE_LAYER_ID);
   syncToCursor();
+  notifyRow(true);
 }
 
 /** Fetch the two pack files, once per session. */
@@ -452,6 +573,11 @@ async function load() {
       startMs: Date.parse(event.window.start),
       endMs: Date.parse(event.window.end),
     });
+    // Which way the smoke leans, read off the pack once. See
+    // `megafireFireMath.js`: it is the direction this step's photo-interpreted
+    // flames moved since the previous Copernicus frame, i.e. the direction the
+    // fire actually ran, i.e. downwind — a measured quantity and not a guess.
+    _driftVectors = megafireDriftVectors(event.steps);
     buildEmbers();
     _status = 'ready';
   } catch (error) {
@@ -486,6 +612,7 @@ const girondeMegafireLayer = {
     _flames.show = false;
     viewer.scene.primitives.add(_embers);
     viewer.scene.primitives.add(_flames);
+    initMegafireFire(viewer);
   },
 
   async enable() {
@@ -494,7 +621,10 @@ const girondeMegafireLayer = {
     if (!_enabled) return;
     if (_embers) _embers.show = true;
     if (_flames) _flames.show = true;
+    setMegafireFireEnabled(true);
+    startTicking();
     syncToCursor({ force: true });
+    notifyRow(true);
   },
 
   /**
@@ -514,12 +644,28 @@ const girondeMegafireLayer = {
 
   disable() {
     _enabled = false;
-    stopPlayback();
     if (_clock) _clock.playing = false;
+    stopTicking();
+    setMegafireFireEnabled(false);
     if (_embers) _embers.show = false;
     if (_flames) _flames.show = false;
     clearSurfaces();
     governorRequestRender('gironde-megafire-off');
+    notifyRow(true);
+  },
+
+  /**
+   * Install the manager's "row controls changed" callback.
+   *
+   * Without it this row is repainted only when something ELSE in the panel
+   * moves: the layer declares no `updateInterval`, so it gets no stats poll,
+   * and a cursor running ten days of fire in 24 s did it behind a chip strip
+   * frozen on whatever it said when the reader pressed play.
+   * @param {(() => void)|null} listener
+   * @returns {void}
+   */
+  setRowControlsListener(listener) {
+    _rowControlsListener = typeof listener === 'function' ? listener : null;
   },
 
   /**
@@ -543,6 +689,16 @@ const girondeMegafireLayer = {
       error: _error,
       cursor: megafireCursorLabel(state.cursorMs),
       playing: state.playing,
+      // COVERAGE is the manager's slot for "the edge of what this layer could
+      // have drawn", and it prints on the row's own full-width line. For a
+      // layer whose subject is ten days rather than a territory, that edge IS
+      // the window — and where inside it the reader currently stands. It is the
+      // only always-visible clock the row has.
+      coverage: megafireCursorReadout(_clock, state),
+      day: state.day,
+      days: state.days,
+      atEnd: state.atEnd,
+      fire: megafireFireDiagnostics(),
       // The perimeter's hectares are Copernicus's own published figure for the
       // frame on screen — never measured off the drawing.
       burntHa: step?.burntHa ?? null,
@@ -566,29 +722,62 @@ const girondeMegafireLayer = {
   getRowControls() {
     if (!_clock || !_event) return { chips: [], legend: [] };
     const state = megafireClockState(_clock, _event.steps);
+    // THREE stopped states, not one. "Never played", "stopped halfway" and
+    // "finished" are different situations and the same button serves all
+    // three, so the label has to say which — a run that ends on `▶ Rejouer`
+    // looks identical to one that never started, and a run that ends on
+    // `❚❚ Pause` (which is what shipped, because nothing repainted the row)
+    // reads as still running.
+    const playLabel = state.playing
+      ? `❚❚ ${megafireCursorLabel(state.cursorMs)}`
+      : (state.atEnd ? '↺ Rejouer' : (state.atStart ? '▶ Jouer' : '▶ Reprendre'));
     const chips = [{
       id: 'play',
-      label: state.playing ? '❚❚ Pause' : '▶ Rejouer',
+      label: playLabel,
       active: state.playing,
       state: state.playing ? 'active' : 'idle',
-      title: `Rejouer les 10 jours en ${MEGAFIRE_PLAY_SECONDS} s — `
-        + `curseur sur ${megafireCursorLabel(state.cursorMs)}`,
+      title: state.playing
+        ? `${megafireCursorReadout(_clock, state)} — cliquer pour mettre en pause`
+        : `Rejouer les ${state.days} jours en ${MEGAFIRE_PLAY_SECONDS} s — `
+          + megafireCursorReadout(_clock, state),
       params: { play: !state.playing },
     }];
     _event.steps.forEach((step, index) => {
-      const active = !state.playing && state.stepIndex === index;
+      const current = state.stepIndex === index;
+      const active = !state.playing && current;
       chips.push({
         id: step.id,
         label: step.label,
         active,
-        state: active ? 'active' : 'idle',
+        // While the tape runs, the chip of the frame being held lights in its
+        // own state rather than none at all. The five chips are already in
+        // chronological order, so the strip becomes the progress bar the layer
+        // was missing, for the price of a CSS class.
+        state: active ? 'active' : (state.playing && current ? 'passing' : 'idle'),
         title: `${step.sensor} · ${step.resolution} — `
           + `${step.burntHa.toLocaleString('fr-FR')} ha brûlés à cette image`,
         params: { step: step.id },
       });
     });
 
-    const legend = [];
+    // THE CLOCK LEADS THE KEY. `#map-legend` is the one surface a reader sees
+    // without opening a panel, and the one a share-link recipient gets, so the
+    // instant under the cursor belongs at the top of it. `color: null` is the
+    // manager's deliberate "not drawn on the map" swatch: this line is a
+    // reading, not a colour on the ground.
+    const legend = [{
+      label: megafireCursorReadout(_clock, state),
+      color: null,
+      blurb: state.playing
+        ? `Lecture des ${state.days} jours en ${MEGAFIRE_PLAY_SECONDS} s. `
+          + 'Entre deux images satellite rien n’est interpolé : la carte tient la dernière '
+          + 'mesure, et ce sont les points chauds qui portent l’intervalle.'
+        : (state.atEnd
+          ? 'Fin de la fenêtre — le feu est éteint depuis le 1ᵉʳ août 2026. ↺ pour le rejouer '
+            + 'depuis le départ.'
+          : `Curseur arrêté. ▶ reprend la lecture des ${state.days} jours en `
+            + `${MEGAFIRE_PLAY_SECONDS} s.`),
+    }];
     const step = state.stepIndex === null ? null : _event.steps[state.stepIndex];
     if (step) {
       legend.push({
@@ -615,6 +804,24 @@ const girondeMegafireLayer = {
           blurb: 'Points où un interprète a vu des flammes sur une image à 30 cm.',
         });
       }
+    }
+    // THE ONE LINE ON THIS MAP THAT IS A DRAWING. Everything else in the key
+    // names a polygon somebody traced or a pixel a radiometer read; the plumes
+    // are a rendering, and the key says so in the same breath as it says what
+    // is measured about them — where they stand, and which way they lean.
+    const fire = megafireFireDiagnostics();
+    if (fire.burning > 0) {
+      legend.push({
+        label: 'colonne de fumée',
+        color: '#8a8078',
+        count: fire.burning,
+        // Kept to three lines: the on-map key is a fixed-height block and a
+        // blurb longer than this is clipped, which would cut the sentence that
+        // says what is invented — the one part that must survive.
+        blurb: 'Rendu, non mesuré. Un panache se dresse là où FIRMS a vu une anomalie '
+          + 'thermique dans les 12 h précédant le curseur, et penche du côté où le feu a '
+          + 'réellement progressé. Sa hauteur et sa vitesse ne sont mesurées par personne.',
+      });
     }
     const counts = new Array(MEGAFIRE_FRP_LADDER.length).fill(0);
     for (const meta of _emberMeta) if (meta.ms <= state.cursorMs) counts[meta.level] += 1;
@@ -654,16 +861,19 @@ const girondeMegafireLayer = {
     if (typeof params.step === 'string') {
       const step = _event.steps.find((candidate) => candidate.id === params.step);
       if (!step) return;
-      stopPlayback();
+      const wasPlaying = Boolean(_clock.playing);
       seekMegafireClock(_clock, Date.parse(step.acq));
+      if (wasPlaying) endPlayback();
       syncToCursor({ force: true });
+      notifyRow(true);
       return;
     }
     if (params.play !== undefined) {
       const playing = setMegafirePlaying(_clock, params.play);
-      if (playing) startPlayback();
-      else stopPlayback();
+      if (playing) beginPlayback();
+      else endPlayback();
       syncToCursor({ force: true });
+      notifyRow(true);
     }
   },
 
@@ -674,7 +884,8 @@ const girondeMegafireLayer = {
 
   destroy(viewer) {
     if (_enabled) this.disable();
-    stopPlayback();
+    stopTicking();
+    destroyMegafireFire(viewer);
     clearSurfaces();
     for (const collection of [_embers, _flames]) {
       if (!collection) continue;
@@ -690,6 +901,9 @@ const girondeMegafireLayer = {
     _viewer = null;
     _groundLinesSupported = null;
     _lastPaintedCursor = null;
+    _rowControlsListener = null;
+    _driftVectors = [];
+    _lastBurning = 0;
     _status = 'idle';
   },
 };

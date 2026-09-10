@@ -622,6 +622,17 @@ Three publishers, three obligations:
   photographed. Same public-domain terms and the same acknowledgement as the
   live layer above.
 
+**One thing on this layer is a DRAWING, and it says so.** Since 2026-09-10 the
+scene carries flame and smoke plumes. What is measured about them is where they
+stand — a plume only rises where FIRMS detected a thermal anomaly within twelve
+hours of the cursor, sized by that cluster's radiative power and never below the
+pack's own bottom FRP rung of 10 MW — and which way they lean, which is the
+direction the photo-interpreted flames actually moved between two Copernicus
+frames. Column height, puff size, rise rate and drift speed are a rendering:
+nobody measured the smoke of this fire, and the on-map key names the plume line
+"rendu, non mesuré" beside the polygons that were traced. See
+`src/data/megafireFireMath.js`.
+
 Hectare counts on screen are always the PUBLISHER's, never re-derived from the
 simplified drawing; the raw geometry was checked against them once and lands
 0.18–0.20 % low across all five products, which is this pack's flat projection
