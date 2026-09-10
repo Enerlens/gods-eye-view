@@ -5,6 +5,48 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased] — 2026-09-10
 
+### Changed
+- **La légende cachait 29 % d'elle-même, et la moitié qu'elle montrait parlait
+  d'une ville à 700 km.** Sur une vue de Biarritz, le panneau `LEGEND` mesurait
+  434 px de contenu dans une fenêtre de 308 px : le bloc **Longue traîne FR** —
+  la seule couche qui avait des points à l'écran — était entièrement sous la
+  ligne de flottaison, jamais lu. Ce qui occupait la place au-dessus décrivait
+  561 sites du **Pouls vélo**, tous à Paris ou à Lyon.
+
+  **CHAQUE LIGNE REDISAIT SON ÉTIQUETTE.** `< 20 %` était suivi de « Part du
+  maximum hebdomadaire du site — < 20 % ». Six classes occupaient douze lignes
+  pour ne rien ajouter. La phrase est vraie de toutes les classes : elle est
+  dite **une fois**, au-dessus. Même correction côté exploitants, où « une
+  teinte partout en France » se répétait à l'identique sur chaque opérateur en
+  vue — six fois sur un viewport parisien.
+
+  **UNE CLÉ DIT MAINTENANT OÙ ELLE S'APPLIQUE.** `Longue traîne FR · 87 ici`,
+  `Semaine type · Lyon et Paris, hors de cette vue`. Et le bloc qui a des
+  points à l'écran passe **devant** celui qui n'en a pas. Le silence n'est pas
+  une rétrogradation : une couche qui ne mesure pas son étendue garde sa place.
+
+  **LES CLASSES ORDONNÉES DEVIENNENT UNE BARRE.** Six lignes empilées ne
+  montraient jamais la forme de la distribution, qui est pourtant tout l'
+  argument de la couche. Un seul rail segmenté la donne d'un coup d'œil, et les
+  comptes exacts restent écrits à côté de leur pastille. Deux mesures ont dicté
+  le dessin : la marche la plus sombre de la rampe est à **1,83:1** contre le
+  verre du cockpit — d'où le filet clair sur chaque segment et un plancher de
+  largeur, sans quoi « ≥ 80 % » serait un cheveu d'une couleur déjà presque
+  invisible ; et deux marches voisines ne sont qu'à **ΔE 14,6** en vision
+  normale — d'où les 2 px de fond entre segments.
+
+  **LE MÊME ENSEMBLE, COMPTÉ DEUX FOIS.** La couche partagée peint deux canaux
+  — la forme dit *quoi*, la couleur dit *qui* — et la clé n'en nommait aucun :
+  76 stations + 8 VAE puis 77 Pony + 7 Citiz, soit 84 objets qu'un lecteur
+  pouvait additionner à 168. Les canaux portent leur nom (`forme = quoi`,
+  `couleur = qui`), leurs entrées se posent côte à côte, et une phrase dit ce
+  qu'aucun intertitre ne peut dire : c'est un seul ensemble, lu deux fois.
+
+  **CE QUE ÇA DONNE.** Biarritz : **233 px, rien de coupé** (contre 434 dont 126
+  invisibles). Paris, le cas le plus chargé — six exploitants, trois formes, six
+  bandes — : **292 px, rien de coupé**. Aucune licence n'apparaît dans ce
+  panneau, ni avant ni après.
+
 ### Fixed
 - **Le Pays Basque affichait 561 punaises dont 447 disaient « rien ici », et
   toutes portaient le même mot.** Sur la vue de Biarritz, la couche **Vélos et

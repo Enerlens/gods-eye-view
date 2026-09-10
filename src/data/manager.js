@@ -92,6 +92,99 @@ function refreshFailureFromStats(stats, label) {
 const GUIDANCE_STATUSES = Object.freeze(new Set(['zoom-in', 'empty', 'idle']));
 
 /**
+ * Normalize a layer's declared legend SCOPE — where its classes are, and how
+ * many of them are on screen right now.
+ *
+ * A key that says nothing about its own extent invites the reader to assume it
+ * describes the view. Measured over Biarritz on 2026-09-10: the `velo-pulse-fr`
+ * block printed six classes over 561 sites, every one of them in Paris or Lyon,
+ * and pushed the 84 objects actually on screen out of the panel entirely.
+ *
+ * `inView` is the layer's own count and is trusted as published: only the layer
+ * knows what it drew. Absent, the block claims nothing and is ordered as if it
+ * were on screen — silence must not demote a layer that simply never measured.
+ *
+ * @param {*} scope Raw `legendScope` from `getRowControls()`.
+ * @returns {?{inView: ?number, where: ?string}}
+ */
+export function legendScopeOf(scope) {
+  if (!scope || typeof scope !== 'object') return null;
+  const inView = Number.isFinite(scope.inView) ? Math.max(0, Math.floor(scope.inView)) : null;
+  const where = typeof scope.where === 'string' && scope.where.trim() ? scope.where.trim() : null;
+  return (inView === null && !where) ? null : { inView, where };
+}
+
+/**
+ * The suffix a legend sub-title wears to state its own extent.
+ *
+ * Three readings, and the wording separates them because they are different
+ * facts: some of it is here, none of it is here, or the layer did not say.
+ *
+ * @param {?{inView: ?number, where: ?string}} scope
+ * @returns {string} Suffix including its separator, or '' when there is nothing to add.
+ */
+export function legendScopeLabel(scope) {
+  if (!scope) return '';
+  const { inView, where } = scope;
+  if (inView === null) return where ? ` · ${where}` : '';
+  if (inView > 0) return ` · ${inView.toLocaleString('fr-FR')} ici`;
+  return where ? ` · ${where}, hors de cette vue` : ' · hors de cette vue';
+}
+
+/**
+ * Smallest share of the bar a non-empty class may occupy, in percent.
+ * At the 300px the right rail gives, this is ~10px — the skill floor for a
+ * mark that has to be seen, and the width at which the darkest ramp step still
+ * reads against the glass.
+ */
+const LEGEND_BAR_MIN_PCT = 3.5;
+
+/**
+ * 1 when a legend member has declared that NOTHING of it is on screen, 0
+ * otherwise. Silence is 0: a layer that never measured its own extent is not
+ * demoted for it.
+ * @param {{scope: ?{inView: ?number}}} member
+ * @returns {number}
+ */
+function offScreenRank(member) {
+  return member?.scope?.inView === 0 ? 1 : 0;
+}
+
+/**
+ * Segment widths for a legend distribution bar, in percent.
+ *
+ * Strictly proportional, with ONE correction the palette forced: the two
+ * darkest steps of the pulse ramp measure 1.83:1 and 2.55:1 against the cockpit
+ * surface, so a hairline segment of either is invisible rather than small. A
+ * non-empty class is therefore never thinner than {@link LEGEND_BAR_MIN_PCT},
+ * and the exact counts stay printed beside their swatches below the bar — the
+ * bar carries the SHAPE of the distribution, the numbers carry its values.
+ *
+ * @param {Array<{count: ?number}>} entries Ordered classes.
+ * @returns {Array<number>} One width per entry, summing to 100. Empty when nothing is counted.
+ */
+export function legendBarWidths(entries) {
+  const counts = (entries || []).map((entry) => (Number.isFinite(entry?.count) ? Math.max(0, entry.count) : 0));
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  if (total <= 0) return [];
+  const widths = counts.map((count) => (count > 0 ? Math.max(LEGEND_BAR_MIN_PCT, (count / total) * 100) : 0));
+  // The floor above adds width that has to come from somewhere; take it back
+  // from the classes that are over the floor, in proportion, so the bar still
+  // fills its track exactly once.
+  const excess = widths.reduce((sum, width) => sum + width, 0) - 100;
+  if (excess > 0) {
+    const shrinkable = widths.reduce((sum, width) => sum + Math.max(0, width - LEGEND_BAR_MIN_PCT), 0);
+    if (shrinkable > 0) {
+      for (let i = 0; i < widths.length; i++) {
+        const room = Math.max(0, widths[i] - LEGEND_BAR_MIN_PCT);
+        widths[i] -= excess * (room / shrinkable);
+      }
+    }
+  }
+  return widths;
+}
+
+/**
  * Normalize heterogeneous layer stats into one honest control-chip state.
  * @param {object|null} stats Layer getStats() result.
  * @returns {'nominal'|'loading'|'degraded'|'stale'|'fallback'|'unavailable'} Feed state.
@@ -3044,6 +3137,13 @@ export class DataLayerManager {
           source: typeof controls.legendNote === 'string' && controls.legendNote.trim()
             ? controls.legendNote.trim()
             : null,
+          // Ordered classes get ONE segmented bar above them instead of six
+          // stacked rows — see `_legendBar`.
+          bar: controls.legendBar === true,
+          // WHERE these classes are, and whether any of them is on screen.
+          // A layer whose whole dataset sits 800 km away was still printing a
+          // six-class key above the layer the reader was actually looking at.
+          scope: legendScopeOf(controls.legendScope),
         });
       }
 
@@ -3211,9 +3311,24 @@ export class DataLayerManager {
         entries: group.entries,
         note: group.note || null,
         source: group.source || null,
+        bar: group.bar === true,
+        scope: group.scope || null,
         subtitle: fusionMemberChipFor(rowId, group.layer.id) || this._displayName(group.layer),
       });
       row.split = row.members.length > 1;
+    }
+    // WHAT IS ON SCREEN LEADS ITS OWN ROW. A fused row can hold a viewport
+    // layer next to a national one, and the national one is not smaller for
+    // being everywhere: over Biarritz, `velo-pulse-fr` opened the block with
+    // six classes describing Paris and Lyon while the 84 objects in the view
+    // sat below the fold, unread. Stable within each side — a member that says
+    // nothing about its extent keeps its arrival order and is never demoted.
+    for (const row of rows) {
+      if (row.members.length < 2) continue;
+      row.members = row.members
+        .map((member, index) => ({ member, index }))
+        .sort((a, b) => (offScreenRank(a.member) - offScreenRank(b.member)) || (a.index - b.index))
+        .map((entry) => entry.member);
     }
     return rows;
   }
@@ -3256,7 +3371,7 @@ export class DataLayerManager {
         rowTitle.textContent = row.title;
         rowNode.appendChild(rowTitle);
       }
-      for (const { layer, entries, note, source, subtitle } of row.members) {
+      for (const { layer, entries, note, source, subtitle, bar, scope } of row.members) {
         const group = document.createElement('div');
         group.className = row.split ? 'map-legend-group is-sub' : 'map-legend-group';
 
@@ -3268,6 +3383,17 @@ export class DataLayerManager {
           const title = document.createElement('div');
           title.className = 'map-legend-layer';
           title.textContent = heading;
+          // The block's own EXTENT, on the line that names it: "84 ici" or
+          // "Paris et Lyon, hors de cette vue". Same line on purpose — a key
+          // that needs a second sentence to say where it applies gets read as
+          // if it applied here.
+          const extent = legendScopeLabel(scope);
+          if (extent) {
+            const span = document.createElement('span');
+            span.className = 'map-legend-scope';
+            span.textContent = extent;
+            title.appendChild(span);
+          }
           group.appendChild(title);
         }
         if (source) {
@@ -3277,7 +3403,61 @@ export class DataLayerManager {
           group.appendChild(sourceNode);
         }
 
+        // ORDERED CLASSES GET ONE BAR. Six stacked rows spend six lines saying
+        // what a 300px track says at a glance — and the shape of the
+        // distribution, which is the layer's whole argument, was never on
+        // screen at all. The swatches below still carry the exact counts.
+        if (bar) {
+          const widths = legendBarWidths(entries);
+          if (widths.length) {
+            const track = document.createElement('div');
+            track.className = 'map-legend-bar';
+            entries.forEach((item, index) => {
+              if (!(widths[index] > 0)) return;
+              const segment = document.createElement('span');
+              segment.className = 'map-legend-bar-segment';
+              segment.style.width = `${widths[index].toFixed(2)}%`;
+              if (item.color) segment.style.background = item.color;
+              // Read by a screen reader in the order it is drawn; the visual
+              // bar is decoration over counts that are printed either way.
+              segment.title = `${item.label} — ${this._formatCount(item.count)}`;
+              track.appendChild(segment);
+            });
+            track.setAttribute('role', 'img');
+            track.setAttribute('aria-label', entries
+              .map((item) => `${item.label} ${this._formatCount(item.count)}`).join(', '));
+            group.appendChild(track);
+          }
+        }
+
+        // Entries of one CHANNEL sit side by side under the channel's name.
+        // A layer painting two independent channels — shape for what, colour
+        // for who — was printing two lists of the same population, and a
+        // reader with no word for either added 84 and 84 and got 168.
+        let channelList = null;
+        let channelName = null;
+        const entryHost = () => channelList || group;
+
         for (const item of entries) {
+        const channel = typeof item.channel === 'string' && item.channel.trim() ? item.channel.trim() : null;
+        if (bar || channel) {
+          if (channel !== channelName || !channelList) {
+            channelName = channel;
+            if (channel) {
+              const label = document.createElement('div');
+              label.className = 'map-legend-channel';
+              label.textContent = channel;
+              group.appendChild(label);
+            }
+            channelList = document.createElement('div');
+            channelList.className = 'map-legend-inline';
+            group.appendChild(channelList);
+          }
+        } else {
+          channelList = null;
+          channelName = null;
+        }
+
         const entry = document.createElement('div');
         entry.className = 'map-legend-entry';
 
@@ -3305,7 +3485,13 @@ export class DataLayerManager {
           ? `${item.label} ${this._formatCount(item.count)}`
           : item.label;
         text.appendChild(label);
-        if (item.blurb) {
+        // A blurb belongs to a STACKED entry. Side by side there is no column
+        // to hang a sentence under, and one per class is what a block-level
+        // sentence (`legendNote`) says once — so it moves to the tooltip
+        // rather than being dropped, and the pointer still reaches it.
+        if (item.blurb && channelList) {
+          entry.title = item.blurb;
+        } else if (item.blurb) {
           const blurb = document.createElement('span');
           blurb.className = 'map-legend-blurb';
           blurb.textContent = item.blurb;
@@ -3313,7 +3499,7 @@ export class DataLayerManager {
         }
 
         entry.append(swatch, text);
-        group.appendChild(entry);
+        entryHost().appendChild(entry);
         }
         // Under the classes, not above them: the classes are what the key is
         // FOR, and the disclosure qualifies them. It hangs off the SUB-BLOCK

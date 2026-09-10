@@ -149,6 +149,15 @@ const LEGEND_GLYPH_PX = 32;
  * stand for.
  */
 const KIND_LEGEND_TINT = '#cbd5e1';
+/**
+ * The two channel names the key prints over its own entries.
+ *
+ * SHAPE says what an object is, COLOUR says who runs it — the layer has drawn
+ * both since its first cut and the key named neither, so it read as two
+ * unrelated lists of the same total.
+ */
+const SHAPE_CHANNEL = 'forme = quoi';
+const OPERATOR_CHANNEL = 'couleur = qui';
 /** Operators listed by name in the row legend before the tail is summarised. */
 const MAX_OPERATOR_LEGEND_ROWS = 6;
 
@@ -1363,29 +1372,36 @@ const sharedMobilityFranceLayer = {
         // The legend swatch IS the map glyph, at legend size.
         glyph: sharedMobilityGlyph(kind === 'station' ? 'station' : sharedMobilityGlyphKind(kind), LEGEND_GLYPH_PX),
         count,
+        channel: SHAPE_CHANNEL,
         blurb: kind === 'station'
-          ? 'Operator-owned docks — filled by availability, ringed by operator. Municipal bays that every operator republishes are merged out.'
-          : 'Parked and available — GBFS never publishes a vehicle during a rental.',
+          ? 'Emplacements de l\u2019exploitant — remplissage selon la disponibilité, contour selon l\u2019exploitant. Les places municipales que tous republient sont fusionnées.'
+          : 'En stationnement et disponible — GBFS ne publie jamais un véhicule pendant une location.',
       }));
 
     const ranked = [...operators.values()]
       .sort((a, b) => b.count - a.count || a.operator.label.localeCompare(b.operator.label));
+    // ONE SENTENCE FOR THE RULE, NOT ONE PER OPERATOR. Every curated row used to
+    // repeat "one hue nationwide" verbatim, so a view holding six operators
+    // printed the same clause six times. It is a property of the CHANNEL and it
+    // is stated once, below, in `legendNote`.
     const listed = ranked.slice(0, MAX_OPERATOR_LEGEND_ROWS).map(({ operator, count }) => ({
       label: operator.label,
       color: operator.color,
       count,
+      channel: OPERATOR_CHANNEL,
       blurb: operator.curated
-        ? `${operator.label} — one hue nationwide, so this operator reads the same in every city.`
-        : `${operator.label} — hue derived from the published title; no French feed publishes a brand colour.`,
+        ? null
+        : `${operator.label} — teinte dérivée du titre publié ; aucun flux français ne publie sa couleur de marque.`,
     }));
     // Never silently truncate: say how many operators the row is not naming.
     const hidden = ranked.slice(MAX_OPERATOR_LEGEND_ROWS);
     if (hidden.length) {
       listed.push({
-        label: `+${hidden.length} operators`,
+        label: `+${hidden.length} exploitants`,
         color: KIND_LEGEND_TINT,
         count: hidden.reduce((sum, entry) => sum + entry.count, 0),
-        blurb: `Also in view: ${hidden.map((entry) => entry.operator.label).join(', ')}.`,
+        channel: OPERATOR_CHANNEL,
+        blurb: `Également dans la vue : ${hidden.map((entry) => entry.operator.label).join(', ')}.`,
       });
     }
 
@@ -1409,7 +1425,18 @@ const sharedMobilityFranceLayer = {
       };
     });
 
-    return { chips, legend: [...shapes, ...listed] };
+    return {
+      chips,
+      legend: [...shapes, ...listed],
+      // WHY THE TWO LISTS DO NOT ADD UP. They are the same population counted
+      // twice — 76 stations + 8 e-bikes is the same 84 objects as 77 Pony + 7
+      // Citiz — and a key that names neither channel invites the reader to sum
+      // them to 168. The channel names above the entries already say WHAT each
+      // list answers, so this says only the thing neither of them can: it is
+      // one set, read twice.
+      legendNote: 'Le même ensemble, compté deux fois.',
+      legendScope: { inView: _count, where: null },
+    };
   },
 
   destroy(viewer) {

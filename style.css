@@ -6616,6 +6616,10 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   letter-spacing: 1.4px;
   text-transform: uppercase;
   color: rgba(232, 240, 247, 0.62);
+  /* The extent clause pushes this line past one row on a narrow rail, and the
+     default break left "vue" alone under "Semaine type · Lyon et Paris, hors
+     de cette". Balanced, the two lines carry roughly the same words. */
+  text-wrap: balance;
 }
 
 /* The block's own PROVENANCE and CLOCK (E1). Deliberately NOT `.map-legend-note`
@@ -6630,6 +6634,62 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   font-style: italic;
   color: rgba(232, 240, 247, 0.5);
   margin-bottom: 1px;
+}
+
+/* The block's own EXTENT, on the line that names it — "· 84 ici", or
+   "· Paris et Lyon, hors de cette vue". Recessive against the sub-title it
+   qualifies, because it answers a question the reader had not asked yet; it
+   only has to be there when they do. */
+.map-legend-scope {
+  letter-spacing: 0.6px;
+  text-transform: none;
+  color: rgba(232, 240, 247, 0.42);
+}
+
+/* ORDERED CLASSES, ONE TRACK. Six stacked rows spent six lines saying what
+   this says at a glance — and the SHAPE of the distribution, which is the
+   layer's whole argument, was never drawn anywhere.
+
+   The 2px surface gap between segments is not decoration: it is what keeps two
+   adjacent ramp steps separable when they are 14.6 ΔE apart in normal vision
+   (measured on the pulse ramp, 2026-09-10). The hairline is what keeps the
+   darkest step — 1.83:1 against this glass — from vanishing into it. Both are
+   why the exact counts stay printed on the swatch line below: the bar carries
+   the shape, the numbers carry the values. */
+.map-legend-bar {
+  display: flex;
+  gap: 2px;
+  height: 9px;
+  margin: 1px 0 3px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.map-legend-bar-segment {
+  height: 100%;
+  min-width: 0;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+/* Names the CHANNEL its entries answer — "forme = quoi", "couleur = qui".
+   Two channels over one population were printing two lists of the same total,
+   and a reader with no word for either added 84 and 84 and read 168. */
+.map-legend-channel {
+  font-size: 8.5px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: rgba(120, 214, 255, 0.55);
+  margin-top: 2px;
+}
+
+/* Entries of one channel, side by side. `column-gap` is wide enough that the
+   next swatch cannot be read as belonging to the previous number. */
+.map-legend-inline {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 12px;
+  row-gap: 3px;
 }
 
 .map-legend-entry {

@@ -13,10 +13,12 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { boxContains } from './viewportBox.js';
 import { mountPulseHud } from './veloPulseHud.js';
 import {
   PULSE_RADIUS_FLOOR_M,
   PULSE_RAMP,
+  PULSE_UNSAMPLED_COLOR,
   networkBusiest,
   networkCurve,
   pulseBand,
@@ -636,6 +638,55 @@ function notifyRow({ immediate = false } = {}) {
   _rowListener();
 }
 
+/**
+ * Where this key applies, and how much of it is on screen.
+ *
+ * THE LAYER IS NATIONAL AND ITS SITES ARE NOT. The pack holds Paris and Lyon,
+ * every site of it, wherever the camera is. Over Biarritz on 2026-09-10 the key
+ * therefore opened the shared-mobility block with six classes over 561 sites,
+ * none of them within 700 km, and pushed the 84 objects actually in the view
+ * below the fold. Saying so costs one clause and is the difference between a
+ * key and a claim about the view.
+ *
+ * Cheap enough to answer per repaint (~1 Hz): one rectangle read and one
+ * comparison per site, against a set that is 561 rows and does not grow with
+ * the viewport.
+ *
+ * @returns {{inView: number, where: ?string}}
+ */
+function pulseLegendScope() {
+  // The PLACE, not the instrument. A city label reads "Lyon — Vélo'v", which is
+  // the right sentence on a card and the wrong one in a clause that has to end
+  // "…, hors de cette vue": two of them joined produced "Lyon — Vélo'v et
+  // Paris — compteurs vélo", where the dashes read as the list separator.
+  const cities = _summary?.byCity ? Object.values(_summary.byCity) : [];
+  const places = cities
+    .map((city) => String(city?.label ?? '').split('—')[0].trim())
+    .filter(Boolean);
+  const where = places.length > 1
+    ? `${places.slice(0, -1).join(', ')} et ${places.at(-1)}`
+    : (places[0] || null);
+
+  const rectangle = _viewer?.camera?.computeViewRectangle?.();
+  // No rectangle is NOT "nothing in view" — an oblique camera looking past the
+  // limb has no bounded footprint at all. Claiming zero there would hide the
+  // block for the wrong reason, so the count goes unstated instead.
+  if (!rectangle) return { inView: null, where };
+  const box = {
+    south: Cesium.Math.toDegrees(rectangle.south),
+    west: Cesium.Math.toDegrees(rectangle.west),
+    north: Cesium.Math.toDegrees(rectangle.north),
+    east: Cesium.Math.toDegrees(rectangle.east),
+  };
+  let inView = 0;
+  for (const record of _records.values()) {
+    const { lat, lon } = record.site || {};
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    if (boxContains(box, lat, lon)) inView += 1;
+  }
+  return { inView, where };
+}
+
 // ---------------------------------------------------------------------------
 // The animation
 // ---------------------------------------------------------------------------
@@ -1083,21 +1134,33 @@ const veloPulseLayer = {
       if (band < 0) unsampled += 1;
       else counts[band] += 1;
     }
+    // NO BLURB PER CLASS. Each one used to repeat its own label back — "< 20 %"
+    // over "Part du maximum hebdomadaire du site — < 20 %" — which spent twelve
+    // lines on six classes and pushed the layer the reader was looking at out
+    // of the panel. The sentence is true of every class, so it is said ONCE,
+    // below, in `legendNote`.
     const legend = PULSE_RAMP.map((entry, index) => ({
       label: entry.label,
       color: entry.color,
       count: counts[index],
-      blurb: `Part du maximum hebdomadaire du site — ${entry.label}`,
     }));
     if (unsampled > 0) {
       legend.push({
         label: 'non relevé',
-        color: '#4a5568',
+        color: PULSE_UNSAMPLED_COLOR,
         count: unsampled,
         blurb: 'Aucun relevé à cette heure de la semaine pour ce site.',
       });
     }
-    return { chips, legend };
+    return {
+      chips,
+      legend,
+      // Ordered bands, so they read as one distribution and not as six
+      // unrelated classes: the shape of the week at this hour IS the argument.
+      legendBar: true,
+      legendNote: `Part du maximum hebdomadaire du site · ${slotLabel(_slot)}`,
+      legendScope: pulseLegendScope(),
+    };
   },
 
   getStats() {
