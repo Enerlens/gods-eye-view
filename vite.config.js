@@ -18050,7 +18050,7 @@ const GEV_REALTIME_TOOLS = [
         layerId: {
           type: 'string',
           description:
-            'EVERY registered layer is in this enum — if a subject is not here, this build does not have it, and list_layers will say what it does have. Common-name mapping for the non-obvious ids: space mission(s) → rocket-launches; fires/wildfires/active fires → local-firms (NASA FIRMS); ships/vessels/boats → ais-live-vessels; undersea/submarine cables → telegeography-submarine-cables; datacenters → local-datacenters; dams → local-dams; ports/harbors/seaports → local-ports; airports/aerodromes/airfields/aéroports → local-airports; buoys/sea state/wave height → marine-buoys; bikes/bike share/vélos/Vélib/TBM → bikeshare; scooters/trottinettes/free-floating → shared-mobility-fr; street traffic/congestion → traffic; traffic cameras → cctv; internet radio/stations → radio. FRENCH subjects: médecins/docteurs/généralistes → medecins-fr; bornes de recharge/IRVE → irve-fr; crues/inondations → vigicrues; vigilance météo/alerte → meteofrance-vigilance; écoles/collèges/lycées → schools-fr; universités → sup-fr; crèches → petite-enfance-fr; bâti/bâtiments 3D → bdtopo-buildings; cadastre/parcelles → cadastre-fr; ventes/DVF/prix au m² → dvf-sales; DPE → dpe-fr; permis de construire → ads-fr (Sitadel statistics → sitadel-fr); PLU/zonage/urbanisme → urbanisme-gpu; risques → georisques; bruit → bruit-fr; antennes/5G → anfr-fr; délinquance → delinquance-fr; îlots de fraîcheur → fraicheur-fr; commerces/pharmacies → amenities-fr; bus/tram/transports → transit-fr; réseau électrique → power-grid; centrales EDF → edf-power-plants; gaz → gas-fr; stations météo → meteo-stations-fr; comptages routiers → comptages-fr; événements routiers → road-events-fr; revenus/population → filosofi-fr.',
+            'EVERY registered layer is in this enum — if a subject is not here, this build does not have it, and list_layers will say what it does have. Common-name mapping for the non-obvious ids: space mission(s) → rocket-launches; fires/wildfires/active fires → local-firms (NASA FIRMS); ships/vessels/boats → ais-live-vessels; undersea/submarine cables → telegeography-submarine-cables; datacenters → local-datacenters; dams → local-dams; ports/harbors/seaports → local-ports; airports/aerodromes/airfields/aéroports → local-airports; buoys/sea state/wave height → marine-buoys; bikes/bike share/vélos/Vélib/TBM → bikeshare; scooters/trottinettes/free-floating → shared-mobility-fr; street traffic/congestion → traffic; traffic cameras → cctv; internet radio/stations → radio. FRENCH subjects: médecins/docteurs/généralistes → medecins-fr; bornes de recharge/IRVE → irve-fr; crues/inondations → vigicrues; vigilance météo/alerte → meteofrance-vigilance; écoles/collèges/lycées → schools-fr; universités → sup-fr; crèches → petite-enfance-fr; bâti/bâtiments 3D → bdtopo-buildings; cadastre/parcelles → cadastre-fr; ventes/DVF/prix au m² → dvf-sales; DPE → dpe-fr; permis de construire → ads-fr (Sitadel statistics → sitadel-fr); PLU/zonage/urbanisme → urbanisme-gpu; risques → georisques; mégafeu de Gironde/incendie d’Arcachon/Cap-Ferret (juillet 2026, un ÉVÉNEMENT CLOS, à ne pas confondre avec local-firms qui est le direct) → gironde-megafire-2026; bruit → bruit-fr; antennes/5G → anfr-fr; délinquance → delinquance-fr; îlots de fraîcheur → fraicheur-fr; commerces/pharmacies → amenities-fr; bus/tram/transports → transit-fr; réseau électrique → power-grid; centrales EDF → edf-power-plants; gaz → gas-fr; stations météo → meteo-stations-fr; comptages routiers → comptages-fr; événements routiers → road-events-fr; revenus/population → filosofi-fr.',
           enum: [
             'flights',
             'satellites',
@@ -18081,6 +18081,7 @@ const GEV_REALTIME_TOOLS = [
             'local-dams',
             'earthquakes',
             'local-firms',
+            'gironde-megafire-2026',
             'vigicrues',
             'hubeau-hydro',
             'georisques',
@@ -18158,6 +18159,7 @@ const GEV_REALTIME_TOOLS = [
             'local-dams',
             'earthquakes',
             'local-firms',
+            'gironde-megafire-2026',
             'vigicrues',
             'hubeau-hydro',
             'georisques',

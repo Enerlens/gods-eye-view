@@ -683,6 +683,19 @@ export const DATA_CREDITS = [
       'part of NASA’s Earth Observing System Data and Information System (EOSDIS)',
   },
   {
+    // The Copernicus wording is PRESCRIBED, not paraphrasable: Regulation (EU)
+    // No 1159/2013 asks for "Contains modified Copernicus ... data" verbatim on
+    // any derived product, and this pack is a derived product — simplified,
+    // reprojected and repainted.
+    key: 'gironde-megafire',
+    html:
+      'Mégafeu de Gironde (juil. 2026) : Contains modified Copernicus EMS Rapid Mapping data ' +
+      '(<a href="https://mapping.emergency.copernicus.eu/activations/EMSR899/" target="_blank" rel="noopener">EMSR899</a>) 2026 ' +
+      '· European Forest Fire Information System — ' +
+      '<a href="https://forest-fire.emergency.copernicus.eu/" target="_blank" rel="noopener">EFFIS</a>, Copernicus EMS ' +
+      '· thermal detections from NASA FIRMS (VIIRS S-NPP / NOAA-20 / NOAA-21 and MODIS)',
+  },
+  {
     key: 'telegeography',
     html:
       'Submarine cables: © TeleGeography — ' +

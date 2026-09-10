@@ -533,6 +533,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     cadence: 'periodic',
   }),
   Object.freeze({
+    id: 'gironde-megafire-2026',
+    category: 'hazards',
+    label: 'Mégafeu de Gironde (juil. 2026)',
+    kind: 'dataset',
+    coverage: 'fr',
+    // `none` even though the pack was BUILT with a FIRMS key: the detections
+    // are frozen into the repo, so a reader needs no key and no network beyond
+    // the app's own origin.
+    auth: 'none',
+    // The one genuinely static row in this category. The fire ended on
+    // 1 August 2026 and its perimeters cannot change again.
+    cadence: 'static',
+  }),
+  Object.freeze({
     id: 'vigicrues',
     category: 'hazards',
     label: "Cours d'eau",
