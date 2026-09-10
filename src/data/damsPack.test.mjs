@@ -44,6 +44,7 @@ import {
   isDamStructureKind,
   nearestDam,
 } from './damsPack.js';
+import { sizeRingGlyph } from './sizeLegendGlyphs.js';
 
 const PACK = new URL('./local_data/dams/dams.geojsonl', import.meta.url);
 
@@ -623,7 +624,7 @@ test('the render spec sizes by the measurement and rings what was never measured
   }
 });
 
-test('the size legend prints its metre bounds and counts what is drawn', () => {
+test('the size legend prints the unmeasured ring and NOTHING else', () => {
   const legend = damSpanLegend(new Map([
     ['span1000', { total: 100, visible: 100 }],
     ['span300', { total: 400, visible: 400 }],
@@ -631,31 +632,55 @@ test('the size legend prints its metre bounds and counts what is drawn', () => {
     ['span25', { total: 2600, visible: 0 }],
     ['nospan', { total: 2100, visible: 900 }],
   ]));
-  const byLabel = new Map(legend.map((row) => [row.label, row]));
 
-  // Every row names its own bound in metres. A size channel with no printed
-  // scale is exactly the case D1 is about.
+  // ONE row. The four metre bands are gone: the card prints `1 247 m de long`
+  // beside the mark itself, so a bracket in the key was a coarser second copy
+  // of a number the map already gives exactly — and it cost four rows.
+  assert.equal(legend.length, 1);
+  const [row] = legend;
+  assert.equal(row.label, DAM_SPAN_UNKNOWN.label);
+  assert.equal(row.count, 900, 'the count is what is DRAWN');
   for (const entry of DAM_SPAN_CLASSES) {
-    assert.ok(byLabel.has(entry.label), `${entry.label} missing`);
-    assert.match(entry.label, /\d/, `${entry.label} publishes no number`);
+    assert.notEqual(row.label, entry.label, `${entry.label} is still a legend row`);
   }
-  assert.equal(byLabel.get('1 000 m et plus').count, 100);
-  assert.equal(byLabel.get('25 – 99 m').count, 0, 'a floor empties the row, it does not hide it');
-  assert.equal(byLabel.get(DAM_SPAN_UNKNOWN.label).count, 900);
+  assert.doesNotMatch(row.label + row.blurb, /\d/, 'no metre bound survives in the key');
 
-  // One graphite for every row: the datum here is the swatch's diameter, and
-  // a hue moving with it would encode the same fact twice (A3).
-  assert.equal(new Set(legend.map((row) => row.color)).size, 1);
-  assert.equal(legend[0].color, DAM_SIZE_SWATCH_COLOR);
-  // Five distinct swatch shapes for five distinct marks on the globe.
-  assert.equal(new Set(legend.map((row) => row.glyph)).size, 5);
-  for (const row of legend) {
-    assert.ok(row.glyph.startsWith('data:image/svg+xml;base64,'));
-  }
+  // The ring, never a disc: a small disc is a value, and "not measured" is not
+  // a small value (A1). Graphite, so it cannot read as a fifth structure.
+  assert.equal(row.color, DAM_SIZE_SWATCH_COLOR);
+  assert.equal(row.glyph, sizeRingGlyph());
+  assert.ok(row.glyph.startsWith('data:image/svg+xml;base64,'));
 
+  // A pack whose spans were ALL measured prints no size key at all — there is
+  // no hollow mark on the globe for a row to explain.
+  assert.deepEqual(damSpanLegend(new Map([['span300', { total: 400, visible: 400 }]])), []);
   assert.deepEqual(damSpanLegend(new Map()), []);
   assert.deepEqual(damSpanLegend(null), []);
-  assert.deepEqual(damSpanLegend({ span300: { total: 0, visible: 0 } }), []);
+  assert.deepEqual(damSpanLegend({ nospan: { total: 0, visible: 0 } }), []);
+});
+
+test('the whole key stays short enough to read at a glance', () => {
+  // The budget this simplification was made against, measured on the panel in
+  // the Gironde on 2026-09-10: NINE rows and 192 words of blurb, of which the
+  // four metre bands repeated ONE 25-word note about frozen thresholds.
+  const rows = [
+    ...damTierLegend(new Map([
+      ['dam:major', { total: 1000, visible: 1000 }],
+      ['dyke:named', { total: 500, visible: 500 }],
+      ['dam+dyke:named', { total: 25, visible: 25 }],
+      [':minor', { total: 660, visible: 660 }],
+    ])),
+    ...damSpanLegend(new Map([['nospan', { total: 2100, visible: 2100 }]])),
+  ];
+  const words = rows.reduce((sum, entry) => sum + entry.blurb.trim().split(/\s+/).length, 0);
+
+  assert.equal(rows.length, 5, 'every structure, plus the ring, and no ladder');
+  assert.ok(words <= 40, `the key is back to ${words} words, budget 40`);
+  // No single row may grow into a paragraph again — that is how the last one
+  // reached three printed lines per entry.
+  for (const entry of rows) {
+    assert.ok(entry.blurb.trim().split(/\s+/).length <= 12, `too long: ${entry.label}`);
+  }
 });
 
 test('the shipped pack still has the span coverage the size channel was chosen on', () => {

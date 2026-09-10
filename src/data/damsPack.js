@@ -67,7 +67,9 @@
  *
  * The 2 104 get a HOLLOW ring, not the smallest disc (A1): "not measured" and
  * "short" are not the same statement, and 28 % of the layer is too much of it
- * to leave silently indistinguishable.
+ * to leave silently indistinguishable. That ring is the ONE size row the key
+ * prints; the four bands are read off the card, which gives the metre count
+ * itself rather than the bracket it falls in.
  *
  * Constant PIXELS, not world units, and deliberately the opposite choice from
  * `datacentersPack.js` next door: a dam's span is a length along an axis this
@@ -89,7 +91,7 @@
  * still says WHAT the structure is.
  */
 
-import { sizeDiscGlyph, sizeRingGlyph } from './sizeLegendGlyphs.js';
+import { sizeRingGlyph } from './sizeLegendGlyphs.js';
 
 /**
  * The Overpass tag filters the pack is extracted with. The selection policy IS
@@ -152,7 +154,7 @@ export const DAM_STRUCTURES = Object.freeze([
   Object.freeze({
     key: 'dam',
     label: 'Barrage',
-    blurb: 'Ouvrage en travers du cours d’eau, qui le retient.',
+    blurb: 'Barre le cours d’eau et le retient.',
   }),
   Object.freeze({
     key: 'dyke',
@@ -161,14 +163,12 @@ export const DAM_STRUCTURES = Object.freeze([
     // is no tag anywhere that separates a flood-defence dyke from a pond bund
     // (`dyke:type` has ONE use worldwide), and the register that does cover
     // French flood dykes — SIOUH, décret 2015-526 — is not open bulk data.
-    blurb: 'Remblai le long de l’eau, qui la contient. OpenStreetMap ne '
-      + 'distingue pas une digue de protection d’une digue d’étang.',
+    blurb: 'Longe l’eau. Protection ou étang : inconnu.',
   }),
   Object.freeze({
     key: 'dam+dyke',
     label: 'Barrage-digue',
-    blurb: 'Porte les deux tags dans OpenStreetMap — le cartographe n’a pas '
-      + 'tranché, et cette couche ne tranche pas à sa place.',
+    blurb: 'Les deux à la fois, selon OpenStreetMap.',
   }),
 ]);
 
@@ -854,7 +854,7 @@ export function damTierLegend(tally) {
   row(
     'Non classé',
     STRUCTURE_RAMPS[''].named,
-    'Hors de France : reprise d’un instantané plus ancien, dont les tags OSM ne sont plus disponibles.',
+    'Hors de France : type inconnu.',
     byKind.get(''),
   );
   // The TIER rows used to follow, one per rung, each with its own blue. They
@@ -884,8 +884,13 @@ export function damTierLegend(tally) {
  * Diameters are 6 / 9 / 13 / 18 px. They are NOT proportional to the span —
  * they cannot be: 25 m to 6 399 m is a factor 256, and an honest diameter would
  * need either 1 500 px or a floor of a quarter of a pixel. What is proportional
- * is the ORDER, and the classes are declared as classes, with their bounds
- * printed in the legend, rather than dressed up as a continuous scale.
+ * is the ORDER, and the classes are declared as classes rather than dressed up
+ * as a continuous scale.
+ *
+ * `label` is no longer printed anywhere — the key stopped carrying the four
+ * bands (see {@link damSpanLegend}), and the exact metre count reaches the
+ * reader through the card instead. It is kept as the name of the frozen band,
+ * which is what a re-extraction has to be diffed against.
  *
  * `count` is the shipped pack's population, quoted so a re-extraction that
  * moves it shows up as a stale comment.
@@ -907,7 +912,7 @@ export const DAM_SPAN_CLASSES = Object.freeze([
  */
 export const DAM_SPAN_UNKNOWN = Object.freeze({
   key: 'nospan',
-  label: 'Longueur non mesurée',
+  label: 'Longueur inconnue',
   pixelSize: 8,
   count: 2104,
 });
@@ -979,61 +984,56 @@ export function damRenderSpec(props) {
  */
 
 /**
- * Graphite for every size row. ONE colour, because in these rows the datum is
- * the swatch's diameter; a hue that moved with it would encode the same fact
- * twice (A3). The structure rows above are where colour means something.
+ * Graphite for the size row. Deliberately NOT one of the structure ramps: the
+ * ring says "no measurement", which is not a kind of ouvrage, and lending it a
+ * kind's colour would make it read as a fifth structure. The structure rows
+ * above are where colour means something.
  */
 export const DAM_SIZE_SWATCH_COLOR = '#c3ccd8';
 
 /**
  * Build the size legend from a live tally keyed by {@link damRenderSpec}.
  *
- * This is the scale the size channel cannot do without (D1): four classes with
- * their metre bounds printed, plus the hollow ring that says a quarter of the
- * layer was never measured. Counts are what is DRAWN, so a floor that hides
- * the small ouvrages empties these rows rather than lying about them.
+ * ONE row: the hollow ring. The four metre bands that used to precede it —
+ * `1 000 m et plus`, `300 – 999 m`, `100 – 299 m`, `25 – 99 m` — are gone, and
+ * D1 is not bent by their leaving. D1 asks that a mark carrying a value be
+ * readable; the value here is ALREADY PRINTED BESIDE THE MARK, because
+ * {@link damCardDetails} puts `1 247 m de long` on the card of every measured
+ * ouvrage. The bands were a second, coarser copy of a number the map already
+ * says exactly — four rows deep, each repeating the same 25-word note about
+ * frozen thresholds, and together they were two thirds of the key.
+ *
+ * The ring is the row that stays, and it is not a length row: it says a mark
+ * carries NO value. A1 — an unmeasured object never wears a measured object's
+ * mark — is what makes the ring hollow instead of small, and a hollow disc
+ * among filled ones is decoded FALSE without a key ("some other kind"), which
+ * is the one test a shape has to fail before it earns a line.
+ *
+ * The count is what is DRAWN, so a floor that hides the small ouvrages empties
+ * the row rather than lying about it.
  *
  * @param {Map<string,{total:number, visible:number}>|object} tally
  * @returns {Array<{label:string,color:string,glyph:string,blurb:string,count:number}>}
  */
 export function damSpanLegend(tally) {
   const entries = tally instanceof Map ? [...tally] : Object.entries(tally || {});
-  const byClass = new Map();
+  // Only ONE bucket is read now, so the whole tally is no longer folded into a
+  // per-class map: everything but `nospan` is summed by nobody.
+  let loaded = 0;
+  let drawn = 0;
   for (const [key, bucket] of entries) {
-    if (!bucket?.total) continue;
-    const seen = byClass.get(String(key)) || { total: 0, visible: 0 };
-    seen.total += bucket.total;
-    seen.visible += bucket.visible ?? bucket.total;
-    byClass.set(String(key), seen);
+    if (String(key) !== DAM_SPAN_UNKNOWN.key || !bucket?.total) continue;
+    loaded += bucket.total;
+    drawn += bucket.visible ?? bucket.total;
   }
-  const legend = [];
-  const blurb = 'Plus longue dimension mesurée sur la géométrie OSM. Seuils '
-    + 'de domaine gelés (100, 300, 1 000 m), jamais recalculés sur ce qui est '
-    + 'à l’écran.';
-  for (const entry of DAM_SPAN_CLASSES) {
-    const bucket = byClass.get(entry.key);
-    if (!bucket?.total) continue;
-    legend.push({
-      label: entry.label,
-      color: DAM_SIZE_SWATCH_COLOR,
-      glyph: sizeDiscGlyph(entry.pixelSize),
-      blurb,
-      count: bucket.visible,
-    });
-  }
-  const unknown = byClass.get(DAM_SPAN_UNKNOWN.key);
-  if (unknown?.total) {
-    legend.push({
-      label: DAM_SPAN_UNKNOWN.label,
-      color: DAM_SIZE_SWATCH_COLOR,
-      glyph: sizeRingGlyph(),
-      blurb: 'Anneau creux, jamais un petit disque : OpenStreetMap ne publie '
-        + 'ici ni géométrie exploitable ni longueur. 28 % du paquet, dont '
-        + 'l’instantané mondial repris sans géométrie.',
-      count: unknown.visible,
-    });
-  }
-  return legend;
+  if (!loaded) return [];
+  return [{
+    label: DAM_SPAN_UNKNOWN.label,
+    color: DAM_SIZE_SWATCH_COLOR,
+    glyph: sizeRingGlyph(),
+    blurb: 'Anneau creux : OpenStreetMap ne la publie pas.',
+    count: drawn,
+  }];
 }
 
 /**

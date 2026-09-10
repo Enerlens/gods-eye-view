@@ -13,8 +13,10 @@
  *      a metropolitan box, and Serre-Ponçon is looked up by name.
  *   2. THE PROPERTIES SURVIVE the pack → GeoJSON → Cesium round trip, because
  *      the card is written from them and a dropped field reads as a blank line.
- *   3. THE LADDER IS VISIBLE: three dot sizes, three legend rows, and a floor
- *      that removes markers from the globe and gives them back.
+ *   3. THE MARKS ARE READABLE: the dot follows the measured span, the key names
+ *      the structures and rings what was never measured — and prints no metre
+ *      band, because the card already gives the metre count — and a floor
+ *      removes markers from the globe and gives them back.
  *
  * Usage: node scripts/qa-dams.mjs [--url http://localhost:4174] [--headful]
  */
@@ -240,13 +242,20 @@ async function main() {
     record('the row offers the kind filter and the three display floors',
       ['kinds:all', 'kinds:dams', 'kinds:dykes', 'all', 'named', 'major']
         .every((id) => tiers.chips.includes(id)), tiers.chips.join(','));
-    // And the key gained the SIZE ladder, because a size with no ruler is
-    // unreadable (D1) — including the row for a structure whose span nobody
-    // published, which must not sit at the bottom of the ladder (A1).
-    record('the legend names the kinds and rules the size',
-      tiers.legend.length >= 8
-      && tiers.legend.some((item) => /non mesurée/i.test(item.label)),
+    // The key names the STRUCTURES — the one thing colour says and no shape
+    // does — plus the hollow ring for a span nobody published, which must not
+    // read as the bottom of a ladder (A1). The four metre bands it used to
+    // print are gone: the card gives `1 247 m de long` beside the mark, so a
+    // bracket in the key was a coarser second copy of the same number, and the
+    // key was 9 rows and 192 words for a 216 px panel.
+    record('the key names the kinds and rings what was never measured',
+      tiers.legend.length >= 2 && tiers.legend.length <= 5
+      && tiers.legend.some((item) => /barrage/i.test(item.label))
+      && tiers.legend.some((item) => /longueur inconnue/i.test(item.label)),
       tiers.legend.map((item) => `${item.label}=${item.count}`).join(' · '));
+    record('and prints no metre band a reader would have to decode',
+      tiers.legend.every((item) => !/\d/.test(item.label)),
+      tiers.legend.map((item) => item.label).join(' · '));
 
     // THE CHANTIER'S REVERSAL, and it is what this pair of checks now pins.
     // The dot size used to encode the DISPLAY FLOOR — a qualitative importance
@@ -295,26 +304,29 @@ async function main() {
       const viewer = window.__godsEyeView.styleManager?.viewer;
       const entities = viewer?.dataSources?.getByName?.('Barrages')?.[0]?.entities?.values ?? [];
       const shown = () => entities.filter((entity) => entity.show !== false).length;
+      const module = dm.layers?.get?.('local-dams')?.module;
+      const legendCounts = () => (module?.getRowControls?.()?.legend || [])
+        .map((item) => `${item.label}=${item.count}`);
       viewer.scene.render();
       const before = shown();
+      const legendBefore = legendCounts();
       dm.setLayerParams('local-dams', { floor: 'major' }, { origin: 'user' });
       viewer.scene.render();
       const afterFloor = shown();
-      const module = dm.layers?.get?.('local-dams')?.module;
-      const legendAtFloor = (module?.getRowControls?.()?.legend || [])
-        .map((item) => `${item.label}=${item.count}`);
+      const legendAtFloor = legendCounts();
       const statsAtFloor = dm.getAll().find((l) => l.id === 'local-dams')?.stats?.count;
       dm.setLayerParams('local-dams', { floor: 'all' }, { origin: 'user' });
       viewer.scene.render();
-      return { before, afterFloor, restored: shown(), legendAtFloor, statsAtFloor };
+      return { before, afterFloor, restored: shown(), legendBefore, legendAtFloor, statsAtFloor };
     });
 
     record('the GRANDS floor hides everything below the top tier',
       floored.before > 0 && floored.afterFloor > 0 && floored.afterFloor < floored.before,
       `${floored.before} markers drawn in view → ${floored.afterFloor} under the floor`);
+    const keyTotal = (rows) => rows.reduce((sum, entry) => sum + Number(entry.split('=').pop() || 0), 0);
     record('the legend follows the floor instead of claiming the whole pack',
-      floored.legendAtFloor.some((entry) => /=0$/.test(entry)),
-      floored.legendAtFloor.join(' · '));
+      keyTotal(floored.legendAtFloor) < keyTotal(floored.legendBefore),
+      `${keyTotal(floored.legendBefore)} → ${keyTotal(floored.legendAtFloor)} · ${floored.legendAtFloor.join(' · ')}`);
     record('a floor hides markers WITHOUT losing them',
       floored.statsAtFloor === stats.count,
       `stats.count=${floored.statsAtFloor} while ${floored.afterFloor} were drawn`);
