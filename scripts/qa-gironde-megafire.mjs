@@ -21,7 +21,10 @@
  *        the cursor advances
  *   v.   playback moves the cursor, holds the render governor open while it
  *        runs, and releases it when it stops at the end
- *   vi.  disabling the layer removes every primitive it added
+ *   vi.  the five chips are REAL buttons in the toggle panel, and a DOM click
+ *        on one moves the cursor — the layer's clock is reachable by a reader,
+ *        not only by `setLayerParams`
+ *   vii. disabling the layer removes every primitive it added
  *
  * Screenshots are written under the gitignored `qa-shots/gironde-megafire/`
  * and are OPT-IN (`--shots`): on this app `page.screenshot()` can hang for
@@ -379,7 +382,52 @@ async function main() {
       probe.stats.acquired === '1ᵉʳ août 11:38 UTC', probe.stats.cursor);
     await shoot(page, '03-after-playback.png');
 
-    console.log('\nvi. l’extinction ne laisse rien derrière elle');
+    console.log('\nvi. les puces sont de vrais boutons, et un clic DOM les actionne');
+    // Clicked through the DOM and never with `page.click()`: on this app the
+    // real pointer path can hang for minutes, while `element.click()` answers
+    // in about a millisecond and goes through the same delegated listener.
+    const chipDom = await page.evaluate((id) => {
+      const row = document.querySelector(`[data-layer-id="${id}"]`);
+      if (!row) return { row: false };
+      const buttons = [...row.querySelectorAll('.data-toggle-chip')];
+      return {
+        row: true,
+        ids: buttons.map((button) => button.dataset.chipId),
+        labels: buttons.map((button) => button.textContent),
+        pressed: buttons.filter((button) => button.getAttribute('aria-pressed') === 'true')
+          .map((button) => button.dataset.chipId),
+      };
+    }, LAYER_ID);
+    check('la ligne de la couche porte ses puces',
+      chipDom.row && chipDom.ids?.length === PACK.steps.length + 1,
+      JSON.stringify(chipDom));
+    check('les puces nomment la lecture puis les cinq images',
+      chipDom.ids?.[0] === 'play'
+      && chipDom.ids?.slice(1).join(',') === PACK.steps.map((step) => step.id).join(','),
+      JSON.stringify(chipDom.ids));
+    check('les libellés sont les instants du pack',
+      chipDom.labels?.slice(1).join(' · ') === PACK.steps.map((step) => step.label).join(' · '),
+      JSON.stringify(chipDom.labels));
+
+    const target = PACK.steps[1];
+    const clicked = await page.evaluate((id, chipId) => {
+      const button = document.querySelector(`[data-layer-id="${id}"] [data-chip-id="${chipId}"]`);
+      if (!button) return false;
+      button.click();
+      return true;
+    }, LAYER_ID, target.id);
+    await pump(page, 10, 100);
+    probe = await sceneProbe(page, LAYER_ID);
+    check('un clic DOM sur une puce déplace le curseur',
+      clicked && probe.stats.acquired === `${target.label} UTC`
+      && probe.stats.burntHa === target.burntHa,
+      `${probe.stats.acquired} · ${probe.stats.burntHa} ha`);
+    const afterClick = await page.evaluate((id, chipId) => document
+      .querySelector(`[data-layer-id="${id}"] [data-chip-id="${chipId}"]`)
+      ?.getAttribute('aria-pressed'), LAYER_ID, target.id);
+    check('et la puce se marque enfoncée', afterClick === 'true', String(afterClick));
+
+    console.log('\nvii. l’extinction ne laisse rien derrière elle');
     // Parked on a frame that HAS flames first (the closing product has none, so
     // switching off from there would prove the flame collection is hidden by
     // proving it is empty).

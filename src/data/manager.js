@@ -2421,13 +2421,29 @@ export class DataLayerManager {
     // _refreshTogglePanel — which only rewrites the container's contents.
     const rowModule = this.layers.get(layer.id)?.module;
     const companions = this._fusionCompanions(layer.id);
-    if (typeof rowModule?.getRowControls === 'function' || companions.length) {
+    {
+      // The container is built for EVERY row, and that is a fix rather than a
+      // simplification. It used to be gated on
+      // `typeof rowModule.getRowControls === 'function'`, and at the moment
+      // rows are built every module is a lazy STUB — `getRowControls` is
+      // deliberately not one of `LAZY_LAYER_CAPABILITIES` (see lazyLayer.js),
+      // so the stub does not have it. Rows survived only because they had
+      // FUSION COMPANIONS, which opened the same branch. A lazy layer with
+      // chips and no companion therefore rendered a row with no container at
+      // all, and since `_refreshTogglePanel` only ever fills a container it
+      // finds, its chips could never appear later either — measured on
+      // `gironde-megafire-2026`, whose five step chips existed in the module
+      // and never reached the DOM.
+      // An empty container costs one hidden div: `_syncRowControls` sets
+      // `container.hidden = chips.length === 0`, so a layer with no controls
+      // looks exactly as it did.
+      //
       // A layer whose controls settle asynchronously (a chunked catalog load
       // that can also fail) pushes a re-render through this; nothing else
       // would repaint the row before its next scheduled refresh. The
       // companions register the same listener, for the same reason: their
       // chips are painted on THIS row.
-      rowModule.setRowControlsListener?.(() => this._refreshTogglePanel());
+      rowModule?.setRowControlsListener?.(() => this._refreshTogglePanel());
       for (const companion of companions) {
         this.layers.get(companion.id)?.module?.setRowControlsListener?.(
           () => this._refreshTogglePanel(),
