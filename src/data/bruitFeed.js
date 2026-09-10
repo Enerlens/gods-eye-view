@@ -1127,6 +1127,25 @@ export function projectBruitArea({
 }
 
 /**
+ * Whether this band's outline is the one the second pass produces.
+ *
+ * AN UNSTAMPED BAND IS A COARSE BAND, not a band with no scale. Everything in
+ * an overview was fetched at {@link BRUIT_AREA_PIXEL_DEG} unless a second pass
+ * replaced it, so a missing stamp means the pass has not run. Written out here
+ * rather than inlined because `Number(null)` is 0 and `0 <= 39757` is true: the
+ * obvious spelling of this test answers "already fine" for the one band that is
+ * guaranteed not to be.
+ *
+ * @param {?object} band
+ * @param {number} [fallback] The scale an unstamped band is read at.
+ * @returns {boolean}
+ */
+export function bruitBandIsFine(band, fallback = BRUIT_AREA_SCALE_DENOMINATOR) {
+  const scale = Number.isFinite(band?.scaleDenominator) ? band.scaleDenominator : fallback;
+  return Number.isFinite(scale) && scale <= BRUIT_PROBE_SCALE_DENOMINATOR;
+}
+
+/**
  * Fold the per-band scales into the three numbers a card needs.
  *
  * Separate from {@link projectBruitArea} because the point scan will want it
@@ -1138,15 +1157,13 @@ export function projectBruitArea({
  * @returns {{scaleDenominator: number, refinedBands: number, coarseBands: number}}
  */
 export function bruitAreaScale(bands, { fallback = BRUIT_AREA_SCALE_DENOMINATOR } = {}) {
-  // AN UNSTAMPED BAND IS A COARSE BAND, not a band with no scale. Everything
-  // in an overview was fetched at `BRUIT_AREA_PIXEL_DEG` unless a second pass
-  // replaced it, so a missing stamp means the pass has not run — which is
-  // exactly the state the counts exist to report. Filtering them out instead
-  // would answer `coarseBands: 0` for a view where every band is coarse.
+  // Unstamped bands read at `fallback` here too — see {@link bruitBandIsFine},
+  // which owns that rule. Filtering them out instead would answer
+  // `coarseBands: 0` for a view where every band is coarse.
   const scales = (bands || [])
     .map((band) => (Number.isFinite(band?.scaleDenominator) ? band.scaleDenominator : fallback))
     .filter((value) => Number.isFinite(value));
-  const refinedBands = scales.filter((value) => value <= BRUIT_PROBE_SCALE_DENOMINATOR).length;
+  const refinedBands = (bands || []).filter((band) => bruitBandIsFine(band, fallback)).length;
   return {
     // No bands at all is not "infinitely fine": an empty view is answered at
     // the scale it was ASKED at, which is the overview's own.

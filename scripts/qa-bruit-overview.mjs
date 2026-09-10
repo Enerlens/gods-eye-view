@@ -82,6 +82,14 @@ const LAYER = 'bruit-fr';
 const CDG = { lon: 2.5479, lat: 49.0097 };
 /** Point mode: under the 12 km ceiling, where the fine probe is the answer. */
 const CLOSE_VIEW = { ...CDG, height: 6_000 };
+/**
+ * The overview's FINE tempo: above the 12 km point ceiling, below the 30 km one.
+ *
+ * The frame a reader dezooms to in order to see one airport's plan — about
+ * 42 km of ground across — where the proxy is asked to play the second pass in
+ * front of the answer rather than behind it.
+ */
+const FINE_VIEW = { ...CDG, height: 20_000 };
 /** Overview: high enough that the whole plan fits on screen. */
 const WIDE_VIEW = { ...CDG, height: 60_000 };
 /** Above the overview ceiling of 250 km, where the layer must go dormant. */
@@ -262,6 +270,29 @@ const note = (ok, message) => {
     const pointZones = close.zones.length;
     console.log(`  ·    point mode has zones [${close.zones.join(', ')}] on screen`);
 
+    console.log('\n— overview at 20 km: the fine tempo —');
+    await flyTo(page, FINE_VIEW);
+    // THE FIRST OVERVIEW PAYLOAD, not a settled one. `settle` returns as soon
+    // as the predicate holds, so this is the answer the reader's first paint is
+    // built from — which is the entire claim being made here.
+    const fine = await settle(page, (state) => state.stats?.area === true && (state.entities ?? 0) > 0);
+    await shoot(page, 'bruit-overview-20km-fine.png');
+    // THE NON-REGRESSION FIRST, because it is what a raised point ceiling would
+    // have cost. At 20 km the question is still the overview's, so a plan whose
+    // outer rings are donuts around the probe is still whole on screen.
+    note(fine.stats?.area === true, 'at 20 km the question is still the overview\'s');
+    for (const zone of ['A', 'B', 'C', 'D']) {
+      note(fine.zones.includes(zone), `Roissy's zone ${zone} is on screen at 20 km`);
+    }
+    note(fine.stats?.fine === true, 'the request asked for the second pass in front of the answer');
+    // The budget can leave a neighbour coarse on a cold cache — twelve
+    // aerodromes are in reach of Roissy — so what is pinned is that the pass
+    // RAN before the payload, not that it finished. A background-only tempo
+    // answers `refinedBands: 0` on its first payload every time.
+    note((fine.stats?.refinedBands ?? 0) > 0,
+      `${fine.stats?.refinedBands} bands were already at 1:39 757 on the first paint`);
+    console.log(`  ·    ${fine.stats?.coarseBands} still coarse, ${fine.stats?.refining} aerodromes queued behind`);
+
     console.log('\n— overview, at 60 km —');
     await flyTo(page, WIDE_VIEW);
     const wide = await settle(page, (state) => state.stats?.area === true && (state.entities ?? 0) > 0);
@@ -271,6 +302,9 @@ const note = (ok, message) => {
     note(wide.stats?.dormant !== true, 'the layer is NOT dormant at 60 km');
     note((wide.entities ?? 0) > 0, `the overview drew ${wide.entities} entities at 60 km`);
     note(wide.stats?.area === true, 'the layer switched to the overview question');
+    // Past 30 km the wait buys nothing visible — the median band is 1,9 km wide
+    // against a ~84 km screen — so the second pass goes back behind the answer.
+    note(wide.stats?.fine !== true, 'at 60 km the refinement is behind the answer again');
     note(wide.zones.length > pointZones,
       `the overview shows ${wide.zones.length} zone letters against the point scan's ${pointZones}`);
     // Roissy's whole plan: the fine probe at this very coordinate returns zone

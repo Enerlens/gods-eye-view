@@ -47,6 +47,7 @@ import {
   BRUIT_REFINE_SEEDS,
   BRUIT_SCALE_PROPERTY,
   bruitAreaScale,
+  bruitBandIsFine,
   bruitFeatureKey,
   bruitRefineSeeds,
   foldAerodromes,
@@ -697,6 +698,23 @@ test('the overview names the COARSEST band on screen, never the best one', () =>
   // nothing is -Infinity, which would print as "1:-∞" on a card.
   assert.equal(bruitAreaScale([]).scaleDenominator, BRUIT_AREA_SCALE_DENOMINATOR);
   assert.equal(bruitAreaScale(null).scaleDenominator, BRUIT_AREA_SCALE_DENOMINATOR);
+});
+
+test('an unstamped band is a COARSE band, and the naive test says the opposite', () => {
+  assert.equal(bruitBandIsFine({ scaleDenominator: BRUIT_PROBE_SCALE_DENOMINATOR }), true);
+  assert.equal(bruitBandIsFine({ scaleDenominator: BRUIT_AREA_SCALE_DENOMINATOR }), false);
+  // THE TRAP. An aerodrome whose second pass has never run holds the collection
+  // the service returned, which nothing stamped, so `band.scaleDenominator` is
+  // null — and `Number(null) <= 39757` is TRUE. A card written the obvious way
+  // would call the one band guaranteed to be faceted the fine version, and drop
+  // the sentence that stops a coloured pixel passing for a legal limit.
+  assert.equal(Number(null) <= BRUIT_PROBE_SCALE_DENOMINATOR, true, 'why this helper exists');
+  assert.equal(bruitBandIsFine({ scaleDenominator: null }), false);
+  assert.equal(bruitBandIsFine({}), false);
+  assert.equal(bruitBandIsFine(null), false);
+  // The point scan stamps its own bands, so a caller reading them may say so
+  // by passing the probe scale as the fallback rather than the overview's.
+  assert.equal(bruitBandIsFine({}, BRUIT_PROBE_SCALE_DENOMINATOR), true);
 });
 
 test('an overview built from refined features reports the fine scale end to end', () => {
