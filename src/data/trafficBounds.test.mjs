@@ -272,3 +272,42 @@ test('disjoint boxes never count as covered', () => {
   assert.equal(boundsOverlap(here, elsewhere, ROAD_REFETCH_OVERLAP_THRESHOLD), false);
   assert.equal(boundsOverlap(here, here, 0), true);
 });
+
+// ── flowZoom: the band owns the tile zoom because it owns the box ──
+
+test('every road band names the TomTom flow zoom it wants', () => {
+  for (const tier of ROAD_FETCH_TIERS) {
+    assert.ok(
+      Number.isInteger(tier.flowZoom) && tier.flowZoom >= 8 && tier.flowZoom <= 16,
+      `${tier.id} has no usable flowZoom`,
+    );
+  }
+});
+
+test('a wider box asks for a coarser flow zoom, never a finer one', () => {
+  for (let i = 1; i < ROAD_FETCH_TIERS.length; i++) {
+    const finer = ROAD_FETCH_TIERS[i - 1];
+    const coarser = ROAD_FETCH_TIERS[i];
+    if (coarser.spanDeg > finer.spanDeg) {
+      assert.ok(
+        coarser.flowZoom < finer.flowZoom,
+        `${coarser.id} widens the box to ${coarser.spanDeg}° without coarsening the zoom`,
+      );
+    }
+  }
+});
+
+test('no band asks for more than 8 flow tiles at its own span', async () => {
+  // The edge rule in front of the hosted origin allows 30 requests per 10 s
+  // across ALL of /api, so one viewport's flow must stay a small fraction of
+  // it. z12 over the metro band's 0.30° box was 30 tiles on its own.
+  const { tilesForBounds } = await import('./tomtomTiles.js');
+  for (const tier of ROAD_FETCH_TIERS) {
+    const half = tier.spanDeg / 2;
+    const tiles = tilesForBounds(
+      { south: 48.85 - half, north: 48.85 + half, west: 2.35 - half, east: 2.35 + half },
+      tier.flowZoom,
+    );
+    assert.ok(tiles.length <= 8, `${tier.id}: ${tiles.length} tiles at z${tier.flowZoom}`);
+  }
+});

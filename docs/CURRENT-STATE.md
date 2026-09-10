@@ -4054,6 +4054,39 @@ easier to meet (detection is now on more often), but does not create it.
   (`flowMatch.js`), and rendered as green/amber/red dot color + speed/density
   scaling (`trafficFlowStyle.js`); closures spawn no dots; unmatched roads stay
   white. Road fetch bounds center on the camera look-at point (`trafficBounds.js`).
+- In live mode the layer has TWO halves that degrade separately. The DOTS need
+  Overpass. The RIBBON (`flowRibbons.js`) does not: it draws TomTom's own
+  polylines as one batched `GroundPolylinePrimitive`, so live congestion reaches
+  the screen whether or not the road graph ever arrives. Measured 2026-09-10,
+  Paris street band: 2 tiles / 78 KB / 3 942 segments / 9.4 ms to build the
+  instances. The `FLUX TOMTOM` row chip (`setParams({flowRibbon:'off'})`) hides
+  it. When there are no dots to count, `getRowControls().legend` reports the
+  ribbon's per-bucket tally rather than zeroes over a painted map.
+- Flow-tile zoom and the ribbon's road-class floor belong to the camera band
+  (`ROAD_FETCH_TIERS.flowZoom` / `.ribbonMinClass`), because the band owns the
+  box span. z12 over the metro band's 0.30° box is 30 tile requests for one
+  viewport against an edge rule that allows 30 per 10 s for all of `/api`; z10
+  covers it in 4. A flow tile does not thin out with altitude either — those
+  four z10 tiles decode 27 080 segments over Paris — so the metro band keeps
+  only motorway/major classes, the same narrowing its Overpass query already does.
+- `flowTiles.js` joins concurrent requests for a tile already in flight
+  (`stats.tilesJoined`): the decode cache only records a RESOLVED tile, so the
+  ribbon warm-up and the road matcher used to miss and fetch the same tiles
+  twice. Tile responses carry `Cache-Control: private, max-age=<remaining TTL>`
+  (`private`, not `public`: staging is behind Basic auth and no shared cache may
+  replay a tile past the gate). A 429 arms a cooldown that honours `Retry-After`
+  and serves the last decode instead of hammering.
+- A 429 names its author. The proxy stamps its own budget refusal
+  (`x-tomtom-limit: budget`, `Retry-After` to the UTC day boundary), so
+  `deriveTrafficFlowError` reports `TomTom daily budget reached` only for that
+  one; a 429 raised in FRONT of the origin reads `Rate limited by the server,
+  not by TomTom`, and an unlabelled one names the status without picking a side.
+- The hosted origin reaches `overpass-api.de` over IPv6 ONLY — both of its IPv4
+  addresses refuse the connection — so `deploy/vps/docker-compose.yml` declares
+  an IPv6-enabled network. Without it the container silently falls through to
+  the one community mirror it can reach, which answers 429, and `/api/overpass`
+  returns 502 after 25 s. This is not a TomTom failure mode and must not be
+  diagnosed as one.
 - Development captures opened with `?trafficDebug=1` mint an interaction anchor
   from the exact `camera.changed` event that arms each debounced load, then emit
   scheduling-correlated User Timing entries for production `response.json`, road

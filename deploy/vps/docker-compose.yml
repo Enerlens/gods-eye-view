@@ -64,3 +64,28 @@ services:
 
 volumes:
   gev-cache:
+
+# IPv6 egress, and it is not a nicety — it is the only route to Overpass.
+#
+# Measured 2026-09-10 from this box: overpass-api.de and lz4.overpass-api.de
+# answer this VPS over IPv6 only. Both of their IPv4 addresses (162.55.144.139,
+# 65.109.112.52) refuse the connection in ~16 ms, while the same query over
+# IPv6 returns 200 with 1 056 ways. The default Docker bridge is IPv4-only, so
+# inside the container the whole FOSSGIS pair was simply unreachable and every
+# road query fell through to overpass.private.coffee — which answers 429. The
+# user-visible result was `/api/overpass` returning 502 after 25 s, which is
+# what "Trafic routier takes forever, or never shows" actually was.
+#
+# Same query, same UA, from a probe container on an IPv6-enabled network:
+# overpass-api.de 200 / 1 240 KB / 1 056 ways in 748 ms.
+#
+# A ULA subnet is deliberate: Docker NATs it to the host's global address
+# (verified — api6.ipify.org answers 2a02:4780:28:f502::1 from inside), so the
+# container gets IPv6 egress without a routable prefix of its own and without
+# any daemon-wide change. Nothing else on this box is touched.
+networks:
+  default:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:9e7::/64

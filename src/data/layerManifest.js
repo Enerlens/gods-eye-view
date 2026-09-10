@@ -261,7 +261,7 @@ export const LAYER_MANIFEST = Object.freeze([
     icon: '🚗',
     source: 'OpenStreetMap',
     capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
-    defaultParams: Object.freeze({ densityScale: 1, speedScale: 1, uncoveredRoads: 'sim', jamViz: 'density', presetDots: 'on' }),
+    defaultParams: Object.freeze({ densityScale: 1, speedScale: 1, uncoveredRoads: 'sim', jamViz: 'density', presetDots: 'on', flowRibbon: 'on' }),
     load: () => import('./traffic.js').then((module) => module.default),
   }),
   Object.freeze({
