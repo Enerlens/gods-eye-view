@@ -137,8 +137,7 @@ async function main() {
       const source = viewer?.dataSources?.getByName?.('Barrages')?.[0];
       const entities = source?.entities?.values ?? [];
       if (!entities.length) return null;
-      const now = window.__godsEyeView?.viewer?.clock?.currentTime;
-      const props = entities.map((entity) => entity.properties?.getValue?.(now) ?? {});
+      const props = entities.map((entity) => entity.__localProperties ?? {});
       const byName = new Map(props.filter((p) => p.name).map((p) => [p.name, p]));
 
       // Positions, so "is France populated?" is answered by geography rather
@@ -217,7 +216,7 @@ async function main() {
       const band = (m) => (!Number.isFinite(m) || m <= 0 ? 'unmeasured'
         : m >= 1000 ? '1000+' : m >= 300 ? '300-999' : m >= 100 ? '100-299' : '25-99');
       for (const entity of entities) {
-        const p = entity.properties?.getValue?.(now) ?? {};
+        const p = entity.__localProperties ?? {};
         const tier = (p.heightM >= 15 || p.hydro === true
           || (p.name && p.spanM >= 300)) ? 'major' : p.name ? 'named' : 'minor';
         const size = Number(entity.point?.pixelSize?.getValue?.(now) ?? entity.point?.pixelSize);

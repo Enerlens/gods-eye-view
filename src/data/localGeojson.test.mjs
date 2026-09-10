@@ -10,6 +10,7 @@ import {
   createLocalGeoJsonLayer,
   localFootprintFitsScreen,
   localFootprintGeometry,
+  LOCAL_POOL_KIND,
   createLocalInfrastructureOverlayEntry,
   createLocalInfrastructureOverlayPublisher,
   localCullingVolume,
@@ -27,6 +28,19 @@ import {
   getRenderGovernorDiagnostics,
   _resetRenderGovernorForTest,
 } from '../renderGovernor.js';
+
+// The recall stems are pooled polylines now, and a polyline carries a
+// `Material`. Cesium types a material uniform by testing it against the DOM
+// image classes — `uniformValue instanceof HTMLCanvasElement` and friends,
+// `Material.js:1262` — and under `node --test` those identifiers do not exist,
+// so a bare `Material.fromType('Color', …)` throws a ReferenceError before it
+// ever reaches a GPU. Declaring the four names is a property of the harness:
+// nothing here is ever an instance of them, so the `instanceof` chain falls
+// through to the object branch the colour uniform actually belongs in. Same
+// shim, same reason, as `anfrFrance.test.mjs`.
+for (const name of ['HTMLCanvasElement', 'HTMLImageElement', 'ImageBitmap', 'OffscreenCanvas']) {
+  if (!(name in globalThis)) globalThis[name] = class {};
+}
 
 class MockLayerEvent {
   constructor() {
@@ -65,6 +79,8 @@ async function createRealLocalLayerHarness({
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
   const preRender = new MockLayerEvent();
+  /** Primitives the layer seats in the scene — the stem and segment batches. */
+  const primitives = [];
   const moveEnd = new MockLayerEvent();
   const dataSources = [];
   const hostCalls = [];
@@ -112,6 +128,17 @@ async function createRealLocalLayerHarness({
     },
     scene: {
       canvas: { clientWidth: 800, clientHeight: 600 },
+      // Every pack draws recall stems now, and they live in a pooled
+      // `PolylineCollection` rather than on the entities — so a fake scene has
+      // to own a primitive collection the way a real one always does.
+      primitives: {
+        add(primitive) { primitives.push(primitive); return primitive; },
+        remove(primitive) {
+          const at = primitives.indexOf(primitive);
+          if (at >= 0) primitives.splice(at, 1);
+          return at >= 0;
+        },
+      },
       preRender,
       sampleHeightSupported,
       sampleHeight: (...args) => {
@@ -144,6 +171,7 @@ async function createRealLocalLayerHarness({
     layer,
     viewer,
     dataSources,
+    primitives,
     hostCalls,
     preRender,
     moveEnd,
@@ -167,6 +195,8 @@ async function createGradedLayerHarness({ floor = 'all' } = {}) {
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
   const preRender = new MockLayerEvent();
+  /** Primitives the layer seats in the scene — the stem and segment batches. */
+  const primitives = [];
   const moveEnd = new MockLayerEvent();
   const hostCalls = [];
   const features = [
@@ -209,6 +239,17 @@ async function createGradedLayerHarness({ floor = 'all' } = {}) {
     },
     scene: {
       canvas: { clientWidth: 800, clientHeight: 600 },
+      // Every pack draws recall stems now, and they live in a pooled
+      // `PolylineCollection` rather than on the entities — so a fake scene has
+      // to own a primitive collection the way a real one always does.
+      primitives: {
+        add(primitive) { primitives.push(primitive); return primitive; },
+        remove(primitive) {
+          const at = primitives.indexOf(primitive);
+          if (at >= 0) primitives.splice(at, 1);
+          return at >= 0;
+        },
+      },
       preRender,
       sampleHeightSupported: false,
       screenSpaceCameraController: { enableInputs: true },
@@ -646,30 +687,74 @@ test('real layer disable clears its published host entries and balances settle l
   env.cleanup();
 });
 
-test('unchanged moveEnds do not redefine stem constants and real tip changes update once', async () => {
+test('the PropertyBag is dropped once its values have been unwrapped', async () => {
+  // 14.0 KiB per feature, measured on the airports pack (12 keys), against
+  // 33.6 KiB for the whole drawn feature — 42 % of what an infra pack costs,
+  // for a SECOND copy of properties this file has already unwrapped into a
+  // plain object. What has to survive is the plain object: the card, the label,
+  // the legend and the voice scan all read that one.
+  const env = await createRealLocalLayerHarness();
+  const entity = env.dataSources[0].entities.values[0];
+
+  assert.equal(entity.properties, undefined, 'the bag is gone');
+  assert.deepEqual(entity.__localProperties, {
+    name: 'Runtime Dam',
+    tags: { associated_river: 'Test River' },
+  }, 'and the unwrapped values are on the entity, by reference');
+
+  // The same object, not a copy: the context record is what the card and the
+  // voice scan read, and a second copy would be the very duplication this
+  // change removes.
+  const record = globalThis.window.__gevContextStore?.entities?.get(entity.__gevContextId);
+  assert.ok(record, 'the feature is in the context store');
+  assert.equal(record.properties, entity.__localProperties, 'one object, two references');
+
+  // And the card still says what the properties say — the drop happens after
+  // every reader in the load loop has had them.
+  assert.ok(env.hostCalls.length > 0);
+  env.layer.destroy(env.viewer);
+  env.cleanup();
+});
+
+test('unchanged moveEnds do not redefine the tip, and the stem is dealt from a pool', async () => {
+  // TWO invariants, and they used to be one because the stem WAS the entity.
+  //
+  // The tip is still a `Property` — the mark rides it — so sub-epsilon camera
+  // noise must not redefine it. The SHAFT is a pooled `Polyline` now, so what
+  // has to hold for it is different and stronger: the pool holds exactly the
+  // stems that are drawn, it is dealt only on a settle, and its polylines own
+  // their positions arrays rather than sharing a scratch.
   const env = await createRealLocalLayerHarness();
   env.preRender.raise();
   const entity = env.dataSources[0].entities.values[0];
-  let positionSetCalls = 0;
-  let polylineSetCalls = 0;
-  let polylineDefinitionChanges = 0;
-  const stemArrays = [];
-  const initialStemArray = entity.polyline.positions.getValue();
-  const originalPositionSet = entity.position.setValue.bind(entity.position);
-  const originalPolylineSet = entity.polyline.positions.setValue.bind(entity.polyline.positions);
-  const removeDefinitionListener = entity.polyline.definitionChanged.addEventListener(
-    (_polyline, propertyName) => {
-      if (propertyName === 'positions') polylineDefinitionChanges++;
-    },
+  assert.equal(entity.polyline, undefined, 'the shaft no longer costs a PolylineGraphics');
+
+  // The pool is the primitive the layer seated in the scene.
+  const stems = env.primitives.find((primitive) => primitive[LOCAL_POOL_KIND] === 'stems');
+  assert.ok(stems, 'the stem batch reached the scene');
+  // A layer seats TWO polyline batches and every polyline in both carries a
+  // feature of the same layer as its pick id, so the tag is the only thing that
+  // tells a reader — or `qa-airports` — which batch it is holding.
+  assert.ok(stems instanceof Cesium.PolylineCollection);
+  assert.equal(stems.length, 1, 'one drawn record, one pooled stem');
+  const line = stems.get(0);
+  assert.equal(line.show, true);
+  assert.equal(line.id, entity, 'a click on the shaft still resolves to its feature');
+  assert.equal(line.positions.length, 2);
+  assert.equal(
+    Math.round(Cesium.Cartographic.fromCartesian(line.positions[0]).height), 0,
+    'the shaft stands on the ground anchor',
   );
+  assert.ok(
+    Cesium.Cartographic.fromCartesian(line.positions[1]).height > 0,
+    'and reaches the tip the mark rides',
+  );
+
+  let positionSetCalls = 0;
+  const originalPositionSet = entity.position.setValue.bind(entity.position);
   entity.position.setValue = (...args) => {
     positionSetCalls++;
     return originalPositionSet(...args);
-  };
-  entity.polyline.positions.setValue = (...args) => {
-    polylineSetCalls++;
-    stemArrays.push(args[0]);
-    return originalPolylineSet(...args);
   };
 
   env.moveEnd.raise();
@@ -677,8 +762,7 @@ test('unchanged moveEnds do not redefine stem constants and real tip changes upd
   env.moveEnd.raise();
   env.preRender.raise();
   assert.equal(positionSetCalls, 0);
-  assert.equal(polylineSetCalls, 0);
-  assert.equal(polylineDefinitionChanges, 0);
+  assert.equal(stems.length, 1, 'a settle that changes nothing grows no pool');
 
   const camera = env.viewer.camera.positionWC;
   env.viewer.camera.positionWC = Cesium.Cartesian3.add(
@@ -689,8 +773,6 @@ test('unchanged moveEnds do not redefine stem constants and real tip changes upd
   env.moveEnd.raise();
   env.preRender.raise();
   assert.equal(positionSetCalls, 0, 'sub-epsilon camera noise must not redefine the tip');
-  assert.equal(polylineSetCalls, 0);
-  assert.equal(polylineDefinitionChanges, 0, 'sub-epsilon jitter must not redefine the polyline');
 
   env.viewer.camera.positionWC = Cesium.Cartesian3.add(
     camera,
@@ -700,39 +782,87 @@ test('unchanged moveEnds do not redefine stem constants and real tip changes upd
   env.moveEnd.raise();
   env.preRender.raise();
   assert.equal(positionSetCalls, 1);
-  assert.equal(polylineSetCalls, 1);
-  assert.equal(polylineDefinitionChanges, 1, 'one real tip change must emit one polyline notification');
+  assert.equal(stems.length, 1, 'the pool is reused, never grown, for the same drawn record');
+  assert.equal(stems.get(0), line, 'and it is the same polyline');
 
+  // The entry owns its array and its two Cartesians: `Polyline` keeps the array
+  // BY REFERENCE and reads it back during the render, so a scratch shared
+  // between entries would be overwritten before it was drawn.
+  const tipCartesian = line.positions[1];
   env.viewer.camera.positionWC = Cesium.Cartesian3.add(
     camera,
-    new Cesium.Cartesian3(20_000, 0, 0),
+    new Cesium.Cartesian3(40_000, 0, 0),
     new Cesium.Cartesian3(),
   );
   env.moveEnd.raise();
   env.preRender.raise();
   assert.equal(positionSetCalls, 2);
-  assert.equal(polylineSetCalls, 2);
-  assert.equal(polylineDefinitionChanges, 2, 'each real tip change must emit exactly one notification');
+  assert.equal(line.positions[1], tipCartesian, 'the entry writes its own Cartesian in place');
 
-  env.viewer.camera.positionWC = Cesium.Cartesian3.add(
-    camera,
-    new Cesium.Cartesian3(30_000, 0, 0),
-    new Cesium.Cartesian3(),
-  );
-  env.moveEnd.raise();
+  // A record that stops being drawn releases its stem rather than keeping it in
+  // the buffer: a hidden polyline still costs its vertices in the shader.
+  env.layer.disable(env.viewer);
+  assert.equal(stems.show, false, 'the batch goes down with the row');
+
+  env.layer.destroy(env.viewer);
+  env.cleanup();
+});
+
+test('between settles a stem follows its mark behind the globe, and comes back', async () => {
+  // The horizon is the ONE gate re-tested on every pass — a camera moves for a
+  // second or more before `moveEnd` fires — and the stem is a pooled primitive
+  // now, so `entity.show` no longer carries it. Without the pass-by-pass write
+  // a shaft would hang over the far side of the planet for the whole of a drag.
+  const env = await createRealLocalLayerHarness();
   env.preRender.raise();
-  assert.equal(positionSetCalls, 3);
-  assert.equal(polylineSetCalls, 3);
-  assert.equal(polylineDefinitionChanges, 3, 'third real tip change must emit exactly one notification');
-  assert.notEqual(stemArrays[0], initialStemArray, 'first real update must select the alternate buffer');
-  assert.equal(stemArrays[1], initialStemArray, 'second real update must return to the initial buffer');
-  assert.equal(stemArrays[2], stemArrays[0], 'consecutive real updates must alternate buffer identity');
-  assert.equal(
-    new Set([initialStemArray, ...stemArrays]).size,
-    2,
-    'steady-state updates must allocate no stem arrays beyond the two preallocated buffers',
-  );
-  removeDefinitionListener();
+  const entity = env.dataSources[0].entities.values[0];
+  const stems = env.primitives.find((primitive) => primitive[LOCAL_POOL_KIND] === 'stems');
+  const line = stems.get(0);
+  assert.equal(line.show, true);
+  assert.equal(entity.show, true);
+
+  // The walk is throttled to VISIBILITY_UPDATE_MS and a settle is what normally
+  // opens it early — which is exactly what this test must NOT use. So the clock
+  // moves instead of the camera settling.
+  const realNow = globalThis.performance.now.bind(globalThis.performance);
+  let clock = realNow();
+  globalThis.performance.now = () => clock;
+  try {
+    // Antipodal camera, and NO moveEnd: this is mid-drag, the pool is not dealt.
+    const near = env.viewer.camera.positionWC;
+    env.viewer.camera.positionWC = Cesium.Cartesian3.fromDegrees(82.3, -30.2, 100_000);
+    clock += 1_000;
+    env.preRender.raise();
+    assert.equal(entity.show, false, 'the mark goes over the horizon');
+    assert.equal(line.show, false, 'and so does its shaft');
+    assert.equal(stems.length, 1, 'a pass between settles deals nothing');
+
+    env.viewer.camera.positionWC = near;
+    clock += 1_000;
+    env.preRender.raise();
+    assert.equal(entity.show, true);
+    assert.equal(line.show, true, 'and it comes back with it');
+    assert.equal(stems.length, 1, 'reusing the entry it already owns');
+
+    // And a mark that was NOT drawn at the last settle, coming over the horizon
+    // mid-drag, is dealt a shaft rather than left floating over nothing: the
+    // record owns no entry, so `showStem` gives it one on the spot.
+    env.viewer.camera.positionWC = Cesium.Cartesian3.fromDegrees(82.3, -30.2, 100_000);
+    clock += 1_000;
+    env.preRender.raise();
+    env.moveEnd.raise();
+    env.preRender.raise();
+    assert.equal(line.show, false, 'the settle released it while it was hidden');
+    env.viewer.camera.positionWC = near;
+    clock += 1_000;
+    env.preRender.raise();
+    assert.equal(entity.show, true);
+    const drawn = [...Array(stems.length)].filter((_, i) => stems.get(i).show).length;
+    assert.equal(drawn, 1, 'exactly one shaft, dealt between settles');
+  } finally {
+    globalThis.performance.now = realNow;
+  }
+
   env.layer.destroy(env.viewer);
   env.cleanup();
 });
@@ -752,8 +882,10 @@ test('local infrastructure creates no native labels or per-frame geometry callba
   assert.doesNotMatch(source, /new Cesium\.CallbackProperty/);
   assert.match(source, /feature\.position = tip/);
   assert.match(source, /record\.entity\.position\.setValue\(record\.tip\)/);
-  assert.match(source, /const stemPositionBuffers = \[\[base, tip\], \[base, tip\]\]/);
-  assert.match(source, /record\.entity\.polyline\.positions\.setValue\(stemPositions\)/);
+  // The stem is a pooled primitive, not entity graphics: no `PolylineGraphics`
+  // is built per feature, and the deal writes the pool entry's own array.
+  assert.doesNotMatch(source, /feature\.polyline = new Cesium\.PolylineGraphics/);
+  assert.match(source, /entry\.line\.positions = entry\.positions/);
   assert.match(source, /viewer\.camera\.moveEnd\.addEventListener/);
   assert.match(source, /if \(refreshStemGeometry\)/);
   assert.match(source, /now - _lastVisibilityUpdate < VISIBILITY_UPDATE_MS/);
@@ -1347,6 +1479,8 @@ async function createMeasuredLayerHarness({
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
   const preRender = new MockLayerEvent();
+  /** Primitives the layer seats in the scene — the stem and segment batches. */
+  const primitives = [];
   const moveEnd = new MockLayerEvent();
   const dataSources = [];
   globalThis.fetch = async () => ({
@@ -1385,6 +1519,17 @@ async function createMeasuredLayerHarness({
     },
     scene: {
       canvas: { clientWidth: 800, clientHeight: 600 },
+      // Every pack draws recall stems now, and they live in a pooled
+      // `PolylineCollection` rather than on the entities — so a fake scene has
+      // to own a primitive collection the way a real one always does.
+      primitives: {
+        add(primitive) { primitives.push(primitive); return primitive; },
+        remove(primitive) {
+          const at = primitives.indexOf(primitive);
+          if (at >= 0) primitives.splice(at, 1);
+          return at >= 0;
+        },
+      },
       preRender,
       sampleHeightSupported: false,
       screenSpaceCameraController: { enableInputs: true },
@@ -1580,6 +1725,8 @@ async function createAirportClickHarness() {
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
   const preRender = new MockLayerEvent();
+  /** Primitives the layer seats in the scene — the stem and segment batches. */
+  const primitives = [];
   const moveEnd = new MockLayerEvent();
   globalThis.fetch = async () => ({
     ok: true,
@@ -1615,6 +1762,17 @@ async function createAirportClickHarness() {
     },
     scene: {
       canvas: { clientWidth: 800, clientHeight: 600 },
+      // Every pack draws recall stems now, and they live in a pooled
+      // `PolylineCollection` rather than on the entities — so a fake scene has
+      // to own a primitive collection the way a real one always does.
+      primitives: {
+        add(primitive) { primitives.push(primitive); return primitive; },
+        remove(primitive) {
+          const at = primitives.indexOf(primitive);
+          if (at >= 0) primitives.splice(at, 1);
+          return at >= 0;
+        },
+      },
       preRender,
       sampleHeightSupported: false,
       screenSpaceCameraController: { enableInputs: true },
@@ -2005,7 +2163,7 @@ test('above 2 000 km a crowded cell draws one mark; below it, everything', async
     const shown = orbit.entities.filter((entity) => entity.show !== false);
     assert.equal(shown.length, 1, 'one occupied cell is one drawn mark');
     assert.equal(
-      shown[0].properties.name.getValue(),
+      shown[0].__localProperties.name,
       'Nommé',
       'and it is the cell winner, which is the named feature',
     );

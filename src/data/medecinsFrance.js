@@ -42,6 +42,7 @@
  */
 
 import * as Cesium from 'cesium';
+import { profileCountBudget } from '../perfProfile.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
@@ -675,7 +676,8 @@ export function createMedecinsLayer({
 
   async function renderMesh(box) {
     const payload = await ensureMesh();
-    const budget = medecinsMeshBudget(box.north - box.south);
+    // § 3.5 — see `profileCountBudget`. Coverage first, density second.
+    const budget = profileCountBudget(medecinsMeshBudget(box.north - box.south));
     const { picked } = selectMedecinsMesh(payload.sites, { box, budget });
     repaintPoints(picked.map((row, index) => ({
       key: `mesh:${index}:${row[MESH_LAT]}:${row[MESH_LON]}`,

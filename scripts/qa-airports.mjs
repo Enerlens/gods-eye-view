@@ -175,8 +175,7 @@ async function main() {
       const source = viewer?.dataSources?.getByName?.('Aéroports')?.[0];
       const entities = source?.entities?.values ?? [];
       if (!entities.length) return null;
-      const now = window.__godsEyeView?.viewer?.clock?.currentTime;
-      const props = entities.map((entity) => entity.properties?.getValue?.(now) ?? {});
+      const props = entities.map((entity) => entity.__localProperties ?? {});
       const byIcao = new Map(props.filter((p) => p.icao).map((p) => [p.icao, p]));
       const french = new Set(['BL', 'FR', 'GF', 'GP', 'MF', 'MQ', 'NC', 'PF', 'PM', 'RE', 'TF', 'WF', 'YT']);
       return {
@@ -245,7 +244,7 @@ async function main() {
           : metres >= 1800 ? 'len1800'
             : metres >= 1000 ? 'len1000' : 'len0');
       for (const entity of entities) {
-        const p = entity.properties?.getValue?.(now) ?? {};
+        const p = entity.__localProperties ?? {};
         // Mirrors airportTier(): the service question first, then the two types
         // clause (a) admits worldwide. Never a size ranking.
         const tier = p.scheduled === true ? 'airline'
@@ -346,7 +345,7 @@ async function main() {
       // the ladder was inverted it kept 22 fields that sell no seat, Le Bourget
       // among them, because the top tier was a SIZE class. Count the liars.
       const unscheduledShown = entities.filter((entity) => entity.show !== false
-        && (entity.properties?.getValue?.()?.scheduled !== true)).length;
+        && (entity.__localProperties?.scheduled !== true)).length;
       const module = dm.layers?.get?.('local-airports')?.module;
       const legendAtFloor = (module?.getRowControls?.()?.legend || [])
         .map((item) => `${item.label}=${item.count}`);
@@ -396,11 +395,14 @@ async function main() {
       viewer.scene.render();
 
       // The runways live in a PolylineCollection primitive, not in the data
-      // source: find it by the layer tag its polylines carry as their pick id.
+      // source. The layer now seats TWO of those — the segments and the pooled
+      // recall stems — and every polyline in both carries an airport as its
+      // pick id, so the batch has to be selected by what it IS.
       let lines = null;
       for (let i = 0; i < viewer.scene.primitives.length; i += 1) {
         const primitive = viewer.scene.primitives.get(i);
         if (!primitive || typeof primitive.get !== 'function' || !primitive.length) continue;
+        if (primitive.__gevLocalPool !== 'segments') continue;
         if (primitive.get(0)?.id?.__localLayerId === 'local-airports') { lines = primitive; break; }
       }
       if (!lines) return { found: false };
@@ -413,7 +415,7 @@ async function main() {
         const line = lines.get(i);
         if (!line.show) continue;
         shown += 1;
-        const props = line.id?.properties?.getValue?.() ?? {};
+        const props = line.id?.__localProperties ?? {};
         if (props.icao !== 'LFPG') continue;
         cdgShown += 1;
         const [head, tail] = line.positions;
@@ -487,7 +489,7 @@ async function main() {
       for (const entity of entities) {
         if (!entity.polygon) continue;
         carried += 1;
-        const props = entity.properties?.getValue?.(now) ?? {};
+        const props = entity.__localProperties ?? {};
         const shown = read(entity.polygon.show) !== false && entity.show !== false;
         if (shown) {
           drawn += 1;
@@ -565,7 +567,7 @@ async function main() {
           if (show !== false && entity.show !== false) footprints += 1;
         }
         if (entity.show === false) continue;
-        const p = entity.properties?.getValue?.() ?? {};
+        const p = entity.__localProperties ?? {};
         const tier = p.scheduled === true ? 'airline'
           : (p.type === 'large_airport' || p.type === 'medium_airport') ? 'airport' : 'airfield';
         drawn[tier] += 1;
@@ -645,6 +647,7 @@ async function main() {
       for (let i = 0; i < viewer.scene.primitives.length; i += 1) {
         const primitive = viewer.scene.primitives.get(i);
         if (!primitive || typeof primitive.get !== 'function' || !primitive.length) continue;
+        if (primitive.__gevLocalPool !== 'segments') continue;
         if (primitive.get(0)?.id?.__localLayerId === 'local-airports') { lines = primitive; break; }
       }
       if (!lines) return { drawn: 0 };
@@ -654,7 +657,7 @@ async function main() {
         const line = lines.get(i);
         if (!line.show) continue;
         drawn += 1;
-        const props = line.id?.properties?.getValue?.() ?? {};
+        const props = line.id?.__localProperties ?? {};
         if (props.icao === 'LFPG' || props.icao === 'LFPN') {
           spans.push([props.icao, Math.round(Cartesian3.distance(line.positions[0], line.positions[1]))]);
         }

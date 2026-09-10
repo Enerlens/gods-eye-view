@@ -1,6 +1,6 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
-import { isLiteProfile, onPerfProfileChange } from '../perfProfile.js';
+import { onPerfProfileChange, profileCellPx, profileCountBudget } from '../perfProfile.js';
 import { askJoin } from './layerJoins.js';
 import {
   airportCardDetails,
@@ -85,26 +85,21 @@ const LOCAL_GLOBE_LOD_CELL_PX = 26;
  * a fifth of what the horizon test alone was letting through.
  */
 const LOCAL_GLOBE_LOD_MAX_MARKS = 600;
+// The `lite` share of this budget is NOT declared here any more: § 3.5 made it
+// one rule for every layer that thins, and `perfProfile.js` owns it. Two maps
+// thinning at two densities on the same machine is a bug that reads as data.
 /**
- * The `lite` profile's share of that ceiling — the plan's § 3.5 rule
- * ("`lite` = 60 %") applied to the budget § 3.1 introduces. Wired here rather
- * than left for 3.5's own pass because a brand-new budget constant that
- * ignored the profile would be debt on the day it landed.
- */
-const LOCAL_GLOBE_LOD_LITE_SHARE = 0.6;
-
-/**
- * The grid pitch that yields that share.
+ * Marks which of a layer's two polyline batches a primitive is.
  *
- * A grid's occupied-cell count falls with the SQUARE of its pitch, not with
- * the pitch, so widening the cell by 1/0.6 would drop nearly two thirds of the
- * marks rather than 40 % of them. `1/√0.6` ≈ 1.29 is the widening that
- * actually costs 60 %, and it keeps the thinning spatially even instead of
- * cutting the tail off a priority sort.
+ * A layer seats two `PolylineCollection`s in the scene — the published segments
+ * and the recall stems — and every polyline in BOTH carries a feature of the
+ * same layer as its pick id. So a reader walking `scene.primitives` looking for
+ * "the airports' runways" cannot use `__localLayerId` to tell them apart, and
+ * would silently read whichever was seated first. The value is `'segments'` or
+ * `'stems'`.
  */
-const LOCAL_GLOBE_LOD_LITE_CELL_PX = Math.round(
-  LOCAL_GLOBE_LOD_CELL_PX / Math.sqrt(LOCAL_GLOBE_LOD_LITE_SHARE),
-);
+export const LOCAL_POOL_KIND = '__gevLocalPool';
+
 /** Scratch for the frustum gate — the test reads it and never keeps it. */
 const LOCAL_CULL_SPHERE = new Cesium.BoundingSphere();
 // Stems are anchored at ellipsoid height 0, but high-elevation features
@@ -1137,6 +1132,49 @@ export function createLocalGeoJsonLayer({
   const _runwayPool = [];
   /** How many pool entries the current camera settle handed out. */
   let _runwayUsed = 0;
+  /**
+   * The recall stems, in ONE batched primitive — the same trade as the segments.
+   *
+   * ── WHY THE STEM LEFT THE ENTITY (PLAN-PERFORMANCE.md § 3.1) ────────────
+   *
+   * A `PolylineGraphics` on an entity is not a line, it is a dozen `Property`
+   * objects, each with its own `Event` and its three arrays, plus the two
+   * position buffers this file swapped between. Weighed on the airports pack
+   * against the rest of a drawn feature: **7.7 KiB per feature** of the 33.6 KiB
+   * an entity cost, on features whose stem is on screen a few hundred at a
+   * time. Every feature paid for a stem the horizon or the budget was about to
+   * hide.
+   *
+   * Pooled, the cost is the PEAK number of stems actually drawn, and the pool
+   * is dealt on camera settle exactly like `_runwayPool` — the same reasons
+   * apply verbatim, down to each entry owning its own `Material`.
+   *
+   * The pick surface does not move: a pooled stem carries `line.id = entity`,
+   * so a click on the shaft still resolves to its feature, as it did when the
+   * shaft was part of that feature.
+   * @type {?object}
+   */
+  let _stemLines = null;
+  /**
+   * Reusable stems, all resident in `_stemLines`.
+   * @type {Array<{line:object, positions:Array<object>, base:object, tip:object, material:object, record:?object}>}
+   */
+  const _stemPool = [];
+  /** How many stem entries the current camera settle handed out. */
+  let _stemUsed = 0;
+  /**
+   * Scratch for the appearance sort, reused across settles.
+   *
+   * Cesium opens a new `DrawCommand` whenever two CONSECUTIVE polylines of a
+   * bucket disagree on `type + uniform values`, so a pool dealt in record order
+   * would cost one command per colour CHANGE rather than one per colour. A
+   * graded pack alternates its tiers freely down the record list; sorted, the
+   * field costs one command per distinct stem colour, which is at most a
+   * handful. Widths do not split a command — they are a batch-table attribute,
+   * not a uniform — so the key is the colour alone.
+   * @type {Array<object>}
+   */
+  const _stemDrawOrder = [];
   let _stemGeometryDirty = true;
   let _lastVisibilityUpdate = 0;
   let _destroyed = false;
@@ -1194,6 +1232,10 @@ export function createLocalGeoJsonLayer({
   function ensureRunwayCollection(viewer) {
     if (_runwayLines) return _runwayLines;
     _runwayLines = new Cesium.PolylineCollection();
+    // Which of this layer's two batches this is. Both hold polylines whose
+    // pick id is a feature of the same layer, so `__localLayerId` alone no
+    // longer tells them apart — see `LOCAL_POOL_KIND`.
+    _runwayLines[LOCAL_POOL_KIND] = 'segments';
     _runwayLines.show = _enabled;
     viewer.scene.primitives.add(_runwayLines);
     return _runwayLines;
@@ -1249,6 +1291,127 @@ export function createLocalGeoJsonLayer({
     _runwayPool.length = 0;
     _runwayUsed = 0;
     if (_runwayLines) _runwayLines.removeAll();
+  }
+
+  /**
+   * The layer's stem batch, created on the first settle that draws one.
+   *
+   * Unlike the segments, EVERY pack has stems — but a layer that is enabled and
+   * never looked at still allocates nothing, because the collection is built by
+   * the first deal rather than by the load.
+   * @param {Cesium.Viewer} viewer
+   * @returns {object} The live PolylineCollection.
+   */
+  function ensureStemCollection(viewer) {
+    if (_stemLines) return _stemLines;
+    _stemLines = new Cesium.PolylineCollection();
+    _stemLines[LOCAL_POOL_KIND] = 'stems';
+    _stemLines.show = _enabled;
+    viewer.scene.primitives.add(_stemLines);
+    return _stemLines;
+  }
+
+  /**
+   * Place one record's recall stem, from the pool, and dress it in the record's
+   * own colour and width.
+   *
+   * The positions array belongs to the entry and is written in place: `Polyline`
+   * keeps it BY REFERENCE and reads it back during the render, so a scratch
+   * shared between entries would be overwritten before it was drawn.
+   * @param {Cesium.Viewer} viewer
+   * @param {object} record Live stem record.
+   * @returns {void}
+   */
+  function drawStem(viewer, record) {
+    let entry = _stemPool[_stemUsed];
+    if (!entry) {
+      const collection = ensureStemCollection(viewer);
+      const positions = [new Cesium.Cartesian3(), new Cesium.Cartesian3()];
+      // Its OWN material — see `_runwayPool`: a shared one is destroyed once
+      // per polyline and the second destroy throws. The colour is written
+      // below, on this deal and on every later one.
+      const material = Cesium.Material.fromType('Color', { color: record.stemColor });
+      entry = {
+        positions,
+        base: positions[0],
+        tip: positions[1],
+        material,
+        /** The record this entry currently draws. See `showStem`. */
+        record: null,
+        line: collection.add({
+          positions, width: record.stemWidth, material, show: true,
+        }),
+      };
+      _stemPool.push(entry);
+    } else if (!entry.line.show) {
+      entry.line.show = true;
+    }
+    _stemUsed += 1;
+    // Two-way, so a pass between settles can find this record's shaft AND be
+    // sure the shaft still belongs to it.
+    entry.record = record;
+    record.stemEntry = entry;
+    Cesium.Cartesian3.clone(record.base, entry.base);
+    Cesium.Cartesian3.clone(record.tip, entry.tip);
+    entry.positions[0] = entry.base;
+    entry.positions[1] = entry.tip;
+    entry.line.positions = entry.positions;
+    if (entry.line.width !== record.stemWidth) entry.line.width = record.stemWidth;
+    // A uniform write, never a new instance: the batching key is the VALUE, so
+    // writing the colour keeps the draw-command runs the sort just built.
+    entry.material.uniforms.color = record.stemColor;
+    // The record's own entity, so the click handler already in place resolves a
+    // click on the shaft to its feature — re-stamped because a pooled stem is
+    // handed to a different record on the next settle.
+    entry.line.id = record.entity;
+  }
+
+  /**
+   * Track one record's shaft BETWEEN settles, when the pool is not re-dealt.
+   *
+   * The horizon is the one gate above re-tested on every pass — a camera moves
+   * for a second or more before `moveEnd` fires — and `entity.show` no longer
+   * reaches a pooled shaft. So a mark going behind the globe takes its shaft
+   * with it, and a mark coming back gets one: a record that was not drawn at
+   * the last settle owns no entry, and leaving it stem-less for the rest of a
+   * drag would float its mark over nothing.
+   *
+   * The ownership test carries the rest: the pool is re-dealt from scratch on
+   * every settle, in a sorted order that moves with the camera, so a record's
+   * remembered entry may already belong to somebody else. Writing through a
+   * stale pointer would hide a neighbour's shaft.
+   * @param {Cesium.Viewer} viewer
+   * @param {object} record Live stem record.
+   * @param {boolean} visible Whether its shaft should be drawn right now.
+   * @returns {void}
+   */
+  function showStem(viewer, record, visible) {
+    const entry = record.stemEntry;
+    const owns = Boolean(entry) && entry.record === record;
+    if (!visible) {
+      if (owns && entry.line.show) entry.line.show = false;
+      return;
+    }
+    // Its geometry is not stale: the settle placed every record that was in
+    // range and on screen, horizon or no horizon.
+    if (!owns) drawStem(viewer, record);
+    else if (!entry.line.show) entry.line.show = true;
+  }
+
+  /** Hide every stem this settle did not hand out. */
+  function releaseUnusedStemLines() {
+    for (let i = _stemUsed; i < _stemPool.length; i += 1) {
+      const { line } = _stemPool[i];
+      if (line.show) line.show = false;
+    }
+  }
+
+  /** Drop every drawn stem, keeping the (empty) primitive for the next load. */
+  function clearStemLines() {
+    _stemPool.length = 0;
+    _stemUsed = 0;
+    _stemDrawOrder.length = 0;
+    if (_stemLines) _stemLines.removeAll();
   }
 
   /**
@@ -1315,12 +1478,13 @@ export function createLocalGeoJsonLayer({
     // We zoom to the surface base of the stem or the center of the polygon
     let targetPos = null;
 
-    if (entity.polyline) {
-      // If it's a stem, fly to the base
-      const positions = entity.polyline.positions.getValue(Cesium.JulianDate.now());
-      if (positions && positions.length > 0) {
-        targetPos = positions[0];
-      }
+    if (entity.__localBaseCartesian) {
+      // The ground anchor the stem stands on — read off the entity rather than
+      // out of a `PolylineGraphics`, because the shaft is a pooled primitive
+      // now and no longer belongs to this entity. It is the same point: the
+      // stem's base IS `__localBaseCartesian`, and the ground sample writes
+      // both through the same Cartesian.
+      targetPos = entity.__localBaseCartesian;
     } else if (entity.polygon && entity.polygon.hierarchy) {
       // If it's a polygon, just fly to its center
       const hierarchy = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now());
@@ -1353,9 +1517,10 @@ export function createLocalGeoJsonLayer({
     clearGroundRetryRender();
     if (_dataSource) _dataSource.show = false;
     // A primitive is not in the data source, so `_dataSource.show` never
-    // reached it: without this the runways stayed on the globe after the row
-    // was switched off.
+    // reached it: without this the runways and the stems stayed on the globe
+    // after the row was switched off.
     if (_runwayLines) _runwayLines.show = false;
+    if (_stemLines) _stemLines.show = false;
     _overlayPublisher.hide();
     clearSelectedEntityContextForLayer(id);
     if (viewer?.selectedEntity?.__localLayerId === id) {
@@ -1559,6 +1724,7 @@ export function createLocalGeoJsonLayer({
           // inherit the counts of the attempt that died — nor the segments,
           // which live in a primitive the data source knows nothing about.
           clearRunwayLines();
+          clearStemLines();
           _groupTally.clear();
           _renderTally.clear();
           _stemGeometryDirty = true;
@@ -1616,6 +1782,12 @@ export function createLocalGeoJsonLayer({
             // Store references for bounded stem scaling and native picking.
             feature.__localBaseCarto = carto;
             feature.__localBaseCartesian = base;
+            // The pack's own properties, UNWRAPPED, on the entity — the same
+            // object the context record below holds, so it is a reference and
+            // not a copy. It is what everything downstream of this loop should
+            // read: `entity.properties` is about to go away, and a plain object
+            // needs no `JulianDate` to be read at all.
+            feature.__localProperties = properties;
             registerEntityContext(feature, {
               id: `${id}:${recordId}`,
               layerId: id,
@@ -1627,6 +1799,26 @@ export function createLocalGeoJsonLayer({
               latitude: Number(Cesium.Math.toDegrees(carto.latitude).toFixed(6)),
               longitude: Number(Cesium.Math.toDegrees(carto.longitude).toFixed(6)),
             });
+            // ── The duplicate the packs were paying twice for (§ 3.1) ───────
+            //
+            // `GeoJsonDataSource` turns a feature's properties into a
+            // `PropertyBag`: an accessor pair per key on a dictionary-mode
+            // object, each backed by its own `ConstantProperty`, each of those
+            // carrying its own `Event` with three arrays. Measured on the
+            // airports pack — 12 keys — that bag is **14.0 KiB per feature**,
+            // against 33.6 KiB for the whole drawn feature. It is 42 % of what
+            // an infra pack costs, and it is a DUPLICATE: the line above has
+            // already unwrapped it into a plain object, which is what the card,
+            // the label, the legend and the voice scan all read. Nothing in
+            // `src/` reads a local pack's `entity.properties` — `summarizeEntity`
+            // short-circuits on `__gevContextId` and takes the record's plain
+            // copy.
+            //
+            // 14.0 KiB × 22 218 features is ~310 MiB of retained heap across
+            // the four bundled packs, and that is the half of § 3.1 the frustum
+            // gate could not touch: the gate decides what is DRAWN, this decides
+            // what is HELD.
+            feature.properties = undefined;
 
             // Constant properties are refreshed on the existing 450 ms source
             // cadence. Cesium no longer evaluates 2-3 callbacks per entity on
@@ -1652,12 +1844,12 @@ export function createLocalGeoJsonLayer({
               ? Cesium.Color.fromCssColorString(markerCss)
               : baseColor;
             const accent = markerCss || color;
-            const stemPositionBuffers = [[base, tip], [base, tip]];
-            feature.polyline = new Cesium.PolylineGraphics({
-              positions: stemPositionBuffers[0],
-              width: groupStyle?.stemWidth ?? 3.5,
-              material: new Cesium.ColorMaterialProperty(markerColor),
-            });
+            // The recall stem is METADATA here, exactly as the segments below
+            // are: nothing Cesium-side is allocated per feature, and the drawn
+            // shaft comes from `_stemPool`, sized to what is on screen. What
+            // the record keeps is the two things the deal cannot re-derive —
+            // the shaft's colour and its width.
+            const stemWidth = groupStyle?.stemWidth ?? 3.5;
             feature.point = new Cesium.PointGraphics({
               pixelSize: renderSpec.pixelSize ?? groupStyle?.pixelSize ?? 10,
               // A1, drawn: a HOLLOW ring is a feature whose measurement was
@@ -1740,8 +1932,19 @@ export function createLocalGeoJsonLayer({
               base,
               tip,
               nextTip: Cesium.Cartesian3.clone(tip),
-              stemPositionBuffers,
-              stemPositionBufferIndex: 0,
+              /** Colour of the pooled shaft. */
+              stemColor: markerColor,
+              /**
+               * Sort key for the draw order — the CSS string the colour came
+               * from, resolved ONCE here. Sorting on `toCssColorString()` would
+               * allocate a string per comparison, so ~120 000 of them per
+               * settle on the scene this budget exists for.
+               */
+              stemColorKey: markerCss || color,
+              /** Pool entry drawing this record's shaft, or null. See `showStem`. */
+              stemEntry: null,
+              /** Width of the pooled shaft, in pixels. Never splits a command. */
+              stemWidth,
               groundHeight,
               groundSampled: false,
               lastGroundSampleMs: 0,
@@ -1828,6 +2031,7 @@ export function createLocalGeoJsonLayer({
           _count = 0;
           _stemRecords = [];
           clearRunwayLines();
+          clearStemLines();
           _groupTally.clear();
           _renderTally.clear();
           console.error(`Failed to load ${id}:`, e);
@@ -1879,10 +2083,18 @@ export function createLocalGeoJsonLayer({
           if (!cameraPos) return;
           // One DOM layout read for the whole walk, not one per record.
           const pixelFactor = localPixelFactor(viewer);
-          // The drawn segments are re-dealt from scratch on every settle, so
-          // the pool's cursor rewinds here and whatever is left over is hidden
-          // after the walk. Between settles nothing moved, so nothing is dealt.
-          if (_stemGeometryDirty) _runwayUsed = 0;
+          // The drawn segments AND the drawn stems are re-dealt from scratch on
+          // every settle, so both cursors rewind here and whatever is left over
+          // is hidden after the walk. Between settles nothing moved, so nothing
+          // is dealt — and nothing needs to be: the four gates and the budget
+          // that decide which stems are drawn are themselves only re-decided on
+          // a settle, and `setParams` raises the same flag when a row chip
+          // changes the visible set with the camera parked.
+          if (_stemGeometryDirty) {
+            _runwayUsed = 0;
+            _stemUsed = 0;
+            _stemDrawOrder.length = 0;
+          }
           const takeLine = () => takeRunwayLine(viewer);
           
           const occluder = new Cesium.EllipsoidalOccluder(Cesium.Ellipsoid.WGS84, cameraPos);
@@ -1993,7 +2205,15 @@ export function createLocalGeoJsonLayer({
             const isCandidate = !record.filteredOut && !record.outOfRange
               && !record.offScreen && occluder.isPointVisible(record.base);
             if (isCandidate) candidates.push(record);
-            else if (record.entity.show !== false) record.entity.show = false;
+            else {
+              if (record.entity.show !== false) record.entity.show = false;
+              // The stem is a POOLED primitive now, so `entity.show` no longer
+              // reaches it. The horizon is the one gate above that is re-tested
+              // on EVERY pass — the camera moves for a second or more before
+              // `moveEnd` fires — so between settles a stem has to follow its
+              // mark behind the globe by itself, and come back with it below.
+              showStem(viewer, record, false);
+            }
             // The polygon answers to the same reasons through
             // `entity.show`, plus its own screen floor. Written only on a
             // transition: `PolygonGraphics.show` is a Property, so assigning a
@@ -2023,14 +2243,11 @@ export function createLocalGeoJsonLayer({
               // Read per settle rather than captured: the DISPLAY-rail switch
               // can change it mid-session, and the listener below turns that
               // into the settle this needs even on a parked camera.
-              const lite = isLiteProfile();
               const kept = selectLocalGlobeLodMarks(candidates, {
-                cellPx: lite ? LOCAL_GLOBE_LOD_LITE_CELL_PX : LOCAL_GLOBE_LOD_CELL_PX,
+                cellPx: profileCellPx(LOCAL_GLOBE_LOD_CELL_PX),
                 width: canvas.clientWidth || canvas.width || 0,
                 height: canvas.clientHeight || canvas.height || 0,
-                maxMarks: lite
-                  ? Math.round(LOCAL_GLOBE_LOD_MAX_MARKS * LOCAL_GLOBE_LOD_LITE_SHARE)
-                  : LOCAL_GLOBE_LOD_MAX_MARKS,
+                maxMarks: profileCountBudget(LOCAL_GLOBE_LOD_MAX_MARKS),
                 pinned: selected,
                 project: (record) => projectToWindow(viewer.scene, record.tip),
               });
@@ -2047,9 +2264,32 @@ export function createLocalGeoJsonLayer({
             const isVisible = !record.beyondBudget;
             if (record.entity.show !== isVisible) record.entity.show = isVisible;
             if (isVisible && record.entry) visibleOverlayRecords.push(record);
+            // The stem is dealt from the pool for the DRAWN records only, and
+            // only on a settle — the deal is collected first because the order
+            // it is written in decides how many draw commands it costs.
+            if (refreshStemGeometry) {
+              if (isVisible) _stemDrawOrder.push(record);
+            } else {
+              // Between settles the pool is not re-dealt, so a record coming
+              // back over the horizon shows the stem it already owns.
+              showStem(viewer, record, isVisible);
+            }
           }
 
-          if (refreshStemGeometry) releaseUnusedRunwayLines();
+          if (refreshStemGeometry) {
+            // Grouped by colour, so consecutive stems agree on the material
+            // uniform Cesium splits its draw commands on. On the key resolved at
+            // load, not on the `Color` object: two records of the same tier hold
+            // two equal-but-distinct instances, and re-deriving the string here
+            // would allocate one per comparison.
+            if (_stemDrawOrder.length > 1) {
+              _stemDrawOrder.sort((a, b) => (a.stemColorKey < b.stemColorKey ? -1
+                : a.stemColorKey > b.stemColorKey ? 1 : 0));
+            }
+            for (const record of _stemDrawOrder) drawStem(viewer, record);
+            releaseUnusedStemLines();
+            releaseUnusedRunwayLines();
+          }
           _stemGeometryDirty = false;
           // Tiles ARE streaming in: real progress re-opens the give-up budget
           // so the records still waiting get their own bounded run of retries —
@@ -2102,6 +2342,7 @@ export function createLocalGeoJsonLayer({
       // reading _enabled here (rather than forcing true) respects the toggle-off.
       if (_dataSource) _dataSource.show = _enabled;
       if (_runwayLines) _runwayLines.show = _enabled;
+      if (_stemLines) _stemLines.show = _enabled;
       viewer.scene.requestRender?.();
     },
 
@@ -2132,6 +2373,7 @@ export function createLocalGeoJsonLayer({
       }
       _dataSource = null;
       clearRunwayLines();
+      clearStemLines();
       _stemRecords = [];
       _groupTally.clear();
       _renderTally.clear();
@@ -2162,8 +2404,15 @@ export function createLocalGeoJsonLayer({
         try { viewer?.scene?.primitives?.remove(_runwayLines); } catch { /* already gone */ }
         _runwayLines = null;
       }
+      if (_stemLines) {
+        try { viewer?.scene?.primitives?.remove(_stemLines); } catch { /* already gone */ }
+        _stemLines = null;
+      }
       _runwayPool.length = 0;
       _runwayUsed = 0;
+      _stemPool.length = 0;
+      _stemUsed = 0;
+      _stemDrawOrder.length = 0;
       _overlayPublisher.destroy();
       // The join offer goes down with the data it describes: a directory that
       // outlived its pack would answer questions about features nobody holds.
@@ -2337,12 +2586,12 @@ function updateLocalStemGeometry(viewer, record, now, knownDistance = null, know
     return false;
   }
   Cesium.Cartesian3.clone(record.nextTip, record.tip);
-  record.stemPositionBufferIndex = 1 - record.stemPositionBufferIndex;
-  const stemPositions = record.stemPositionBuffers[record.stemPositionBufferIndex];
-  stemPositions[0] = record.base;
-  stemPositions[1] = record.tip;
+  // The MARK rides the tip and is still an entity, so this stays a `Property`
+  // write. The SHAFT is no longer one: it is dealt from `_stemPool` after the
+  // budget has decided which records are drawn, and it reads `record.tip`
+  // directly — which is why the double buffer that existed to make Cesium
+  // notice a positions swap is gone with it.
   record.entity.position.setValue(record.tip);
-  record.entity.polyline.positions.setValue(stemPositions);
   return true;
 }
 

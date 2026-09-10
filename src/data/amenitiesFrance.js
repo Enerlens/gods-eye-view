@@ -97,6 +97,7 @@
  */
 
 import * as Cesium from 'cesium';
+import { profileCountBudget } from '../perfProfile.js';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import { CHOROPLETH_FILL_ALPHA } from './choroplethAlpha.js';
 import { governorRequestRender } from '../renderGovernor.js';
@@ -962,7 +963,12 @@ async function ensureMesh() {
  * milliseconds against a round trip that would cost a few hundred.
  */
 function reconcileMesh(box) {
-  const pick = selectAmenitiesMesh(_mesh?.rows, { box });
+  const pick = selectAmenitiesMesh(_mesh?.rows, {
+    box,
+    // § 3.5 — see `profileCountBudget`. The per-family floor is a share of the
+    // budget, so a thinner budget keeps the same protection against erasure.
+    budget: profileCountBudget(amenitiesMeshBudget(box.north - box.south)),
+  });
   _meshPick = pick;
   _truncated = 0;
 

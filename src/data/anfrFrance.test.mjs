@@ -1050,9 +1050,19 @@ test('the drawn shafts and rays are world geometry, and go away with the selecti
     );
     assert.ok(Math.abs(metres - ANFR_SECTOR_RAY_M) < 0.5, `${metres} m`);
   }
-  // One material for the whole fan: a PolylineCollection buckets by material
-  // instance, and 33 fresh ones would be 33 draw calls for one colour.
-  assert.equal(new Set([...Array(sectors.length)].map((_, i) => sectors.get(i).material)).size, 1);
+  // ONE MATERIAL PER RAY, and the same colour on every one of them.
+  //
+  // The instances have to be distinct because `Polyline._destroy()` destroys
+  // its own material and Cesium's `destroyObject` is not idempotent: a fan of
+  // 33 rays sharing one instance is 32 throws waiting for the next teardown.
+  // The COLOUR has to be identical because that — not the instance — is what
+  // Cesium batches on: `sortPolylinesIntoBuckets` keys on `material.type` and
+  // the draw pass splits commands on type plus uniform VALUES, so 33 cyan
+  // instances are still one draw command.
+  const rayMaterials = [...Array(sectors.length)].map((_, i) => sectors.get(i).material);
+  assert.equal(new Set(rayMaterials).size, sectors.length, 'no ray shares an instance');
+  assert.equal(new Set(rayMaterials.map((m) => `${m.type}|${m.uniforms.color.toCssColorString()}`)).size, 1,
+    'and they all wear the same cyan, so they still batch into one command');
 
   // Deselecting takes the rays down and leaves the shafts alone: they belong
   // to two different questions.
@@ -1062,4 +1072,122 @@ test('the drawn shafts and rays are world geometry, and go away with the selecti
 
   anfrFranceLayer.destroy(viewer);
   assert.equal(added.length, 0);
+});
+
+test('a shaft owns its material, so a teardown does not destroy the same one twice', async () => {
+  // The bug this closes was silent in every previous test because the fake
+  // `primitives.remove` above never destroys. Cesium's does — and
+  // `Polyline._destroy()` calls `this._material.destroy()` unconditionally
+  // while `destroyObject` replaces every method with a thrower. So two shafts
+  // holding one memoized material meant the second `destroy()` threw
+  // `DeveloperError`, on `disable()` (which calls `removeAll()`) and on
+  // `destroy()` (which calls `primitives.remove()`) alike.
+  //
+  // Proved first on bare Cesium so the property is anchored to the engine and
+  // not to this layer's plumbing.
+  const positions = [Cesium.Cartesian3.fromDegrees(2.3, 48.8), Cesium.Cartesian3.fromDegrees(2.4, 48.9)];
+  const shared = Cesium.Material.fromType('Color', { color: Cesium.Color.RED });
+  const sharing = new Cesium.PolylineCollection();
+  sharing.add({ positions, width: 2, material: shared });
+  sharing.add({ positions, width: 2, material: shared });
+  assert.throws(() => sharing.destroy(), /destroyed/, 'a shared material throws on the second destroy');
+
+  const owning = new Cesium.PolylineCollection();
+  owning.add({ positions, width: 2, material: Cesium.Material.fromType('Color', { color: Cesium.Color.RED }) });
+  owning.add({ positions, width: 2, material: Cesium.Material.fromType('Color', { color: Cesium.Color.RED }) });
+  owning.destroy();
+
+  // Now the layer itself, on real collections, torn down twice over: the
+  // `removeAll()` inside `disable()` and then a real `destroy()`.
+  const added = [];
+  const viewer = {
+    ...fakeViewer(2.325, 48.850, 2.340, 48.860),
+    scene: {
+      requestRender() {},
+      canvas: {},
+      preRender: { addEventListener: () => () => {} },
+      primitives: {
+        add(primitive) { added.push(primitive); return primitive; },
+        // The real thing: `PrimitiveCollection.remove` destroys what it drops.
+        remove(primitive) {
+          const at = added.indexOf(primitive);
+          if (at < 0) return false;
+          added.splice(at, 1);
+          primitive.destroy();
+          return true;
+        },
+        contains() { return true; },
+        raiseToTop() {},
+      },
+    },
+  };
+  anfrFranceLayer.init(viewer);
+  const [, masts, sectors] = added;
+  const http = async () => ({ ok: true, json: async () => PACK });
+  _setAnfrStateForTest({ viewer, overlayHost: makeHost(), http, regime: 'maillage' });
+  await _loadAnfrViewportForTest(viewer);
+  assert.ok(masts.length > 1, 'more than one shaft, or there is nothing to double-destroy');
+  const shaftMaterials = [...Array(masts.length)].map((_, i) => masts.get(i).material);
+  assert.equal(new Set(shaftMaterials).size, masts.length, 'no shaft shares an instance');
+
+  _setAnfrStateForTest({
+    viewer, overlayHost: makeHost(), http, pack: PACK, regime: 'supports',
+    mastRegime: true, details: [[449714, DETAIL]],
+  });
+  _selectAnfrForTest(anfrSupportId(449714));
+  assert.ok(sectors.length > 1, 'more than one ray, likewise');
+
+  anfrFranceLayer.disable(viewer);
+  anfrFranceLayer.destroy(viewer);
+  assert.equal(added.length, 0);
+  assert.equal(masts.isDestroyed(), true);
+  assert.equal(sectors.isDestroyed(), true);
+});
+
+test('the drawn shafts are grouped by appearance, so the field is a handful of draw commands', async () => {
+  // Cesium opens a new `DrawCommand` every time two CONSECUTIVE polylines of a
+  // bucket disagree on `type + uniform values`. In register order the five
+  // appearances interleave, so the fullest 0.09° box (1 913 shafts) could cost
+  // 1 913 commands for what is at most five distinct looks. Grouping the drawn
+  // set is what collapses that, and it is a rendering decision only: WHICH
+  // shafts are drawn is still decided in register order, before the sort.
+  const added = [];
+  const viewer = {
+    ...fakeViewer(2.325, 48.850, 2.340, 48.860),
+    scene: {
+      requestRender() {},
+      canvas: {},
+      preRender: { addEventListener: () => () => {} },
+      primitives: {
+        add(primitive) { added.push(primitive); return primitive; },
+        remove(primitive) { return added.splice(added.indexOf(primitive), 1).length > 0; },
+        contains() { return true; },
+        raiseToTop() {},
+      },
+    },
+  };
+  anfrFranceLayer.init(viewer);
+  const [, masts] = added;
+  const http = async () => ({ ok: true, json: async () => PACK });
+  _setAnfrStateForTest({ viewer, overlayHost: makeHost(), http, regime: 'maillage' });
+  await _loadAnfrViewportForTest(viewer);
+
+  const appearance = (i) => {
+    const material = masts.get(i).material;
+    return `${material.type}|${material.uniforms.color.toCssColorString()}`;
+  };
+  const drawn = _anfrMastTallyForTest().masts;
+  const looks = new Set();
+  let runs = 0;
+  let previous = null;
+  for (let i = 0; i < drawn; i += 1) {
+    const key = appearance(i);
+    looks.add(key);
+    if (key !== previous) runs += 1;
+    previous = key;
+  }
+  assert.ok(looks.size > 1, 'this fixture has more than one band, or the test proves nothing');
+  assert.equal(runs, looks.size, 'one run per appearance — no band is drawn twice');
+
+  anfrFranceLayer.destroy(viewer);
 });
