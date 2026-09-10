@@ -49,6 +49,8 @@
  * @module data/datexRoadStatus
  */
 
+import { CONGESTION_RUNGS } from './congestionLadder.js';
+
 /** Bison Futé's open DATEX II root. HTTP only — the host serves no TLS. */
 export const TIPI_BASE = 'http://tipi.bison-fute.gouv.fr/bison-fute-ouvert/publicationsDIR';
 
@@ -105,34 +107,56 @@ export const AGGLOMERATION_LABELS = Object.freeze({
 /**
  * The DATEX II `TrafficStatusEnum` values, as this app draws them.
  *
- * The palette is deliberately the traffic layer's own green/amber/red
- * (`trafficFlowStyle.js`), so a segment coloured by a measured French sensor
- * and a road tinted by a TomTom flow tile mean the same thing on screen. Two
- * values extend it: `impossible` is DATEX's term for a road that is not
- * passable at all, which no TomTom level expresses, and `unknown` is the state
- * the publisher explicitly sends when its own sensors are down — drawn grey
- * and counted separately, never folded into free flow.
+ * BOTH THE INK AND THE WORDS COME FROM {@link CONGESTION_RUNGS}, and that is
+ * the point. The palette was already the traffic layer's own green/amber/red,
+ * deliberately, so that a segment coloured by a declared French state and a
+ * road tinted by a TomTom flow tile would mean the same thing on screen. Only
+ * half of that intention was kept: the labels drifted to `Dense` and
+ * `Congestionné` while `traffic` said `Circulation ralentie` and `Circulation
+ * bloquée`, and the fused row printed both vocabularies under one colour. The
+ * ladder next door now holds the pair, so they cannot drift again.
+ *
+ * `unknown` is NOT on the ladder: it is the state the publisher explicitly
+ * sends when its own sensors are down. It keeps its own grey, is counted
+ * separately, never folds into free flow, and takes the shared off-scale hatch
+ * in the key rather than a fourth ink (D3).
  *
  * `rank` orders the legend and decides which state wins when a segment is
  * reported by more than one agglomeration feed: the worse state is kept,
  * because a road reported congested by one centre and free by another is not a
  * road anyone should be told is free.
  */
-// `id` stays English because it is a code identifier; `label` is what a reader
-// sees on the card and in the legend of a layer called « État du réseau
-// routier », so it uses the vocabulary Bison Futé itself publishes.
+// `id` stays English because it is a code identifier; the labels are French
+// because they are what a reader sees on the card and in the key of a layer
+// called « État du réseau routier ».
 export const ROAD_STATUS_LEVELS = Object.freeze({
   freeFlow: Object.freeze({
-    id: 'freeFlow', rank: 0, label: 'Fluide', color: '#2ecc71', widthPx: 3.5,
+    id: 'freeFlow',
+    rank: CONGESTION_RUNGS.free.rank,
+    label: CONGESTION_RUNGS.free.label,
+    color: CONGESTION_RUNGS.free.color,
+    widthPx: 3.5,
   }),
   heavy: Object.freeze({
-    id: 'heavy', rank: 1, label: 'Dense', color: '#f0b23e', widthPx: 4.5,
+    id: 'heavy',
+    rank: CONGESTION_RUNGS.slow.rank,
+    label: CONGESTION_RUNGS.slow.label,
+    color: CONGESTION_RUNGS.slow.color,
+    widthPx: 4.5,
   }),
   congested: Object.freeze({
-    id: 'congested', rank: 2, label: 'Congestionné', color: '#e05252', widthPx: 5.5,
+    id: 'congested',
+    rank: CONGESTION_RUNGS.jam.rank,
+    label: CONGESTION_RUNGS.jam.label,
+    color: CONGESTION_RUNGS.jam.color,
+    widthPx: 5.5,
   }),
   impossible: Object.freeze({
-    id: 'impossible', rank: 3, label: 'Impraticable', color: '#8e2b2b', widthPx: 6,
+    id: 'impossible',
+    rank: CONGESTION_RUNGS.impassable.rank,
+    label: CONGESTION_RUNGS.impassable.label,
+    color: CONGESTION_RUNGS.impassable.color,
+    widthPx: 6,
   }),
   unknown: Object.freeze({
     id: 'unknown', rank: -1, label: 'Non communiqué', color: '#7c8794', widthPx: 2.5,

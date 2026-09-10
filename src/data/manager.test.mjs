@@ -10,6 +10,7 @@
 // a toggle container is present) DOM refresh. We pass no container, so it stays
 // headless. Run with: npm test
 import { test } from 'node:test';
+import { fusionMemberChipFor } from './layerFusions.js';
 import assert from 'node:assert/strict';
 import { DataLayerManager, layerFeedState } from './manager.js';
 import {
@@ -4241,6 +4242,136 @@ test('with no briefing surface at all the chip just toggles, as it always did', 
     assert.equal(panel.mgr.isEnabled('comptages-fr'), true);
   } finally {
     await panel.restore();
+  }
+});
+
+test('the key is grouped by PANEL ROW, and only a split row grows a second tier', () => {
+  // The mismatch this closes: the panel has had two tiers since the fusion
+  // table — one row, several chips — and the key had one. Measured in
+  // Île-de-France at 1440×900 on 2026-09-10, the single row « Trafic routier »
+  // printed THREE blocks titled at the same weight, in the same colour, all
+  // ending in the same word, and nothing said which was the subject and which
+  // were its parts.
+  const mgr = new DataLayerManager({});
+  // The layer records are shaped as `getAll()` builds them, `fusedInto`
+  // included: the key must read the SAME fusion table the panel reads, never a
+  // second copy of it.
+  const member = (id, label, fusedInto = null) => ({
+    layer: { id, label, fusedInto },
+    entries: [{ label: `${id}-a`, color: '#fff', count: 1 }],
+    source: `${id} source`,
+  });
+  mgr._registrationTaxonomy = new Map([['traffic', { label: 'Trafic routier' }]]);
+
+  // ── One member: today's rendering, exactly. No tier, no rule. ──────────────
+  const alone = mgr._legendRows([member('road-events-fr', 'Événements routiers', 'traffic')]);
+  assert.equal(alone.length, 1);
+  assert.equal(alone[0].split, false, 'a single-member row grows no second tier');
+  assert.equal(alone[0].rowId, 'traffic');
+
+  // ── Two or more: the row once, then one sub-block per member. ─────────────
+  const rows = mgr._legendRows([
+    member('traffic', 'Trafic routier'),
+    member('road-events-fr', 'Événements routiers', 'traffic'),
+    member('comptages-fr', 'Comptages routiers', 'traffic'),
+    member('earthquakes', 'Séismes'),
+  ]);
+  assert.equal(rows.length, 2, 'three layers of one fusion are ONE row');
+  assert.equal(rows[0].rowId, 'traffic');
+  assert.equal(rows[0].title, 'Trafic routier');
+  assert.equal(rows[0].split, true);
+  // The sub-title is the CHIP label, from the real fusion table — the word the
+  // reader pressed — and not the layer's taxonomy label, which for a companion
+  // appears nowhere in the panel.
+  assert.deepEqual(rows[0].members.map((m) => m.subtitle), [
+    fusionMemberChipFor('traffic', 'traffic'),
+    fusionMemberChipFor('traffic', 'road-events-fr'),
+    fusionMemberChipFor('traffic', 'comptages-fr'),
+  ]);
+  assert.equal(rows[0].members[0].subtitle, 'Débit mesuré');
+  assert.notEqual(rows[0].members[0].subtitle, rows[0].title,
+    'the primary sub-block must not repeat the row heading');
+  // Each block keeps its own note — four blocks on this row, four clocks (E1).
+  assert.deepEqual(rows[0].members.map((m) => m.source),
+    ['traffic source', 'road-events-fr source', 'comptages-fr source']);
+  // An unfused layer is its own row and never splits.
+  assert.equal(rows[1].rowId, 'earthquakes');
+  assert.equal(rows[1].split, false);
+
+  // ── A companion restored alone by a share link still names its row. ───────
+  const orphan = mgr._legendRows([
+    member('road-events-fr', 'Événements routiers', 'traffic'),
+    member('comptages-fr', 'Comptages routiers', 'traffic'),
+  ]);
+  assert.equal(orphan.length, 1);
+  assert.equal(orphan[0].title, 'Trafic routier', 'the row is nameable with its primary off');
+  assert.equal(orphan[0].split, true);
+});
+
+test('a block can carry BOTH asides, and they are never the same line', async () => {
+  // Two different sentences land on one block and they are not interchangeable:
+  //   `note`        — A5's disclosure, what the layer had to leave OUT of the
+  //                   view. Sits UNDER the classes it qualifies. Landed in #160.
+  //   `legendNote`  — the block's provenance and CLOCK. Sits ABOVE them.
+  // E1 is P0 and the fused row is what makes the second one acute: four blocks
+  // under « Trafic routier », four different clocks, and the sentence used to
+  // be copied onto every row — five times on `road-status-fr`, in English.
+  const originalDocument = globalThis.document;
+  const host = makeControlElement();
+  const items = makeControlElement();
+  globalThis.document = {
+    createElement: makeControlElement,
+    createDocumentFragment: () => {
+      const fragment = makeControlElement();
+      fragment.isFragment = true;
+      return fragment;
+    },
+    getElementById: (id) => (id === 'map-legend' ? host : id === 'map-legend-items' ? items : null),
+  };
+  const mgr = new DataLayerManager({});
+  const layer = makeRowControlLayer();
+  layer.module.getRowControls = () => ({
+    chips: [],
+    legend: [
+      { label: 'NAV', color: '#4fd8ff', count: 2 },
+      { label: 'COM', color: '#ffd166', count: 3 },
+    ],
+    legendNote: 'relevé toutes les 60 s',
+    note: '400 sur 1 200 dessinés, les plus récents',
+  });
+  mgr.register(layer.module);
+  const container = makeControlElement();
+
+  try {
+    mgr.buildTogglePanel(container);
+    assert.equal(await mgr.setEnabled('satellites', true), true);
+    mgr._refreshTogglePanel();
+
+    const sources = collectByClass(items, 'map-legend-source');
+    assert.equal(sources.length, 1, 'once for the block, not once per row');
+    assert.equal(sources[0].textContent, 'relevé toutes les 60 s');
+    // A5's disclosure survives alongside it, under its own class — two asides,
+    // two names, or one of them silently replaces the other.
+    const notes = collectByClass(items, 'map-legend-note');
+    assert.equal(notes.length, 1);
+    assert.equal(notes[0].textContent, '400 sur 1 200 dessinés, les plus récents');
+    assert.notEqual(sources[0].textContent, notes[0].textContent);
+    // Neither is a row blurb: a blurb qualifies one swatch, these qualify all
+    // of them, and all three are different elements so they can read apart.
+    assert.equal(collectByClass(items, 'map-legend-blurb').length, 0);
+    assert.equal(collectByClass(items, 'map-legend-swatch').length, 2);
+
+    // A blank or absent sentence prints no empty element, on either slot.
+    layer.module.getRowControls = () => ({
+      chips: [], legend: [{ label: 'NAV', color: '#4fd8ff', count: 2 }], legendNote: '   ',
+    });
+    mgr._refreshTogglePanel();
+    assert.equal(collectByClass(items, 'map-legend-source').length, 0);
+    assert.equal(collectByClass(items, 'map-legend-note').length, 0);
+  } finally {
+    await mgr.destroyAll();
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
   }
 });
 

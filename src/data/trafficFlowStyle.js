@@ -11,20 +11,49 @@
  * @module data/trafficFlowStyle
  */
 
-/** @const {number} Levels at/above this render as free-flowing (green). */
-const FREE_THRESHOLD = 0.85;
-/** @const {number} Levels at/above this (and below FREE) render slow (amber); below is jam (red). */
-const SLOW_THRESHOLD = 0.55;
+import { CONGESTION_RUNGS } from './congestionLadder.js';
 
 /**
- * Bucket color palette as Cesium-free rgba tuples ([r, g, b] 0–255 + alpha 0–1):
- * green #2ecc71 / amber #f0b23e / red #e05252, all at 0.9 alpha.
+ * The two cuts, as fractions of free-flow speed.
+ *
+ * EXPORTED because the key has to print them. Rule C1 asks for frozen domain
+ * thresholds published in the panel, and a legend row reading "Ralenti" tells a
+ * reader the word without telling them what earned it. `road-status-fr` shares
+ * this block's ink and vocabulary and CANNOT share these numbers — its rungs
+ * are an enumeration a human operator picks, not a ratio — so each block prints
+ * its own cut under its own source. That is the honest form of one ladder read
+ * two ways.
+ * @type {{free: number, slow: number}}
+ */
+export const FLOW_THRESHOLDS = Object.freeze({
+  /** Levels at/above this render as free-flowing. */
+  free: 0.85,
+  /** At/above this (and below `free`) is slow; below it is a jam. */
+  slow: 0.55,
+});
+
+const FREE_THRESHOLD = FLOW_THRESHOLDS.free;
+const SLOW_THRESHOLD = FLOW_THRESHOLDS.slow;
+
+/** `#2ecc71` → `[46, 204, 113]`. Keeps the ladder as the single source. */
+function rgb(hex) {
+  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+}
+
+/**
+ * Bucket color palette as Cesium-free rgba tuples ([r, g, b] 0–255 + alpha 0–1).
+ *
+ * READ FROM {@link CONGESTION_RUNGS}, not typed: `road-status-fr` draws the
+ * same three inks for the same three rungs, and the two used to hold private
+ * copies — this one in decimal, that one in hex. One of them moving would have
+ * left the fused row printing two greens for one meaning, which is exactly the
+ * defect the ladder was extracted to end.
  * @type {{free:number[], slow:number[], jam:number[]}}
  */
 export const FLOW_BUCKET_RGBA = {
-  free: [46, 204, 113, 0.9],
-  slow: [240, 178, 62, 0.9],
-  jam: [224, 82, 82, 0.9],
+  free: [...rgb(CONGESTION_RUNGS.free.color), 0.9],
+  slow: [...rgb(CONGESTION_RUNGS.slow.color), 0.9],
+  jam: [...rgb(CONGESTION_RUNGS.jam.color), 0.9],
 };
 
 /**

@@ -15,6 +15,7 @@ import {
   ROAD_EVENTS_FR_OVERLAY_COHORT_LIMIT,
   ROAD_EVENT_CATEGORIES,
   ROAD_EVENT_DEFAULT_SCOPE,
+  ROAD_EVENT_INK,
   ROAD_EVENT_LONG_CHORD_KM,
   ROAD_EVENT_SCOPES,
   ROAD_EVENT_UNKNOWN_CATEGORY,
@@ -33,11 +34,32 @@ import {
   roadEventLegend,
   roadEventPixelSize,
   roadEventScopeAllows,
+  roadEventStrokeWidth,
   roadEventTitle,
   selectRoadEventOverlayCohort,
   summarizeRoadEvents,
 } from './roadEventsFrance.js';
 import { BISON_FUTE_EVENT_CATEGORIES, projectRoadEvents } from './bisonFuteFeed.js';
+import { ROAD_EVENT_CATEGORY_SYMBOLS, _roadEventGlyphBodyForTest } from './roadEventGlyphs.js';
+import { ROAD_STATUS_LEVELS } from './datexRoadStatus.js';
+import { COMPTAGES_RHYTHM_COLORS } from './comptagesRhythm.js';
+
+/** CIE76 dE between two sRGB hexes — the separation figure the module quotes. */
+function deltaE(a, b) {
+  const lab = (hex) => {
+    const lin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    const [r, g, bl] = [0, 2, 4].map((i) => lin(parseInt(hex.slice(1 + i, 3 + i), 16) / 255));
+    const X = (0.4124 * r + 0.3576 * g + 0.1805 * bl) / 0.95047;
+    const Y = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+    const Z = (0.0193 * r + 0.1192 * g + 0.9505 * bl) / 1.08883;
+    const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+    const [fx, fy, fz] = [f(X), f(Y), f(Z)];
+    return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+  };
+  const A = lab(a);
+  const B = lab(b);
+  return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+}
 import { LAYER_STATE_REGISTRY } from './layerState.js';
 
 const EVENTS_XML = readFileSync(
@@ -70,25 +92,41 @@ const byId = (id) => PAYLOAD.events.find((event) => event.id === id);
 
 test('every category the feed can produce has a drawing', () => {
   // The two tables are written in two files and must not drift: a category the
-  // projection can emit and the layer cannot colour would draw grey with no
-  // legend row, which reads as "unknown" for something perfectly well known.
+  // projection can emit and the layer cannot DRAW would fall to the unknown
+  // mark, which reads as "we do not know" for something perfectly well known.
   for (const category of BISON_FUTE_EVENT_CATEGORIES) {
     const presentation = ROAD_EVENT_CATEGORIES[category];
     assert.ok(presentation, `no presentation for category ${category}`);
-    assert.match(presentation.color, /^#[0-9a-f]{6}$/i);
     assert.ok(presentation.label && presentation.blurb);
+    // A category is a NOMINAL variable, so it travels on SHAPE, never on hue
+    // (B5). Eight hues here collided with the congestion ladder, the rhythm
+    // wheel and each other — `accident` was byte-for-byte `traffic`'s `Route
+    // fermée`. There is no colour field left to collide.
+    assert.equal(presentation.color, undefined, 'a category must not carry a hue');
+    assert.ok(ROAD_EVENT_CATEGORY_SYMBOLS[category], `no symbol for category ${category}`);
   }
   assert.equal(Object.keys(ROAD_EVENT_CATEGORIES).length, BISON_FUTE_EVENT_CATEGORIES.length);
-  // Distinct colours, or the legend is decoration.
-  const colors = Object.values(ROAD_EVENT_CATEGORIES).map((entry) => entry.color.toLowerCase());
-  assert.equal(new Set(colors).size, colors.length);
+  // Distinct SHAPES, or the map is decoration. Nine, counting the unknown mark.
+  const bodies = [...BISON_FUTE_EVENT_CATEGORIES, ROAD_EVENT_UNKNOWN_CATEGORY.id]
+    .map(_roadEventGlyphBodyForTest);
+  assert.equal(new Set(bodies).size, bodies.length);
+  // And one ink for all of them, clear of everything drawn over the same road.
+  assert.match(ROAD_EVENT_INK, /^#[0-9a-f]{6}$/i);
+  const nearest = Math.min(...[
+    ...Object.values(ROAD_STATUS_LEVELS).map((level) => level.color),
+    ...Object.values(COMPTAGES_RHYTHM_COLORS),
+    '#ffffff', '#ff3b30',
+  ].map((other) => deltaE(ROAD_EVENT_INK, other)));
+  assert.ok(nearest > 20, `the event ink is ΔE ${nearest.toFixed(1)} from its nearest neighbour`);
 });
 
 test('an unrecognised category is drawn as unknown, not as a real one', () => {
   const unknown = roadEventCategory('quelque-chose-de-2030');
   assert.equal(unknown, ROAD_EVENT_UNKNOWN_CATEGORY);
   assert.ok(!Object.values(ROAD_EVENT_CATEGORIES).some((entry) => entry.id === unknown.id));
-  assert.ok(!Object.values(ROAD_EVENT_CATEGORIES).some((entry) => entry.color === unknown.color));
+  assert.ok(!Object.values(ROAD_EVENT_CATEGORIES).some(
+    (entry) => _roadEventGlyphBodyForTest(entry.id) === _roadEventGlyphBodyForTest(unknown.id),
+  ), 'the unknown mark is not one of the eight');
   // And it is tallied and LABELLED as itself: folding it into a real category
   // would put a grey marker under a blue legend row.
   const summary = summarizeRoadEvents([{ category: 'quelque-chose-de-2030' }, { category: 'restriction' }]);
@@ -197,17 +235,36 @@ test('the default scope is what is happening now', () => {
   assert.deepEqual(sizes, [...sizes].sort((a, b) => a - b));
 });
 
-test('a planned event is drawn as a ghost of an active one', () => {
-  const active = { severity: 'medium', state: 'active' };
-  const planned = { severity: 'medium', state: 'planned' };
-  assert.ok(roadEventPixelSize(planned) < roadEventPixelSize(active));
+test('a planned event is drawn as a ghost, and the mark size encodes NOTHING', () => {
   assert.ok(roadEventAlpha('planned') < roadEventAlpha('active'));
   assert.ok(roadEventAlpha('ended') < roadEventAlpha('planned'));
-  // Severity still grows a marker, and a safety message grows it further.
-  assert.ok(roadEventPixelSize({ severity: 'highest', state: 'active' })
-    > roadEventPixelSize({ severity: 'low', state: 'active' }));
-  assert.ok(roadEventPixelSize({ severity: 'medium', state: 'active', safety: true })
-    > roadEventPixelSize(active));
+
+  // ONE diameter, for every event. It used to compose severity (5 steps), a
+  // safety flag (+2 px) and the planned state (x0.8) into a single number: 20
+  // reachable combinations inside 5.6-15.4 px, 14 neighbouring pairs under
+  // 0.75 px apart, 4 of them 0.12 px apart. A planned major closure and an
+  // active medium restriction landed on the same size, and the key mentioned
+  // none of it (D1). On the live feed of 2026-09-10, 312 of 386 situations
+  // were `medium` anyway — and `medium` is also the fallback for a severity
+  // nobody declared, so a measured value and a default drew alike (A1).
+  const sizes = [
+    { severity: 'medium', state: 'active' },
+    { severity: 'medium', state: 'planned' },
+    { severity: 'highest', state: 'active' },
+    { severity: 'low', state: 'active' },
+    { severity: 'medium', state: 'active', safety: true },
+    {},
+  ].map(roadEventPixelSize);
+  assert.equal(new Set(sizes).size, 1, 'the mark size is one value');
+  // Big enough for a filled pictogram to survive orthophoto underneath it.
+  assert.ok(sizes[0] >= 16, `${sizes[0]} px`);
+
+  // Severity DOES still move a segment's stroke, and that is not the same
+  // channel: a line is long, so three widths on it are readable.
+  assert.ok(roadEventStrokeWidth({ severity: 'highest', state: 'active' })
+    > roadEventStrokeWidth({ severity: 'low', state: 'active' }));
+  assert.ok(roadEventStrokeWidth({ severity: 'medium', state: 'planned' })
+    < roadEventStrokeWidth({ severity: 'medium', state: 'active' }));
 });
 
 // ── Summary, legend, overlay ────────────────────────────────────────────────
@@ -260,7 +317,7 @@ test('the selected card carries the event, not a summary of it', () => {
   });
   assert.equal(entry.variant, 'selected');
   assert.equal(entry.priority, Number.MAX_SAFE_INTEGER);
-  assert.equal(entry.accent, ROAD_EVENT_CATEGORIES.accident.color);
+  assert.equal(entry.accent, ROAD_EVENT_INK);
   assert.ok(entry.details.length >= 4);
   assert.equal(createRoadEventSelectedEntry({ id: null, position: null, event: {} }), null);
 });
@@ -349,9 +406,23 @@ test('lifecycle draws one clamped primitive per in-scope event', async () => {
       assert.ok(entity.polyline.positions instanceof Cesium.ConstantProperty);
       assert.ok(entity.polyline.material instanceof Cesium.ColorMaterialProperty);
     } else {
-      assert.equal(entity.point.heightReference.getValue(), Cesium.HeightReference.CLAMP_TO_GROUND);
+      // A BILLBOARD, not a point: the category rides the shape channel now.
+      assert.equal(entity.point, undefined, 'a point cannot carry a shape');
+      assert.equal(
+        entity.billboard.heightReference.getValue(), Cesium.HeightReference.CLAMP_TO_GROUND,
+      );
+      // The image is one of nine shared data URIs, so Cesium's texture atlas
+      // holds nine entries however many events are drawn — the whole reason
+      // the artwork is never a per-event canvas.
+      assert.match(entity.billboard.image.getValue(), /^data:image\/svg\+xml;base64,/);
     }
   }
+  // Exactly that: at most one atlas entry per category on screen.
+  const images = new Set(h.entities()
+    .filter((entity) => entity.billboard)
+    .map((entity) => entity.billboard.image.getValue()));
+  assert.ok(images.size <= Object.keys(ROAD_EVENT_CATEGORY_SYMBOLS).length,
+    `${images.size} distinct textures for ${Object.keys(ROAD_EVENT_CATEGORY_SYMBOLS).length} categories`);
 
   const stats = h.layer.getStats();
   assert.equal(stats.count, active.length);

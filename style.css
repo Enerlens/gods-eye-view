@@ -6573,19 +6573,63 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   margin-top: 6px;
 }
 
+/* ONE PANEL ROW, ONE BLOCK. The key is grouped the way the panel is: a row's
+   name once, then its sub-layers under it. A row with a single sub-layer on
+   screen renders exactly as it always did — no tier-1 title, no rule — because
+   chrome that disambiguates nothing costs pixels for nothing. */
+.map-legend-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Tier 1 — the row. Brighter and wider-tracked than the sub-titles below it,
+   so the hierarchy is legible before a single word is read. This is the whole
+   repair: three sub-blocks used to be titled identically, at the same weight,
+   and nothing said which was the subject and which were its parts. */
+.map-legend-row-title {
+  font-size: 9.5px;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: rgba(232, 240, 247, 0.86);
+}
+
 .map-legend-group {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
+/* Tier 2 — a sub-layer of a split row. The rule is what carries the grouping:
+   the eye follows one continuous vertical line down the parts of one subject,
+   which no amount of indentation alone achieves. */
+.map-legend-group.is-sub {
+  padding-left: 9px;
+  border-left: 1px solid rgba(120, 214, 255, 0.28);
+}
+
 /* Named in full, not abbreviated: a key that does not say what it is keying
-   is a colour chart. */
+   is a colour chart. On a split row this is the CHIP label — the word the
+   reader pressed — so the key and the control agree. */
 .map-legend-layer {
   font-size: 9.5px;
   letter-spacing: 1.4px;
   text-transform: uppercase;
   color: rgba(232, 240, 247, 0.62);
+}
+
+/* The block's own PROVENANCE and CLOCK (E1). Deliberately NOT `.map-legend-note`
+   and deliberately above the swatches rather than under them: that one says what
+   a layer left OUT and qualifies the classes from below, this one says who
+   published what IS in them and how often, and frames them from above. Italic,
+   so the two asides a block can carry never read as the same kind of statement. */
+.map-legend-source {
+  font-size: 9px;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  font-style: italic;
+  color: rgba(232, 240, 247, 0.5);
+  margin-bottom: 1px;
 }
 
 .map-legend-entry {

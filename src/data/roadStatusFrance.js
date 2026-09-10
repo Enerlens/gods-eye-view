@@ -73,8 +73,24 @@ import {
   roadStatusStyle,
 } from './datexRoadStatus.js';
 import { roadStatusCoverageNotice } from './roadStatusCoverage.js';
+import { offScaleGlyph } from './offScaleGlyph.js';
 
 const SEGMENTS_URL = '/api/road-status-fr/segments';
+
+/**
+ * The one sentence this block owes a reader: who says it, and how often.
+ *
+ * The clock is the load-bearing half (E1). This block sits on the same fused
+ * row as `comptages-fr`, which replays an ARCHIVED typical week, and as
+ * `road-events-fr`, which is an hourly snapshot. Four clocks in one key, and
+ * until this note existed none of them was named — so a reader had no way to
+ * know which lines described the last minute and which described last month.
+ *
+ * 60–360 s is measured, not claimed: 60 s at Bordeaux, Toulouse, Lyon and
+ * Limoges, 120 s at Rouen and Caen, 180 s in Brittany and Lorraine, 360 s at
+ * Marseille and Saint-Étienne (see the module header of `datexRoadStatus.js`).
+ */
+export const ROAD_STATUS_LEGEND_NOTE = 'état déclaré par les DIR, rafraîchi toutes les 60 à 360 s';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
 export const ROAD_STATUS_FR_LAYER_ID = 'road-status-fr';
@@ -721,10 +737,21 @@ const roadStatusFranceLayer = {
    * Tallied over the segments actually on screen, in severity order rather
    * than by count: a legend whose rows reshuffle as three cars clear a ramp is
    * a legend nobody can read. States with nothing in view are omitted, except
-   * `Not reported`, which is kept whenever it has members because "grey means
-   * nobody is watching this road" is the one entry a viewer has to be told.
+   * `unknown`, which is kept whenever it has members because "nobody is
+   * watching this road" is the one entry a viewer has to be told.
    *
-   * @returns {{ chips: Array<object>, legend: Array<object> }}
+   * ONE NOTE FOR THE BLOCK, NOT ONE SENTENCE PER ROW. Every row used to carry
+   * its own — and in English, inside an otherwise entirely French key:
+   * "Published by the operating DIR as DATEX II `freeFlow`, refreshed every
+   * 60–360 s." Five rows, five copies of one fact about the whole block, in
+   * the wrong language. The fact is the block's PROVENANCE and its CLOCK, so
+   * it is stated once through `legendNote` and the rows keep only what differs.
+   *
+   * `unknown` takes the shared off-scale hatch rather than a coloured disc: it
+   * is not a rung of the ladder, and a disc in a scale of discs reads as one
+   * (D3, A1).
+   *
+   * @returns {{ chips: Array<object>, legend: Array<object>, legendNote: string }}
    */
   getRowControls() {
     const counts = _payload?.counts || {};
@@ -737,12 +764,12 @@ const roadStatusFranceLayer = {
         label: level.label,
         color: level.color,
         count,
-        blurb: key === 'unknown'
-          ? 'The station is located and measured, but no traffic-management centre publishes a state for it.'
-          : `Published by the operating DIR as DATEX II \`${key}\`, refreshed every 60–360 s.`,
+        ...(key === 'unknown'
+          ? { glyph: offScaleGlyph(), blurb: 'aucun centre ne publie d’état pour ce point' }
+          : {}),
       });
     }
-    return { chips: [], legend };
+    return { chips: [], legend, legendNote: ROAD_STATUS_LEGEND_NOTE };
   },
 
   destroy(viewer) {

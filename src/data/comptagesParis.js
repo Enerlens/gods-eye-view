@@ -155,8 +155,8 @@ import {
   comptagesArcFlow,
   comptagesArcStyle,
   comptagesDayLine,
-  comptagesFlowBandGlyph,
-  comptagesFlowBandLabel,
+  comptagesFlowScaleDomain,
+  comptagesFlowScaleGlyph,
   comptagesHasHourGap,
   comptagesOccupancyBand,
   comptagesParseSlot,
@@ -171,6 +171,7 @@ import {
   comptagesSlotToken,
   comptagesStrokeGlyph,
 } from './comptagesRhythm.js';
+import { offScaleGlyph } from './offScaleGlyph.js';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
 export const COMPTAGES_FR_LAYER_ID = 'comptages-fr';
@@ -214,30 +215,34 @@ const SELECTED_COLOR = '#00ffff';
 const SELECTED_WIDTH_BONUS = 3;
 
 /**
- * One-line explanations behind each WIDTH swatch.
+ * The one sentence this block owes a reader, and the only one that is not
+ * optional: WHEN.
  *
- * They describe the band, not the moment: the counts move with the cursor and
- * are printed beside the swatch, so a blurb that quoted one slot's tally would
- * be wrong on the other six.
+ * Rule E1 is P0 — "l'instant représenté s'affiche sur la carte" — and the fused
+ * row makes it acute rather than academic. Four blocks land under « Trafic
+ * routier ». Three of them are live: TomTom at 60 s, the DIR states at
+ * 60–360 s, the Bison Futé events on an hourly snapshot. This one is an
+ * ARCHIVE: a typical week that was published weeks ago, replayed at the hour a
+ * chip selects. Nothing in the key said so, so it read as the same present
+ * tense as the three lines above it.
+ *
+ * Both halves are derived from the payload and the cursor. A note that named a
+ * week by hand would be wrong the first Monday after it was written — the pack
+ * rolls, `week.discovered` is true, and that is exactly how the seven rhythm
+ * sentences it replaces went stale.
+ *
+ * @param {?object} week `{start, end}` of the archived week, or null.
+ * @param {?object} slot Resolved cursor slot, or null.
+ * @returns {string} e.g. `semaine type du 31 août au 6 septembre 2026 · moyenne ouvrée`.
  */
-const BAND_BLURBS = Object.freeze([
-  'Moins de 100 véhicules comptés dans l’heure. Le trait le plus fin. '
-    + 'Sur la moyenne ouvrée 196 arcs y sont ; à 04 h en semaine, 1 174.',
-  'De 100 à 250 véh/h. Le gros du réseau compté sur la moyenne ouvrée : 620 arcs.',
-  'De 250 à 500 véh/h. Axes de desserte — la médiane des arcs comptés est à 263 véh/h.',
-  'De 500 à 1 000 véh/h. Grands boulevards et quais.',
-  '1 000 véh/h et plus, le trait le plus large. Boulevard périphérique et voies '
-    + 'sur berges ; le maximum mesuré de la semaine est 5 133 véh/h.',
-]);
-
-/** Blurbs for the three strokes that are not on the count scale. */
-const OCCUPANCY_BLURB = 'La boucle publie un taux d’occupation et jamais un comptage. '
-  + 'C’est une mesure réelle, dans une autre unité — elle n’a pas de place sur l’échelle en véh/h, '
-  + 'et elle ne bouge pas avec le curseur horaire.';
-const SILENT_BLURB_HEAD = 'Trait pointillé long : 168 h sans comptage ni occupation.';
-const HOUR_GAP_BLURB = 'Trait pointillé court : cet arc compte bien dans la semaine, '
-  + 'mais il n’a rien publié pour la tranche sélectionnée. Ce n’est pas une heure creuse — '
-  + 'une heure creuse mesurée prend le trait le plus fin, pas un pointillé.';
+function comptagesLegendNote(week, slot) {
+  const when = comptagesWeekLabel(week);
+  const moment = slot ? comptagesSlotLabel(slot) : null;
+  return [
+    when ? `semaine type ${when}` : 'semaine type archivée',
+    moment ? moment.toLocaleLowerCase('fr-FR') : null,
+  ].filter(Boolean).join(' · ');
+}
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
@@ -1346,20 +1351,36 @@ const comptagesParisLayer = {
         color: COMPTAGES_RHYTHM_COLORS[rhythm],
         count,
         blurb: COMPTAGES_RHYTHM_BLURBS[rhythm],
+        // The refusal to classify is not a class, so it does not take a class's
+        // disc: it takes the shared off-scale hatch, the same one
+        // `road-events-fr` and `road-status-fr` give their own "no value" rows
+        // on this fused row (D3). The ink stays this wheel's desaturated grey —
+        // the panel masks the hatch and paints it through, so one shape carries
+        // three inks and no two layers share a colour.
+        ...(rhythm === 'indetermine' ? { glyph: offScaleGlyph() } : {}),
       });
     }
-    // 2. The width: the count, at this slot. A band at zero is dropped, but the
-    // thresholds themselves are frozen and never re-cut from what is on screen.
-    bands.forEach((count, bin) => {
-      if (!count) return;
+    // 2. The width: the count, at this slot — ONE row for the whole scale.
+    //
+    // It was five, one per band, sharing one ink and differing only in
+    // thickness, each with a sentence. That is the graduated rule #141 deleted
+    // from the buoy key, and the argument carries over exactly: the order is
+    // what the width encodes, an order reads off the marks themselves, and the
+    // exact count is printed on the card of the arc a reader clicks. What the
+    // row still owes is the DOMAIN, and that is derived from the frozen cuts.
+    //
+    // The count is the arcs actually ON the scale at this slot — the five bands
+    // summed. A band at zero contributes zero, which is what it should.
+    const banded = bands.reduce((total, count) => total + count, 0);
+    if (banded > 0) {
       legend.push({
-        label: comptagesFlowBandLabel(bin),
+        label: 'Épaisseur = véhicules par heure',
         color: COMPTAGES_WIDTH_INK,
-        glyph: comptagesFlowBandGlyph(bin),
-        count,
-        blurb: BAND_BLURBS[bin],
+        glyph: comptagesFlowScaleGlyph(),
+        count: banded,
+        blurb: comptagesFlowScaleDomain(),
       });
-    });
+    }
     // 3. The three strokes that are not on the count scale. The silent row is
     // kept even at zero: "a dashed line means nobody measured this street" is
     // the entry a reader has to be given before they can read the map at all.
@@ -1370,7 +1391,7 @@ const comptagesParisLayer = {
         color: COMPTAGES_OCCUPANCY_COLOR,
         glyph: comptagesStrokeGlyph({ widthPx: COMPTAGES_OCCUPANCY_WIDTH }),
         count: states.occupancy,
-        blurb: OCCUPANCY_BLURB,
+        blurb: 'mesure réelle dans une autre unité, hors de l’échelle en véh/h',
       });
     }
     if (gaps > 0) {
@@ -1381,7 +1402,7 @@ const comptagesParisLayer = {
           widthPx: COMPTAGES_HOUR_GAP_WIDTH, dashLength: COMPTAGES_HOUR_GAP_DASH_LENGTH,
         }),
         count: gaps,
-        blurb: HOUR_GAP_BLURB,
+        blurb: 'compte dans la semaine, rien publié pour cette tranche',
       });
     }
     if (states.silent > 0) {
@@ -1392,12 +1413,14 @@ const comptagesParisLayer = {
           widthPx: COMPTAGES_SILENT_WIDTH, dashLength: COMPTAGES_SILENT_DASH_LENGTH,
         }),
         count: states.silent,
-        blurb: `${SILENT_BLURB_HEAD} `
-          + `${fr(_payload.silentBy?.i || 0)} sont déclarés invalides par la Ville, `
-          + `${fr(_payload.silentBy?.b || 0)} barrés, et ${fr(_payload.silentBy?.o || 0)} déclarés ouverts.`,
+        // Derived, every number of it: the three reasons the City gives, summed
+        // by the payload and not by a sentence written against one week.
+        blurb: `${fr(_payload.silentBy?.i || 0)} invalides, `
+          + `${fr(_payload.silentBy?.b || 0)} barrés, `
+          + `${fr(_payload.silentBy?.o || 0)} déclarés ouverts`,
       });
     }
-    return { chips, legend };
+    return { chips, legend, legendNote: comptagesLegendNote(_payload?.week, _slot) };
   },
 
   /**

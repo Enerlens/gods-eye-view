@@ -43,16 +43,20 @@ import comptagesParisLayer, {
   _setComptagesStateForTest,
 } from './comptagesParis.js';
 import {
+  COMPTAGES_FLOW_THRESHOLDS,
   COMPTAGES_FLOW_WIDTHS,
   COMPTAGES_HOUR_GAP_COLOR,
   COMPTAGES_HOUR_GAP_LABEL,
   COMPTAGES_MOMENTS,
   COMPTAGES_RHYTHM_COLORS,
   COMPTAGES_SILENT_COLOR,
+  COMPTAGES_WIDTH_INK,
   comptagesArcStyle,
+  comptagesFlowScaleDomain,
   comptagesResolveSlot,
   comptagesSlotLabel,
 } from './comptagesRhythm.js';
+import { offScaleGlyph } from './offScaleGlyph.js';
 import { newestComptagesWeek, projectComptagesArcs } from './comptagesFeed.js';
 
 // Cesium reads the aliased line-width range off a live WebGL context, and there
@@ -197,17 +201,35 @@ test('the legend has one block per channel, and every row is decodable', () => {
     PACK.arcs.map((arc) => comptagesArcStyle(arc).rhythm).filter(Boolean),
   );
   assert.equal(hueRows.length, classesDrawn.size);
-  for (const row of hueRows) assert.equal(row.glyph, undefined, 'a hue row is a plain swatch');
+  // The refusal to classify is the one hue row that is NOT a plain swatch. It
+  // takes the shared off-scale hatch, because "no class" is not a class — the
+  // same sign `road-status-fr` gives `Non communiqué` on this fused row (D3).
+  // Its INK stays this wheel's, so no two layers of the row share a colour.
+  for (const row of hueRows) {
+    if (row.color === COMPTAGES_RHYTHM_COLORS.indetermine) {
+      assert.equal(row.glyph, offScaleGlyph(), 'the refusal takes the shared hatch');
+    } else {
+      assert.equal(row.glyph, undefined, 'a hue row is a plain swatch');
+    }
+  }
   // The hue rows account for every counting arc, once each.
   assert.equal(hueRows.reduce((sum, row) => sum + row.count, 0), PACK.states.counted);
 
-  // Block 2 — the WIDTH. Every count row is a masked stroke of the real width,
-  // and none of them borrows a rhythm hue.
-  const widthRows = controls.legend.filter((row) => row.glyph && /véh\/h/.test(row.label));
-  assert.ok(widthRows.length > 0);
-  for (const row of widthRows) {
-    assert.match(row.glyph, /^data:image\/svg\+xml,/);
-    assert.equal(wheel.has(row.color), false, `${row.label} borrows a rhythm hue`);
+  // Block 2 — the WIDTH, and it is ONE row for the whole scale rather than one
+  // per band. Five rows sharing a single ink and differing only in thickness
+  // was a graduated rule, and the buoy key deleted its own in #141 for the
+  // reason that applies here: the order reads off the marks themselves, and the
+  // exact count is printed on the card of the arc a reader clicks. What the row
+  // still owes is the frozen DOMAIN, and it prints it, derived.
+  const widthRows = controls.legend.filter((row) => row.color === COMPTAGES_WIDTH_INK);
+  assert.equal(widthRows.length, 1, 'the width scale is one row, not one per band');
+  assert.match(widthRows[0].glyph, /^data:image\/svg\+xml,/);
+  assert.match(norm(widthRows[0].label), /Épaisseur/);
+  assert.equal(norm(widthRows[0].blurb), norm(comptagesFlowScaleDomain()));
+  assert.equal(wheel.has(widthRows[0].color), false, 'the width row borrows no rhythm hue');
+  // And no retired per-band row may come back under another name.
+  for (const row of controls.legend) {
+    assert.equal(/^[<≥]\s|^\d+–\d/.test(norm(row.label)), false, `${row.label} is a retired band row`);
   }
 
   // Block 3 — the strokes off the count scale. Silence is a row of its own or
@@ -517,26 +539,45 @@ test('the legend never re-cuts its thresholds from what is on screen', () => {
   // band a count falls in must not, or two screenshots of the same street at
   // two hours would be uncomparable.
   _setComptagesStateForTest({ payload: PACK, overlayHost: recordingHost() });
-  const labelsAt = (slot) => {
+  const widthRowAt = (slot) => {
     _comptagesSetParamsForTest({ slot });
-    return _comptagesRowControlsForTest().legend
-      .filter((row) => /véh\/h/.test(row.label))
-      .map((row) => norm(row.label));
+    return _comptagesRowControlsForTest().legend.find((row) => row.color === COMPTAGES_WIDTH_INK);
   };
-  const night = labelsAt('w04');
-  const evening = labelsAt('w18');
-  const known = new Set([
-    '< 100 véh/h', '100–250 véh/h', '250–500 véh/h', '500–1 000 véh/h', '≥ 1 000 véh/h',
-  ]);
-  for (const label of [...night, ...evening]) assert.ok(known.has(label), label);
-  // And the counts DO move, or the cursor would be decorative.
-  const countsAt = (slot) => {
-    _comptagesSetParamsForTest({ slot });
-    return _comptagesRowControlsForTest().legend
-      .filter((row) => /véh\/h/.test(row.label))
-      .reduce((acc, row) => ({ ...acc, [norm(row.label)]: row.count }), {});
-  };
-  assert.notDeepEqual(countsAt('w04'), countsAt('w18'));
+  const night = widthRowAt('w04');
+  const evening = widthRowAt('w18');
+  assert.ok(night && evening, 'the width scale is keyed at every slot');
+  // The DOMAIN is the frozen cuts and it is the same sentence at both hours.
+  assert.equal(norm(night.blurb), norm(evening.blurb));
+  assert.match(norm(night.blurb), new RegExp(`\\b${COMPTAGES_FLOW_THRESHOLDS[0]}\\b`));
+  assert.match(norm(night.blurb), /\b1 000\b/);
+  // And the count DOES move, or the cursor would be decorative: 04 h and 18 h
+  // do not put the same number of arcs on the scale.
+  assert.notEqual(night.count, evening.count);
+  _clearComptagesSelectionForTest();
+});
+
+test('the comptages key names the week it replays, and the hour it is stopped on', () => {
+  // E1, and it is P0. Three of the four blocks under « Trafic routier » are
+  // live — TomTom at 60 s, the DIR states at 60–360 s, the Bison Futé events on
+  // an hourly snapshot. This one is an ARCHIVE, and nothing in the key said so,
+  // so it read in the same present tense as the lines above it.
+  _setComptagesStateForTest({ payload: PACK, overlayHost: recordingHost() });
+  _comptagesSetParamsForTest({ slot: 'mean' });
+  const note = norm(_comptagesRowControlsForTest().legendNote);
+  assert.match(note, /semaine type/);
+  // DERIVED from the payload, never typed: the pack rolls every Monday, and a
+  // hand-written week is exactly how the seven rhythm sentences went stale.
+  assert.ok(note.includes(norm(comptagesWeekLabel(PACK.week))), note);
+  assert.equal(/live|direct|temps r/i.test(note), false, note);
+  // The cursor is part of the answer — a note naming the week but not the hour
+  // would describe seven different maps with one sentence.
+  _comptagesSetParamsForTest({ slot: 'w18' });
+  const evening = norm(_comptagesRowControlsForTest().legendNote);
+  assert.notEqual(evening, note);
+  assert.ok(
+    evening.includes(norm(comptagesSlotLabel(comptagesResolveSlot('w18'))).toLocaleLowerCase('fr-FR')),
+    evening,
+  );
   _clearComptagesSelectionForTest();
 });
 
