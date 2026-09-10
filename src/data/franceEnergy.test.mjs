@@ -609,9 +609,12 @@ test('labels carry the verb and the megawatts, never colour alone', () => {
   assert.ok(!figure.includes('-') && !figure.includes('\u2212'), figure);
 
   const [arc] = buildBorderArcs([{ key: 'italie', label: 'Italie', mw: -2537 }]);
-  assert.equal(borderLabelText(arc), '2 537 MW vers Italie');
+  assert.equal(borderLabelText(arc), '2 537 MW exportés vers Italie');
   const [inbound] = buildBorderArcs([{ key: 'suisse', label: 'Suisse', mw: 750 }]);
-  assert.equal(borderLabelText(inbound), '750 MW depuis Suisse');
+  assert.equal(borderLabelText(inbound), '750 MW importés depuis Suisse');
+  // The deadband admits a single megawatt, and the participle agrees with it.
+  const [single] = buildBorderArcs([{ key: 'suisse', label: 'Suisse', mw: -1 }]);
+  assert.equal(borderLabelText(single), '1 MW exporté vers Suisse');
 });
 
 test('a région with no published balance says so, and says it in words', () => {
