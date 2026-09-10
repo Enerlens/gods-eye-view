@@ -32,6 +32,66 @@ const COLOR_BY_CLASS = {
   military_land: '#9ca6b0',
   places_candidate: '#c58cff',
 };
+
+/**
+ * The colour rows of the on-map key, in reading order.
+ *
+ * D1 makes a key mandatory wherever a mark carries a claim a reader cannot
+ * otherwise decode, and this layer spent FIVE hues on classification with no
+ * key anywhere: `getRowControls()` was simply never implemented, while 49 other
+ * layers publish one. The purple was the expensive omission — it is the only
+ * thing on screen separating "OpenStreetMap maps this as military" from
+ * "Google returned a place whose name looked like it", and it said so nowhere.
+ *
+ * The catch-all row goes last among the MAPPED classes because that is what it
+ * is, and its blurb has to say so: measured 2026-09-10 on four French
+ * viewports, `military_land` took 39 of Toulon's 44 records and 68 of the 69
+ * west of Paris. A reader who is not told that grey is the fourre-tout reads
+ * four evenly-weighted classes off a key that is really one class plus three
+ * rarities.
+ *
+ * Colours are READ from COLOR_BY_CLASS rather than restated here, so a hue can
+ * never drift between the map and its key.
+ */
+const LEGEND_CLASSES = Object.freeze([
+  Object.freeze({
+    key: 'airfield',
+    label: 'Base aérienne',
+    blurb: 'Le tag OSM military=airfield. La couche dit que le terrain est levé, '
+      + 'jamais qu’il est actif ni ce qui s’y trouve.',
+  }),
+  Object.freeze({
+    key: 'naval_base',
+    label: 'Base navale',
+    blurb: 'Le tag OSM military=naval_base : arsenal, base ou darse militaire.',
+  }),
+  Object.freeze({
+    key: 'range',
+    label: 'Champ de tir',
+    blurb: 'Le tag OSM military=range, et lui seul. Un champ de manœuvre '
+      + '(training_area) ou une zone dangereuse (danger_area) n’a pas de classe '
+      + 'propre : il n’entre dans la couche que s’il porte aussi '
+      + 'landuse=military, et tombe alors dans « Terrain militaire ».',
+  }),
+  Object.freeze({
+    key: 'military_land',
+    label: 'Terrain militaire',
+    blurb: 'landuse=military, plus les tags military=barracks et military=base. '
+      + 'C’est le fourre-tout de la couche, et de loin sa classe la plus '
+      + 'fournie — 39 des 44 objets de la rade de Toulon, 68 des 69 de l’ouest '
+      + 'parisien. Une pastille grise ne dit donc presque rien de ce qu’elle '
+      + 'marque ; la fiche, si.',
+  }),
+  Object.freeze({
+    key: 'places_candidate',
+    label: 'Candidat Google Places',
+    blurb: 'Résultat du bouton SEARCH NEARBY SITES, non vérifié, et rien ici ne '
+      + 'vient d’OpenStreetMap. Google ne publie aucun type militaire '
+      + 'exploitable, donc un nom qui ressemble suffit à poser la pastille : '
+      + 'ce n’est pas une revendication de site militaire.',
+  }),
+]);
+
 const EARTH_MEAN_RADIUS_M = 6371008.8;
 const DISTANCE_PREFILTER_MARGIN_M = 5000;
 const distanceEndpointScratch = new Cesium.Cartographic();
@@ -79,6 +139,15 @@ const state = {
   clickHandler: null,
   timer: null,
   googleSearchRequested: false,
+  /**
+   * The on-map key for the CURRENT paint, rebuilt by `renderRecords` and only
+   * there. The panel asks every enabled layer for its controls on each refresh
+   * (~1 Hz), so deriving this on demand would slice the 700-record render
+   * window and rebuild a tally every second for a block that only ever changes
+   * when the paint does. It also removes a window where the key could describe
+   * `state.records` that the globe had not drawn yet.
+   */
+  legend: [],
 };
 
 function colorFor(record) {
@@ -109,6 +178,57 @@ export function installationSourceLabel(record) {
     .map((source) => String(source?.name || '').trim())
     .filter(Boolean))];
   return names.join(' + ') || 'Unknown mapped source';
+}
+
+/**
+ * Build the on-map key from the records that are actually DRAWN.
+ *
+ * Counts are the drawn cohort, never `state.records`: the paint is capped at
+ * MAX_RENDERED and the viewport filter runs before it, so a key sourced from
+ * the loaded set would keep claiming sites that are nowhere on screen — the
+ * same lie `airportTierLegend` refuses to tell about a hidden tier.
+ *
+ * A class with nothing drawn gets no row. The five are a closed set (see
+ * CLASS_BY_MILITARY_TAG and `classifyGoogleMilitaryPlace`), and
+ * `militaryInstallations.test.mjs` holds them closed — a sixth class added
+ * upstream would otherwise draw dots with no row to explain them, which is the
+ * exact hole this key was written to fill.
+ *
+ * NO SHAPE ROW, and that is a decision rather than an omission. Some sites are
+ * drawn with a filled footprint and the rest as a bare pin, and a row was
+ * written for it — measured 2026-09-10 over Toulon, Brest, west Paris and
+ * Istres, 137 records of 163 carried one and the split was exactly the OSM
+ * element type. It came out again: the airports legend had shipped the same
+ * two rows and lost them (#138) on the rule that a FORM is what a reader
+ * decodes without a key — a filled outline laid on the ground IS ground —
+ * leaving the key for what no form says, which is the colour. A second legend
+ * in the same panel does not get to answer that differently.
+ *
+ * @param {Array<object>} records The records this paint put on the globe.
+ * @returns {Array<{label:string,color:string,blurb:string,count:number}>}
+ */
+export function installationLegend(records) {
+  const drawn = Array.isArray(records) ? records : [];
+  if (!drawn.length) return [];
+  const tally = new Map();
+  for (const record of drawn) {
+    const klass = String(record?.class || '');
+    tally.set(klass, (tally.get(klass) || 0) + 1);
+  }
+
+  const legend = [];
+  for (const row of LEGEND_CLASSES) {
+    const count = tally.get(row.key) || 0;
+    if (!count) continue;
+    legend.push({
+      label: row.label,
+      color: COLOR_BY_CLASS[row.key],
+      blurb: row.blurb,
+      count,
+    });
+  }
+
+  return legend;
 }
 
 /**
@@ -233,6 +353,9 @@ function viewportBox(viewer) {
 function clearRendered() {
   if (state.dataSource?.entities) state.dataSource.entities.removeAll();
   removeEntityContextsForLayer(LAYER_ID);
+  // No marks, no key. `renderRecords` clears then repaints, and reinstates the
+  // key from the cohort it just drew.
+  state.legend = [];
 }
 
 /**
@@ -276,7 +399,11 @@ function renderRecords({ claimSelection = false } = {}) {
   // rebuilt entities need one frame in idle mode. (perf wave 2 fix)
   governorRequestRender('installations-render');
   clearRendered();
-  for (const record of renderableRecords()) {
+  const drawn = renderableRecords();
+  // The key describes THIS cohort, so it is built from the same array the
+  // entities come from rather than re-derived later from `state.records`.
+  state.legend = installationLegend(drawn);
+  for (const record of drawn) {
     const color = colorFor(record);
     const surfaceHeightM = installationSurfaceHeightM(record);
     const displayPosition = Cesium.Cartesian3.fromDegrees(
@@ -694,6 +821,18 @@ const militaryInstallationsLayer = {
       { duration: 1.4 },
     );
     return true;
+  },
+  /**
+   * The on-map key. No chips: this layer's one control is the SEARCH NEARBY
+   * SITES button in the panel, and an informational chip would render as a
+   * button that looks pressable and does nothing.
+   *
+   * `surfaceFill` stays unset on purpose. That flag mounts the shared drape
+   * note, and it would be false here: these footprints are polygons at a fixed
+   * `height`, not ground-clamped surfaces, so they do not drape anything.
+   */
+  getRowControls() {
+    return { legend: state.legend };
   },
   getStats() {
     return {

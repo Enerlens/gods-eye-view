@@ -5,6 +5,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased] — 2026-09-10
 
+### Added
+- **La couche Sites militaires a enfin une clé : cinq couleurs qui ne disaient
+  rien.** Le module peignait ses pastilles sur cinq teintes — base aérienne,
+  base navale, champ de tir, terrain militaire, candidat Google Places — et
+  n'implémentait `getRowControls()` nulle part, alors que 49 autres couches en
+  publient un. Rien à l'écran ne décodait donc la couleur.
+
+  **Le violet était l'omission chère.** C'est la seule chose qui sépare « OSM
+  cartographie ce site comme militaire » d'« une recherche Google a rendu un
+  lieu dont le nom y ressemblait » : Google ne publie aucun type militaire
+  exploitable, donc un nom suffit à poser la pastille. Sa ligne le dit
+  maintenant en toutes lettres, et rappelle qu'elle ne vient pas d'OSM.
+
+  **Le gris est le fourre-tout, et la légende l'annonce.** `landuse=military`,
+  plus `military=barracks` et `military=base`, absorbe aussi les champs de
+  manœuvre et les zones dangereuses, qui n'ont pas de classe propre. Mesuré le
+  2026-09-10 sur quatre vues françaises : 39 des 44 objets de la rade de
+  Toulon, 68 des 69 de l'ouest parisien. Sans cette phrase, un lecteur lit
+  quatre classes de poids comparable là où il y en a une et trois raretés.
+
+  **Aucune ligne de forme, et c'en est une décision.** Certains sites portent
+  une emprise remplie, les autres une pastille nue — mesuré le 2026-09-10, 137
+  objets sur 163, et la coupure suit exactement le type d'élément OSM. La ligne
+  qui le disait est ressortie : la légende des aéroports avait les deux mêmes
+  et les a perdues, sur la règle qu'une FORME se décode sans clé. Une seconde
+  légende dans le même panneau n'y répond pas autrement.
+
+  **Les comptes sont ceux du DESSIN, jamais du chargement.** La clé se construit
+  dans `renderRecords`, à partir de la même cohorte que les entités — donc
+  au-delà du plafond de 700, ou hors cadre après le filtre de vue, une ligne
+  disparaît au lieu de revendiquer des sites absents de l'écran. Vérifié en
+  navigateur sur la rade de Toulon : 44 sites dessinés, trois lignes — base
+  navale 3, champ de tir 2, terrain militaire 39.
+
 ### Changed
 - **La légende des bouées marines cesse de plaider et se contente de nommer :
   douze lignes et 692 px deviennent huit et 219.** Le bloc de droite portait
