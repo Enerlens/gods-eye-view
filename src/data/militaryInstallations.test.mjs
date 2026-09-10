@@ -4,6 +4,7 @@ import {
   approximateSurfaceDistanceM,
   classifyGoogleMilitaryPlace,
   installationClickOutcome,
+  installationLegend,
   installationSourceLabel,
   installationResponseSaturated,
   installationSurfaceHeightM,
@@ -824,3 +825,131 @@ function selectedEntityCount(run) {
   return run.entities().filter((entity) => entity.point?.pixelSize?.getValue?.() === 13
     || entity.point?.pixelSize === 13).length;
 }
+
+// ── The on-map key ─────────────────────────────────────────────────────────
+// D1: five hues classified these marks and nothing on screen decoded them,
+// because `getRowControls()` was never implemented while 49 other layers ship
+// one. These hold the key honest — sourced from what is DRAWN, and closed over
+// every class the normalizer can emit.
+
+const legendRecord = (klass, { footprint = null, id = `osm:way:${Math.random()}` } = {}) => ({
+  id,
+  class: klass,
+  latitude: 43,
+  longitude: 6,
+  footprint,
+});
+
+const SQUARE = [[6, 43], [6.01, 43], [6.01, 43.01], [6, 43.01]];
+
+test('installation legend counts the drawn cohort, one row per present class', () => {
+  const legend = installationLegend([
+    legendRecord('military_land', { footprint: SQUARE }),
+    legendRecord('military_land'),
+    legendRecord('naval_base', { footprint: SQUARE }),
+    legendRecord('airfield', { footprint: SQUARE }),
+  ]);
+  // A footprint is a FORM, and #138 settled that a form needs no row: the key
+  // carries colour only.
+  assert.equal(legend.some((entry) => entry.glyph), false);
+  // Reading order is LEGEND_CLASSES order, not tally order: the catch-all sits
+  // last among the mapped classes however far it dominates the count.
+  assert.deepEqual(
+    legend.map((entry) => entry.label),
+    ['Base aérienne', 'Base navale', 'Terrain militaire'],
+  );
+  assert.equal(legend.find((entry) => entry.label === 'Terrain militaire').count, 2);
+  assert.equal(legend.find((entry) => entry.label === 'Base aérienne').count, 1);
+  // A class with nothing drawn gets no row rather than a zero.
+  assert.equal(legend.some((entry) => entry.label === 'Champ de tir'), false);
+});
+
+test('installation legend is empty when nothing is drawn', () => {
+  assert.deepEqual(installationLegend([]), []);
+  assert.deepEqual(installationLegend(null), []);
+});
+
+test('installation legend swatches are the colours the map actually paints', () => {
+  const legend = installationLegend([
+    legendRecord('airfield'),
+    legendRecord('naval_base'),
+    legendRecord('range'),
+    legendRecord('military_land'),
+    legendRecord('places_candidate'),
+  ]);
+  assert.deepEqual(
+    legend.map((entry) => entry.color),
+    ['#5aa9ff', '#48c7d5', '#d9a85d', '#9ca6b0', '#c58cff'],
+  );
+  // The rows must READ COLOR_BY_CLASS rather than restate it, or a hue can
+  // drift between the map and its own key.
+  const source = fs.readFileSync(new URL('./militaryInstallations.js', import.meta.url), 'utf8');
+  const rows = source.match(/const LEGEND_CLASSES = Object\.freeze\(\[([\s\S]*?)\n\]\);/);
+  assert.ok(rows, 'LEGEND_CLASSES must stay a literal list');
+  assert.equal(/\bcolor:/.test(rows[1]), false, 'a class row must not carry its own colour');
+});
+
+test('the candidate row says the purple is not an OpenStreetMap claim', () => {
+  const [candidate] = installationLegend([legendRecord('places_candidate')]);
+  assert.equal(candidate.label, 'Candidat Google Places');
+  assert.match(candidate.blurb, /non vérifié/);
+  assert.match(candidate.blurb, /pas une revendication de site militaire/);
+});
+
+test('every class the normalizer can emit has a legend row', () => {
+  const dataSource = fs.readFileSync(new URL('./militaryInstallationData.js', import.meta.url), 'utf8');
+  const block = dataSource.match(/const CLASS_BY_MILITARY_TAG = \{([\s\S]*?)\};/);
+  assert.ok(block, 'CLASS_BY_MILITARY_TAG must stay a literal map');
+  const classes = new Set([...block[1].matchAll(/:\s*'([a-z_]+)'/g)].map((match) => match[1]));
+  // The two branches that do not go through that map.
+  classes.add('military_land');
+  classes.add(classifyGoogleMilitaryPlace({ primaryType: 'military_base' }));
+  classes.add(classifyGoogleMilitaryPlace({ types: ['museum'] }));
+  assert.ok(classes.size >= 5);
+  for (const klass of classes) {
+    const legend = installationLegend([legendRecord(klass)]);
+    assert.equal(legend.length, 1, `class ${klass} draws marks with no legend row`);
+    assert.ok(legend[0].blurb, `class ${klass} has a row with nothing to read`);
+  }
+});
+
+
+test('the layer publishes the key and no chips', () => {
+  const controls = militaryInstallationsLayer.getRowControls();
+  assert.ok(controls && Array.isArray(controls.legend));
+  assert.equal(controls.chips, undefined);
+  // `surfaceFill` stays unset: these footprints hold a fixed height and drape
+  // nothing, so the shared drape note must not mount under them.
+  assert.equal(controls.surfaceFill, undefined);
+});
+
+test('the published key tracks the paint, not the loaded set', async () => {
+  const harness = await runInstallationLoad({
+    elements: [
+      { type: 'node', id: 21, lat: 30.5, lon: -97.5, tags: { military: 'range', name: 'Range' } },
+      {
+        type: 'way',
+        id: 22,
+        bounds: { minlat: 30.4, minlon: -97.6, maxlat: 30.45, maxlon: -97.55 },
+        geometry: [
+          { lat: 30.4, lon: -97.6 },
+          { lat: 30.45, lon: -97.6 },
+          { lat: 30.45, lon: -97.55 },
+          { lat: 30.4, lon: -97.55 },
+        ],
+        tags: { landuse: 'military', name: 'Camp' },
+      },
+      // Loaded from the snapped superset, a full degree outside the viewport,
+      // so it never gets an entity — and must never get a legend row either.
+      { type: 'node', id: 23, lat: 30.5, lon: -96.2, tags: { military: 'naval_base', name: 'Off View' } },
+    ],
+  });
+  try {
+    const labels = militaryInstallationsLayer.getRowControls().legend.map((entry) => entry.label);
+    assert.deepEqual(labels, ['Champ de tir', 'Terrain militaire']);
+    assert.equal(labels.includes('Base navale'), false, 'an unpainted record buys no row');
+  } finally {
+    harness.restore();
+  }
+});
+
