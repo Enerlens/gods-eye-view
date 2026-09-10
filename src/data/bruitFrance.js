@@ -2,7 +2,6 @@ import * as Cesium from 'cesium';
 import { createAddressScanLayer } from './addressScanLayer.js';
 import {
   BRUIT_AREA_SCALE_DENOMINATOR,
-  BRUIT_INDEX_LABELS,
   BRUIT_INDEX_SENTENCES,
   BRUIT_PROBE_SCALE_DENOMINATOR,
   BRUIT_SOURCE,
@@ -12,6 +11,7 @@ import {
   PGS_ZONE_ORDER,
   bandText,
   bruitBandIsFine,
+  bruitGroundResolutionText,
 } from './bruitFeed.js';
 import { pointInPolygons } from './ringGeometry.js';
 import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
@@ -28,7 +28,8 @@ import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
  * assiette outline and a PDF link, drawn as a dashed line at the address, with
  * NO zone letter, NO threshold and NO unit. Over the same ground at Roissy that
  * layer's whole answer is "servitude aéronautique". This layer's answer is
- * "zone C, Lden 56 – 65 dB(A), arrêté du 03/04/2007, LFPG — DSAC NORD". The
+ * "gêne modérée : logements neufs limités, isolation imposée · de 56 à 65
+ * dB(A) en moyenne sur 24 h · arrêté préfectoral du 03/04/2007 · LFPG". The
  * difference is the number, and the number is the reason anyone looks.
  *
  * ── THE DEFECT THIS LAYER WAS BUILT TO AVOID: `features[0]` ─────────────────
@@ -186,11 +187,12 @@ import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
  * camera settle. Under that altitude the same pass is played in front of the
  * reader instead, against a budget that keeps the wait a wait rather than a
  * hang. {@link scheduleBruitRefinePoll} is how this layer
- * comes back for it, and {@link bruitCommonCaveats} is why a half-refined view
+ * comes back for it, and {@link bruitCardCaveat} is why a half-refined view
  * still cannot overclaim: every band carries the scale its own outline was
  * fetched at, the card prints the COARSEST of them, and it names how many are
  * already better. Nothing drawn here is a surveyed limit at either scale; the
- * arrêté PDF on the card is the document that is.
+ * arrêté the card names — `arrêté préfectoral du <date> · <OACI>` — is the
+ * document that is.
  *
  * ── WHY IT SITS ON `createAddressScanLayer` ─────────────────────────────────
  * The upstream takes a coordinate, not a bounding box, exactly like the four
@@ -335,10 +337,10 @@ export const BRUIT_LABEL_MIN_WIDTH_DEG = 0.0004;
  */
 export const BRUIT_WINNER_RULES = Object.freeze({
   only: 'seule zone sous le repère',
-  zone: 'la plus exposée des zones sous le repère',
+  zone: 'la plus exposée',
   arrete: 'même zone, arrêté le plus récent',
-  oaci: 'même zone et même date : code OACI par ordre alphabétique',
-  id: 'départage stable sur l’identifiant du registre',
+  oaci: 'même zone et date, OACI alphabétique',
+  id: 'même tout, départage sur l’identifiant',
 });
 
 /** Colour a band by its plan and its zone letter. */
@@ -474,10 +476,16 @@ export function chooseBruitAnswer(bands, kind = 'peb') {
  * One band, in one line: its letter and its thresholds in the unit they are
  * actually in.
  *
- * `bandText` returns null when there are no thresholds at all and prints
- * "seuils … — indice non déterminé" when the index could not be settled. Both
- * are passed through unchanged. Nothing in this module formats a threshold by
- * hand, which is what keeps a bare number off the globe.
+ * `bandText` returns null when there are no thresholds at all and says "unité
+ * non déterminée" when the index could not be settled. Both are passed through
+ * unchanged. Nothing in this module formats a threshold by hand, which is what
+ * keeps a bare number off the globe.
+ *
+ * `short`, because every caller of this is a SECONDARY mention — a band beside
+ * the one the card is about, or one of four in a list — where the card has
+ * already spelled the index out once at full length. Measured on the Roissy
+ * ground card, the long form pushed "insonorisation financée : PGS zone 3 …" to
+ * 75 characters and wrapped it onto a second row.
  */
 export function bruitBandLabel(band) {
   const zone = typeof band?.zone === 'string' && band.zone.trim() ? band.zone.trim() : '?';
@@ -485,7 +493,7 @@ export function bruitBandLabel(band) {
   // introduces them: a card that says "zone 3" beside a card that says "zone C"
   // invites reading the two documents as one scale.
   const prefix = band?.kind === 'pgs' ? `PGS zone ${zone}` : `zone ${zone}`;
-  const text = bandText(band);
+  const text = bandText(band, { short: true });
   return text ? `${prefix} — ${text}` : prefix;
 }
 
@@ -499,20 +507,25 @@ export function bruitDayText(iso) {
  * The card for ONE band — shared by its wash, every one of its rings, and the
  * letter written on it, because they are the same band and must not tell a
  * reader three different things.
+ *
+ * Opens on what the zone MEANS and not on its threshold, same order as
+ * {@link bruitGroundCard}: these two are read by the same click, one on the
+ * outline and one on the fill, and an outline that led with a number while the
+ * fill led with a rule would look like two different answers.
  */
 export function bruitBandDescription(band, answer = null, { area = false } = {}) {
   const isWinner = Boolean(answer?.winner && answer.winner.id === band?.id);
   const arrete = bruitDayText(band?.effectiveDate);
   return [
-    bandText(band),
     bruitZoneSentence(band?.kind, band?.zone),
+    bandText(band),
     BRUIT_INDEX_SENTENCES[band?.index ?? 'unknown'],
     // `atPoint` is false on EVERY overview band, because nothing was tested
     // against a point. Printing the point-mode sentence there would invent a
     // marker the reader does not have and then tell them they are outside it.
     area || band?.atPoint === true ? null : 'zone voisine — le repère n’est pas dedans',
     isWinner && answer?.ruleLabel ? `retenue : ${answer.ruleLabel}` : null,
-    arrete ? `arrêté du ${arrete}` : null,
+    arrete ? `arrêté préfectoral du ${arrete}` : null,
     // The register keeping a 1985 date on a plan reissued in Lden. Said on the
     // band because it is the field a reader would check, and because it is what
     // moved this band's unit.
@@ -526,7 +539,6 @@ export function bruitBandDescription(band, answer = null, { area = false } = {})
       : null,
     band?.oaci ? `${band.oaci}${band.airport ? ` — ${band.airport}` : ''}` : null,
     band?.producer ? `producteur ${band.producer}` : null,
-    band?.documentUrl ? `arrêté : ${band.documentUrl}` : null,
   ].filter(Boolean).join(' · ');
 }
 
@@ -551,9 +563,11 @@ export const BRUIT_ARRETE_UNDER_MARKER_KM = 0.5;
  */
 export function bruitNearestSentence(nearest) {
   if (!nearest || !Number.isFinite(nearest.distanceKm)) return null;
-  const name = [nearest.oaci, nearest.name].filter(Boolean).join(' — ');
+  // The aerodrome's NAME leads and its OACI code closes, same as every headline
+  // in this module: the code identifies the document, not the place.
+  const name = [nearest.name, nearest.oaci ? `(${nearest.oaci})` : ''].filter(Boolean).join(' ');
   const day = bruitDayText(nearest.arreteDate);
-  const arrete = day ? `, arrêté du ${day}` : '';
+  const arrete = day ? `, arrêté ${day}` : '';
   // STANDING ON IT, and the service still returned nothing. That is the most
   // informative empty answer this layer can give, and "à 0 km" would be the
   // least: measured, 9 of the 224 aerodromes answer an empty FeatureCollection
@@ -561,11 +575,39 @@ export function bruitNearestSentence(nearest) {
   // LFPT — answer nothing at any scale. The arrêté exists; the polygon does
   // not, or does not reach this point.
   if (nearest.distanceKm <= BRUIT_ARRETE_UNDER_MARKER_KM) {
-    return `le repère est sur l’aérodrome ${name || 'sans nom'}${arrete} — `
-      + 'le service ne renvoie aucun polygone ici';
+    return `le repère est sur ${name || 'un aérodrome sans nom'}${arrete}`
+      + ' — le service ne renvoie aucun polygone ici';
   }
   const km = nearest.distanceKm.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
-  return `aérodrome le plus proche avec un PEB : ${name || 'sans nom'}, à ${km} km${arrete}`;
+  return `plan le plus proche : ${name || 'sans nom'}, à ${km} km${arrete}`;
+}
+
+/**
+ * The headline over ONE band, wherever that band is the answer.
+ *
+ * SHARED BY THE MARKER AND BY A CLICK ON THE GROUND, deliberately. They are the
+ * same answer arrived at two ways — `bruitMarkerTitle` from a scan, and
+ * `bruitGroundCard` from a pick inside a wash — and before this they wrote it
+ * two different ways, so the same zone A could be "Zone A · LFBD — B. MERIGNAC"
+ * under a marker and something else under a click.
+ *
+ * WHAT IT SAYS FIRST IS THE SUBJECT. "Zone A" is a letter of the Code de
+ * l'urbanisme; on a coloured polygon with nothing else on screen it does not
+ * tell a reader they are looking at aircraft noise at all. The document leads,
+ * the ring follows, the aerodrome closes.
+ *
+ * THE OACI CODE IS NOT HERE. It is four letters no reader outside aviation can
+ * decode, and it is already on the arrêté line of every card this titles, where
+ * it belongs — beside the document it identifies.
+ */
+export function bruitBandHeadline(band) {
+  const zone = typeof band?.zone === 'string' && band.zone.trim() ? band.zone.trim() : '?';
+  // The PGS is a different document with a different purpose, so it gets a
+  // different subject rather than a shared one with a qualifier: a card that
+  // said "bruit des avions · zone 1" over a PGS band would read as a fifth PEB
+  // ring, which is exactly the confusion the two palettes exist to prevent.
+  const subject = band?.kind === 'pgs' ? 'Aide à l’insonorisation' : 'Bruit des avions';
+  return `${subject} · zone ${zone}${band?.airport ? ` — ${band.airport}` : ''}`;
 }
 
 /**
@@ -577,15 +619,11 @@ export function bruitNearestSentence(nearest) {
  */
 export function bruitMarkerTitle(payload, peb, pgs) {
   if (payload?.available?.peb === false && payload?.available?.pgs === false) {
-    return 'Plans de bruit — service sans réponse';
+    return 'Bruit des avions — service sans réponse';
   }
   const winner = peb?.winner || pgs?.winner;
-  if (winner) {
-    const zone = typeof winner.zone === 'string' && winner.zone.trim() ? winner.zone.trim() : '?';
-    const who = [winner.oaci, winner.airport].filter(Boolean).join(' — ');
-    return `Zone ${zone}${who ? ` · ${who}` : ''}`;
-  }
-  return 'Aucun plan de bruit aérien sur ce point';
+  if (winner) return bruitBandHeadline(winner);
+  return 'Bruit des avions — aucun plan sur ce point';
 }
 
 /**
@@ -596,6 +634,21 @@ export function bruitMarkerTitle(payload, peb, pgs) {
  * this layer at all, and how the shapes on screen were made. A reader who stops
  * after the first line is not misled; a reader who reads to the end knows
  * exactly how much of France this covers.
+ *
+ * ── THE ORDER IS A BUDGET, NOT A PREFERENCE ─────────────────────────────────
+ * This card goes through {@link bruitCardDetails} like the other three, so what
+ * is below the fifth line does not reach a screen. The rank is therefore the
+ * layer's own priority, made to cost something:
+ *
+ *   1. the rule for this ground, and the threshold that is its evidence
+ *   2. WHICH zone was chosen and what it beat — the whole reason this module
+ *      exists, and the one thing a reader cannot re-derive from the picture
+ *   3. the register contradicting itself: two rings with no cut, two plans
+ *   4. the document, then the index, then what is merely beside the marker
+ *
+ * The arrêté's date used to sit at 4 and the ambiguity below it, which meant a
+ * point covered by two overlapping zones printed its provenance and dropped the
+ * fact that there had been a choice at all.
  */
 export function bruitScanDescription(payload, peb, pgs) {
   const winner = peb?.winner || null;
@@ -607,18 +660,18 @@ export function bruitScanDescription(payload, peb, pgs) {
     lines.push('le service PEB n’a pas répondu — ce n’est pas « aucune zone ici »');
   }
   if (winner) {
-    lines.push(bandText(winner));
+    // Rule, then threshold — the same order as the two cards a click produces,
+    // because the answer to "what does this mean for this ground" is the rule
+    // and the threshold is its evidence.
     lines.push(bruitZoneSentence('peb', winner.zone));
-    lines.push(BRUIT_INDEX_SENTENCES[winner.index ?? 'unknown']);
-    const day = bruitDayText(winner.effectiveDate);
-    if (day) lines.push(`arrêté du ${day}${winner.revisedDocument ? ' (date reprise du document, le registre affiche l’ancienne)' : ''}`);
+    lines.push(bandText(winner));
   } else if (payload?.available?.peb !== false) {
     lines.push('aucun plan d’exposition au bruit ne couvre ce point');
     lines.push(bruitNearestSentence(payload?.nearest));
   }
   // THE LINE THIS LAYER EXISTS FOR. Never omitted when there was a choice.
   if (peb?.eligible > 1) {
-    lines.push(`${peb.eligible} zones sous le repère — retenue : ${peb.ruleLabel}`);
+    lines.push(`${peb.eligible} zones ici, retenue : ${peb.ruleLabel}`);
     const runnerUp = peb.inside[0];
     if (runnerUp) lines.push(`aussi sous le repère : ${bruitBandLabel(runnerUp)}`);
   }
@@ -628,28 +681,38 @@ export function bruitScanDescription(payload, peb, pgs) {
   const airports = new Set([...(payload?.peb || [])]
     .filter((band) => band.atPoint === true).map((band) => band.oaci).filter(Boolean));
   if (airports.size > 1) {
-    lines.push(`deux plans se superposent ici : ${[...airports].sort().join(', ')} — deux arrêtés, deux faits`);
+    lines.push(`deux aéroports ici : ${[...airports].sort().join(', ')} — deux arrêtés distincts`);
+  }
+  if (winner) {
+    const day = bruitDayText(winner.effectiveDate);
+    if (day) lines.push(`arrêté préfectoral du ${day}${winner.revisedDocument ? ' (date reprise du document, le registre affiche l’ancienne)' : ''}`);
+    lines.push(BRUIT_INDEX_SENTENCES[winner.index ?? 'unknown']);
   }
   const nearby = peb?.nearby?.length || 0;
   if (nearby) {
     lines.push(`${nearby} zone${nearby > 1 ? 's' : ''} renvoyée${nearby > 1 ? 's' : ''} à côté du repère, dessinée${nearby > 1 ? 's' : ''} en tirets`);
   }
   if (pgs?.winner) {
-    lines.push(`plan de gêne sonore : ${bruitBandLabel(pgs.winner)} — aide à l’insonorisation`);
+    lines.push(`insonorisation financée : ${bruitBandLabel(pgs.winner)}`);
   } else if (payload?.available?.pgs === false) {
-    lines.push('le service PGS n’a pas répondu — rien ne peut être dit ici du fonds d’insonorisation');
+    lines.push('service PGS sans réponse : rien à dire de l’insonorisation');
   }
   if (payload?.mixedIndex) {
-    lines.push('deux indices différents sur ce point — les seuils ne sont pas comparables entre eux');
+    lines.push('deux indices ici — les seuils ne se comparent pas entre eux');
   }
   if (payload?.disputed) {
-    lines.push('indice non déterminé : la date de l’arrêté et les seuils publiés ne concordent pas');
+    lines.push('unité incertaine : l’arrêté et les seuils ne concordent pas');
   }
-  lines.push(...bruitCommonCaveats(payload));
   if (payload?.register?.short === true) {
     lines.push('registre des arrêtés incomplet : « le plus proche » peut en manquer un');
   }
-  return lines.filter(Boolean).join(' · ');
+  // THROUGH THE SAME BUDGET AS THE OTHER THREE CARDS, and it was not before.
+  // The shell splits this string on ' · ' and slices the result to six, so
+  // pushing the caveats onto the end made them the first thing dropped — the
+  // exact failure `bruitCardDetails` was written to prevent, still live on the
+  // one card that did not go through it. Measured at Roissy: eight lines out,
+  // six painted, and the two that fell were "avions seulement" and the scale.
+  return bruitCardDetails(lines, payload).join(' · ');
 }
 
 /**
@@ -670,38 +733,48 @@ export function bruitScaleDenominator(payload) {
 }
 
 /**
- * The caveats that belong on EVERY card this layer draws, in both modes.
+ * What is NOT in this layer, in one line that fits.
  *
- * Pulled out of {@link bruitScanDescription} rather than copied into the
- * overview: "avions seulement" and the generalisation scale are true of every
- * shape on screen whatever question produced it, and a reader who clicks a band
- * in the overview is owed exactly the same two sentences as one who clicks a
- * band at an address. The scale is READ FROM THE PAYLOAD and never assumed —
- * the two modes differ by a factor of a hundred.
+ * It used to run to 103 characters and name the document it is missing — "la
+ * carte de bruit stratégique n'est pas publiée ici". True, and two rendered
+ * rows out of six on a card whose whole job is to be read at a glance. The
+ * reason survives in full where a reader can dwell on it: the data credits, and
+ * the `nuisances` notes of the address fiche.
+ */
+const BRUIT_AIRCRAFT_ONLY = 'avions seulement, ni route ni train';
+
+/**
+ * The one caveat every card in this module ends on, in both modes.
+ *
+ * TWO SENTENCES BECAME ONE, and the merge is what let the marker card keep
+ * them at all. `bruitCardDetails` spends one line of six on the tail, so a
+ * two-line tail costs a fact — and the pair was "avions seulement" plus a
+ * scale, which is one clause each.
+ *
+ * THE SCALE IS READ FROM THE PAYLOAD and never assumed: the two modes differ by
+ * a factor of a hundred. It is stated as ground metres rather than as an OGC
+ * denominator, because "1:39 757" is not something a reader can act on and
+ * "~11 m" is — see {@link bruitGroundResolutionText}.
+ *
+ * A MIXED DRAW MUST NOT PRINT ONE NUMBER. The overview serves coarse outlines
+ * and sharpens them band by band, so a view legitimately holds thirty at the
+ * probe scale and four at the overview's. {@link bruitScaleDenominator} returns
+ * the COARSEST, which is the only number true of every shape on screen — but on
+ * its own it understates thirty of them, so the mixture is named. (That clause
+ * had been written before and reached no screen: it lived in a helper only the
+ * point-mode card called, and `area` is false there by construction.)
  *
  * @param {object} payload
- * @returns {string[]}
+ * @returns {string}
  */
-export function bruitCommonCaveats(payload) {
-  const denominator = bruitScaleDenominator(payload);
-  const scale = `contours généralisés au 1:${denominator.toLocaleString('fr-FR')} — ce n’est pas un relevé`;
-  // A MIXED DRAW MUST NOT PRINT ONE NUMBER. The overview serves coarse outlines
-  // and sharpens them band by band, so a view legitimately holds thirty at the
-  // probe scale and four at the overview's. `bruitScaleDenominator` returns the
-  // COARSEST, which is the only number true of every shape on screen — but on
-  // its own it understates thirty of them, so the mixture is named.
+export function bruitCardCaveat(payload) {
+  const scale = bruitGroundResolutionText(bruitScaleDenominator(payload));
   const coarse = Number(payload?.coarseBands) || 0;
   const refined = Number(payload?.refinedBands) || 0;
   if (payload?.area === true && coarse > 0 && refined > 0) {
-    return [
-      'avions seulement — ni route, ni fer, ni industrie : la carte de bruit stratégique n’est pas publiée ici',
-      `${scale} — ${refined} zone${refined > 1 ? 's' : ''} déjà affinée${refined > 1 ? 's' : ''} au 1:${BRUIT_PROBE_SCALE_DENOMINATOR.toLocaleString('fr-FR')}`,
-    ];
+    return `avions seulement — tracé à ~${scale} près, ${refined} zone${refined > 1 ? 's' : ''} à ~${bruitGroundResolutionText(BRUIT_PROBE_SCALE_DENOMINATOR)}`;
   }
-  return [
-    'avions seulement — ni route, ni fer, ni industrie : la carte de bruit stratégique n’est pas publiée ici',
-    scale,
-  ];
+  return `${BRUIT_AIRCRAFT_ONLY} — tracé à ~${scale} près`;
 }
 
 /**
@@ -716,18 +789,31 @@ export function bruitCommonCaveats(payload) {
  * lines that fell off the bottom were exactly those.
  *
  * So the tail is not a tail. Five lines of answer, then the caveat, always —
- * and the caveat is the two sentences of {@link bruitCommonCaveats} condensed
+ * and the caveat is {@link bruitCardCaveat}, which is two sentences condensed
  * into one, because at six lines the cost of a second one is the fifth fact.
+ *
+ * ── AND SIX LINES OF DATA IS NOT SIX LINES OF SCREEN ────────────────────────
+ * `worldOverlayDraw` wraps a card line at about sixty characters, so a long
+ * sentence costs a second row and the budget above stops describing what a
+ * reader sees. Measured on the ground card at Bordeaux-Mérignac (LFBD, zone A),
+ * six details painted EIGHT rows: the arrêté's URL took two and the caveat two.
+ *
+ * That URL is why none of the three cards in this module prints one any more.
+ * The overlay is a CANVAS — `createAddressScanOverlayEntry` sets
+ * `interactive: false` and the draw path is `ctx.fillText` — so a link there is
+ * not a link, it is eighty characters of unselectable text spending a quarter
+ * of the card to be unusable. The document is still identified, by the pair a
+ * reader can act on: `arrêté préfectoral du <date> · <OACI>`, which is exactly
+ * what names the file, `PEB_<OACI>_<DD>_<MM>_<YYYY>.pdf`.
  *
  * @param {Array<?string>} lines Most load-bearing first.
  * @param {object} payload
  * @returns {string[]}
  */
 export function bruitCardDetails(lines, payload) {
-  const denominator = bruitScaleDenominator(payload);
   return [
     ...lines.filter(Boolean).slice(0, BRUIT_CARD_MAX_LINES - 1),
-    `avions seulement — contours généralisés au 1:${denominator.toLocaleString('fr-FR')}, ce n’est pas un relevé`,
+    bruitCardCaveat(payload),
   ];
 }
 
@@ -768,10 +854,10 @@ export function bruitAerodromeDescription(aerodrome, payload, pgs = null) {
     `${count} zone${count > 1 ? 's' : ''} publiée${count > 1 ? 's' : ''} : `
       + (aerodrome?.bands || []).map((band) => bruitBandLabel(band)).join(' ; '),
     arrete
-      ? `arrêté du ${arrete}${aerodrome?.top?.revisedDocument ? ' (date reprise du document, le registre affiche l’ancienne)' : ''}`
+      ? `arrêté préfectoral du ${arrete}${aerodrome?.top?.revisedDocument ? ' (date reprise du document, le registre affiche l’ancienne)' : ''}`
       : BRUIT_INDEX_SENTENCES[aerodrome?.top?.index ?? 'unknown'],
     pgs?.zones
-      ? `plan de gêne sonore : ${pgs.zones} zone${pgs.zones > 1 ? 's' : ''} — aide à l’insonorisation`
+      ? `insonorisation financée : ${pgs.zones} zone${pgs.zones > 1 ? 's' : ''}`
       : null,
     // An aerodrome nobody aimed at. Its plan is whatever fell inside a
     // neighbour's buffer, which is not a promise that the plan is complete.
@@ -779,7 +865,6 @@ export function bruitAerodromeDescription(aerodrome, payload, pgs = null) {
       ? 'renvoyé par la sonde d’un aérodrome voisin — son plan peut être incomplet ici'
       : null,
     'descendez sous 12 km pour savoir quelle zone s’applique à une adresse',
-    aerodrome?.top?.documentUrl ? `arrêté : ${aerodrome.top.documentUrl}` : null,
   ], payload).join(' · ');
 }
 
@@ -861,24 +946,33 @@ export function bruitGroundCard({ lon, lat, payload }) {
   const lead = peb[0] || pgs[0] || null;
   if (!lead) return null;
   const area = payload.area === true;
-  const who = [lead.oaci, lead.airport].filter(Boolean).join(' — ');
   const arrete = bruitDayText(lead.effectiveDate);
   const others = (lead.kind === 'peb' ? peb : pgs).slice(1);
   return {
-    title: `Zone ${String(lead.zone ?? '?')}${who ? ` · ${who}` : ''}`,
+    title: bruitBandHeadline(lead),
+    // THE CONSEQUENCE LEADS, NOT THE NUMBER. What a reader wants from a
+    // coloured polygon is whether a home can be built on it; the threshold is
+    // the evidence for that answer, not the answer. This used to open on
+    // "70 Lden dB(A)" and put the rule third.
     details: bruitCardDetails([
-      bandText(lead),
       bruitZoneSentence(lead.kind, lead.zone),
-      arrete ? `arrêté du ${arrete}` : BRUIT_INDEX_SENTENCES[lead.index ?? 'unknown'],
+      bandText(lead),
+      // The OACI code rides with the arrêté because that is what it identifies:
+      // the PDF is named `PEB_<OACI>_<date>.pdf`, so the two together are what
+      // a reader needs to find the document. The URL itself is NOT here — see
+      // the note below.
+      arrete
+        ? `arrêté préfectoral du ${arrete}${lead.oaci ? ` · ${lead.oaci}` : ''}`
+        : BRUIT_INDEX_SENTENCES[lead.index ?? 'unknown'],
       // Two bands over one piece of ground is a real state of the register —
       // measured at Saint-Cyr and at Cannes — and the strictest is the headline.
       others.length
         ? `aussi sur ce point : ${others.map((band) => bruitBandLabel(band)).join(' ; ')}`
         : null,
-      peb.length && pgs.length ? `plan de gêne sonore : ${bruitBandLabel(pgs[0])}` : null,
+      peb.length && pgs.length ? `insonorisation financée : ${bruitBandLabel(pgs[0])}` : null,
       // The sentence that stops a coloured pixel from passing for a legal
-      // limit. At 1:3,975,696 a hundred metres of boundary is well under one
-      // vertex, so near an edge this answer is a guess.
+      // limit. At the overview scale a hundred metres of boundary is well under
+      // one vertex, so near an edge this answer is a guess.
       //
       // READ OFF THE BAND THAT WAS CLICKED, not off the mode. An overview under
       // {@link BRUIT_FINE_OVERVIEW_CEILING_M} arrives already refined, and
@@ -890,11 +984,15 @@ export function bruitGroundCard({ lon, lat, payload }) {
       // remaining case: a coarse band inside a foreground pass is one the
       // budget did not reach and the background is still working on, which is a
       // wait, while a coarse band above the ceiling is a descent.
+      //
+      // BOTH WORDINGS FIT ON ONE ROW. They ran to 83 and 90 characters, and the
+      // overlay wraps at about sixty — so the line that says "this outline is a
+      // guess" was itself taking two of the card's six rows to say it.
       area && !bruitBandIsFine(lead)
         ? (payload?.fine === true
-          ? 'contour encore large ici — l’affinage n’a pas fini : près d’une limite, attendez-le'
-          : `lu sur le contour d’ensemble : près d’une limite, descendez sous ${BRUIT_FINE_OVERVIEW_CEILING_M / 1000} km pour la version fine`)
-        : (lead.documentUrl ? `arrêté : ${lead.documentUrl}` : null),
+          ? 'contour encore large : l’affinage n’a pas fini, patientez'
+          : `contour d’ensemble : près d’une limite, descendez sous ${BRUIT_FINE_OVERVIEW_CEILING_M / 1000} km`)
+        : null,
     ], payload),
   };
 }
@@ -1397,7 +1495,7 @@ export function renderBruit({ payload, dataSource, point, viewer }) {
           properties: { kind: `${kind}-zone-label`, zone: band.zone, atPoint: band.atPoint },
           label: {
             // The letter, and the letter only. The thresholds are on the card:
-            // writing "62 – 70 Lden dB(A)" across a 500 m band would be four
+            // writing "de 62 à 70 dB(A)" across a 500 m band would be five
             // words of ink over the thing they describe.
             text: String(band.zone ?? '?'),
             font: 'bold 15px "Roboto Mono", monospace',
